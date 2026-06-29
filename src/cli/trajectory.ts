@@ -1,5 +1,6 @@
 import type { Command } from "commander"
 
+import { bundleTrace, inspectTrace } from "../trajectory/evidence"
 import { initPrototypeWorkspace, runPrototypeDemo } from "../trajectory/prototype"
 
 type InitOptions = Readonly<{
@@ -10,6 +11,16 @@ type DemoOptions = Readonly<{
   export: string
   pattern?: string
   workspace: string
+}>
+
+type InspectOptions = Readonly<{
+  json?: boolean
+  trace: string
+}>
+
+type BundleOptions = Readonly<{
+  out: string
+  trace: string
 }>
 
 const printJson = (value: unknown) => {
@@ -47,6 +58,30 @@ export const registerTrajectoryCommand = (program: Command) => {
           workspace: options.workspace,
           exportPath: options.export,
           ...(options.pattern === undefined ? {} : { patternPath: options.pattern }),
+        }),
+      )
+    })
+
+  trajectoryCommand
+    .command("inspect")
+    .description("Inspect an ATF trace for marketplace readiness")
+    .requiredOption("--trace <path>", "ATF JSON trace to inspect")
+    .option("--json", "Print the inspection result as JSON")
+    .action((options: InspectOptions) => {
+      const result = inspectTrace({ tracePath: options.trace })
+      printJson(result)
+    })
+
+  trajectoryCommand
+    .command("bundle")
+    .description("Create a local data-only evidence bundle from a marketplace-ready trace")
+    .requiredOption("--trace <path>", "ATF JSON trace to bundle")
+    .requiredOption("--out <path>", "Evidence bundle output directory")
+    .action((options: BundleOptions) => {
+      printJson(
+        bundleTrace({
+          tracePath: options.trace,
+          outDir: options.out,
         }),
       )
     })
