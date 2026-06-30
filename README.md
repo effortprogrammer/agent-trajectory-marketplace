@@ -76,7 +76,13 @@ Before publishing, run:
 bun run release:check
 ```
 
-Publish to the public npm registry with:
+GitHub Releases publish automatically through `.github/workflows/npm-publish.yml`. Before cutting a release:
+
+- Set an npm trusted publisher for this GitHub repository, or add an `NPM_TOKEN` repository secret.
+- Make sure the release tag matches `package.json` exactly, with an optional `v` prefix such as `v0.1.0`.
+- Use a GitHub pre-release for npm's `next` dist-tag; normal releases publish to `latest`.
+
+Manual publishing is still available when needed:
 
 ```bash
 bun publish --access public
