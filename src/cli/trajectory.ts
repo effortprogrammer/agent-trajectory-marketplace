@@ -2,6 +2,7 @@ import type { Command } from "commander"
 
 import { bundleTrace, inspectTrace } from "../trajectory/evidence"
 import { initPrototypeWorkspace, runPrototypeDemo } from "../trajectory/prototype"
+import { createSellerPackage, inspectSellerPackage } from "../trajectory/seller-package"
 
 type InitOptions = Readonly<{
   workspace: string
@@ -21,6 +22,18 @@ type InspectOptions = Readonly<{
 type BundleOptions = Readonly<{
   out: string
   trace: string
+}>
+
+type SellerPackageOptions = Readonly<{
+  out: string
+  seller: string
+  title: string
+  trace: string
+}>
+
+type SellerInspectOptions = Readonly<{
+  json?: boolean
+  path: string
 }>
 
 const printJson = (value: unknown) => {
@@ -84,5 +97,36 @@ export const registerTrajectoryCommand = (program: Command) => {
           outDir: options.out,
         }),
       )
+    })
+
+  const sellerCommand = trajectoryCommand
+    .command("seller")
+    .description("Package and inspect self-generated agent logs for marketplace listing")
+
+  sellerCommand
+    .command("package")
+    .description("Create a listing-ready seller package from a marketplace-ready trace")
+    .requiredOption("--trace <path>", "ATF JSON trace to package")
+    .requiredOption("--out <path>", "Seller package output directory")
+    .requiredOption("--seller <id>", "Seller agent identity")
+    .requiredOption("--title <title>", "Dataset listing title")
+    .action((options: SellerPackageOptions) => {
+      printJson(
+        createSellerPackage({
+          tracePath: options.trace,
+          outDir: options.out,
+          sellerId: options.seller,
+          title: options.title,
+        }),
+      )
+    })
+
+  sellerCommand
+    .command("inspect")
+    .description("Inspect a seller package for listing readiness")
+    .requiredOption("--path <path>", "Seller package directory")
+    .option("--json", "Print the inspection result as JSON")
+    .action((options: SellerInspectOptions) => {
+      printJson(inspectSellerPackage({ packageDir: options.path }))
     })
 }
