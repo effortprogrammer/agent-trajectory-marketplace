@@ -1,19 +1,45 @@
 {
   "name": "agent-trajectory-marketplace",
   "version": "0.1.0",
-  "private": true,
+  "description": "CLI for packaging agent trajectory self-logs into marketplace-ready seller datasets",
+  "license": "MIT",
+  "author": "effortprogrammer",
+  "homepage": "https://github.com/effortprogrammer/agent-trajectory-marketplace#readme",
+  "bugs": {
+    "url": "https://github.com/effortprogrammer/agent-trajectory-marketplace/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/effortprogrammer/agent-trajectory-marketplace.git"
+  },
+  "keywords": [
+    "agent",
+    "atf",
+    "cli",
+    "dataset",
+    "marketplace",
+    "trajectory"
+  ],
+  "packageManager": "bun@1.3.14",
   "type": "module",
   "bin": {
-    "trajectory-marketplace": "dist/cli/index.js"
+    "trajectory-marketplace": "dist/index.js"
   },
   "files": [
     "dist",
+    "LICENSE",
     "README.md"
   ],
+  "engines": {
+    "bun": ">=1.3.0"
+  },
   "scripts": {
     "dev": "bun src/cli/index.ts",
     "dev:trajectory": "zsh scripts/run-trajectory-dev.sh",
-    "build": "bun build src/cli/index.ts --outdir dist --target bun",
+    "build": "bun build src/cli/index.ts --outfile dist/index.js --target bun",
+    "prepack": "bun run build",
+    "prepublishOnly": "bun run typecheck && bun run lint && bun test && bun run build",
+    "release:check": "bun run typecheck && bun run lint && bun test && bun pm pack --dry-run",
     "start": "bun src/cli/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
