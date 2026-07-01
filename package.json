@@ -40,6 +40,7 @@
     "prepack": "bun run build",
     "prepublishOnly": "bun run typecheck && bun run lint && bun test && bun run build",
     "release:check": "bun run typecheck && bun run lint && bun test && bun pm pack --dry-run",
+    "hosted:e2e": "bun scripts/hosted-registry-e2e.ts",
     "start": "bun src/cli/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
