@@ -7,10 +7,10 @@ import {
   publishSellerPackageToRegistry,
   RegistryClientError,
 } from "../registry/client"
-import { parseRegistryServeConfig, runRegistryServerProcess } from "../registry/server"
 import { bundleTrace, inspectTrace } from "../trajectory/evidence"
 import { initPrototypeWorkspace, runPrototypeDemo } from "../trajectory/prototype"
 import { createSellerPackage, inspectSellerPackage } from "../trajectory/seller-package"
+import { registerRegistryCommand } from "./registry"
 
 type InitOptions = Readonly<{
   workspace: string
@@ -51,15 +51,6 @@ type SellerPublishOptions = Readonly<{
   registry: string
 }>
 
-type RegistryServeOptions = Readonly<{
-  db: string
-  host: string
-  port: string
-  sellerKey: readonly string[]
-  storage: string
-  tmp: string
-}>
-
 type MarketplaceListOptions = Readonly<{
   json?: boolean
   registry: string
@@ -91,8 +82,6 @@ const sellerPublishApiKey = (options: SellerPublishOptions) => {
   }
   return apiKey
 }
-
-const collectSellerKey = (value: string, previous: readonly string[]) => [...previous, value]
 
 export const registerTrajectoryCommand = (program: Command) => {
   const trajectoryCommand = program
@@ -201,31 +190,7 @@ export const registerTrajectoryCommand = (program: Command) => {
       )
     })
 
-  const registryCommand = trajectoryCommand
-    .command("registry")
-    .description("Run and inspect the marketplace registry")
-
-  registryCommand
-    .command("serve")
-    .description("Run the local marketplace registry server")
-    .requiredOption("--host <host>", "Registry bind host")
-    .requiredOption("--port <port>", "Registry bind port; use 0 for a random port")
-    .requiredOption("--db <path>", "Registry SQLite database path")
-    .requiredOption("--storage <path>", "Registry package storage root")
-    .requiredOption("--tmp <path>", "Registry temporary upload root")
-    .option("--seller-key <sellerId:key>", "Seller API key mapping", collectSellerKey, [])
-    .action(async (options: RegistryServeOptions) => {
-      await runRegistryServerProcess(
-        parseRegistryServeConfig({
-          host: options.host,
-          port: options.port,
-          db: options.db,
-          storage: options.storage,
-          tmp: options.tmp,
-          sellerKey: options.sellerKey,
-        }),
-      )
-    })
+  registerRegistryCommand(trajectoryCommand)
 
   const marketplaceCommand = trajectoryCommand
     .command("marketplace")
