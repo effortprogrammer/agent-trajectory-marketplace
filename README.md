@@ -76,8 +76,9 @@ Hosted Closed Alpha access is waitlist-gated. Operators move seller and buyer re
 `requested`, `invited`, `approved`, `rejected`, and `revoked`; hosted API keys are issued only for
 approved access records and are stored as hashes, with rotation and revocation audited. Applicants,
 sellers, buyers, and operators can follow [docs/marketplace-closed-alpha-guide.md](docs/marketplace-closed-alpha-guide.md)
-for waitlist applications, invite expectations, setup, API key handling, publish, list, inspect,
-download, troubleshooting, deletion or takedown requests, and support.
+for waitlist applications, invite expectations, setup, API key handling, seller publishing,
+hosted buyer API reads, local-dev buyer CLI checks, troubleshooting, deletion or takedown requests,
+and support.
 
 This alpha intentionally excludes public signup, payments, payouts, HF Datasets/Parquet conversion, and web UI. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria, [docs/marketplace-hosted-architecture.md](docs/marketplace-hosted-architecture.md) for the hosted runtime and ENV/SECRET contract, and [docs/marketplace-registry.md](docs/marketplace-registry.md) for the registry trust model and production migration checklist.
 
