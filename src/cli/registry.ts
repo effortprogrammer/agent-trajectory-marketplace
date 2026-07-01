@@ -6,6 +6,7 @@ import { createRegistryStorage, type RegistryStorageBackend } from "../registry/
 import { backupRegistryStorage, restoreRegistryStorage } from "../registry/storage-backup"
 
 type RegistryServeOptions = Readonly<{
+  auditLog?: string
   db: string
   host: string
   port: string
@@ -76,6 +77,7 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
     .requiredOption("--storage <path>", "Registry package storage root")
     .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
     .requiredOption("--tmp <path>", "Registry temporary upload root")
+    .option("--audit-log <path>", "Append structured registry audit events to an NDJSON file")
     .option("--seller-key <sellerId:key>", "Seller API key mapping", collectSellerKey, [])
     .action(async (options: RegistryServeOptions) => {
       await runRegistryServerProcess(
@@ -83,6 +85,7 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
           host: options.host,
           port: options.port,
           db: options.db,
+          ...(options.auditLog === undefined ? {} : { auditLog: options.auditLog }),
           storage: options.storage,
           tmp: options.tmp,
           sellerKey: options.sellerKey,
