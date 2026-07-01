@@ -169,13 +169,7 @@ const assertUsableBundleDir = (bundleDir: string) => {
   }
 }
 
-export const inspectTrace = (input: { readonly tracePath: string }): InspectTraceResult => {
-  const parsed = inspectInputSchema.parse(input)
-  const tracePath = resolveReadableProjectPath({
-    inputPath: parsed.tracePath,
-    code: TrajectoryEvidenceErrorCode.InvalidTracePath,
-    throwPathError,
-  })
+export const inspectTraceFile = (tracePath: string): InspectTraceResult => {
   const trace = readTraceDocument(tracePath)
 
   if (trace.eventCount !== trace.events.length) {
@@ -215,6 +209,17 @@ export const inspectTrace = (input: { readonly tracePath: string }): InspectTrac
     redactedFindings: collectRedactedFindings(trace.events),
     checks,
   }
+}
+
+export const inspectTrace = (input: { readonly tracePath: string }): InspectTraceResult => {
+  const parsed = inspectInputSchema.parse(input)
+  const tracePath = resolveReadableProjectPath({
+    inputPath: parsed.tracePath,
+    code: TrajectoryEvidenceErrorCode.InvalidTracePath,
+    throwPathError,
+  })
+
+  return inspectTraceFile(tracePath)
 }
 
 export const bundleTrace = (input: { readonly tracePath: string; readonly outDir: string }) => {

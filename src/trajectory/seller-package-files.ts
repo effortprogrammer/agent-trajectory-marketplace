@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto"
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 
 import type { ZodType } from "zod"
 
-import { resolveReadableProjectPath, resolveWritableProjectPath } from "./path-safety"
+import { resolveWritableProjectPath } from "./path-safety"
 import {
   type ManifestFile,
   SellerPackageError,
@@ -88,12 +88,16 @@ export const assertClosedPackageDirectory = (
 const isWithinDirectory = (candidatePath: string, directoryPath: string) =>
   candidatePath === directoryPath || candidatePath.startsWith(`${directoryPath}/`)
 
-const packageFilePath = (packageDir: string, filePath: string) =>
-  resolveReadableProjectPath({
-    inputPath: join(packageDir, filePath),
-    code: SellerPackageErrorCode.InvalidPackagePath,
-    throwPathError: throwSellerPathError,
-  })
+const packageFilePath = (packageDir: string, filePath: string) => {
+  const absolutePath = resolve(packageDir, filePath)
+  if (!isWithinDirectory(absolutePath, packageDir)) {
+    throw new SellerPackageError(
+      SellerPackageErrorCode.InvalidPackagePath,
+      `invalid_package_path: ${absolutePath}`,
+    )
+  }
+  return absolutePath
+}
 
 export const writablePackageFilePath = (packageDir: string, filePath: string) => {
   const absolutePath = resolveWritableProjectPath({
@@ -126,7 +130,13 @@ export const requirePackageFile = (packageDir: string, filePath: string) => {
       `missing_package_file: ${filePath}`,
     )
   }
-  if (linkStatus.isSymbolicLink() || !linkStatus.isFile()) {
+  if (linkStatus.isSymbolicLink()) {
+    throw new SellerPackageError(
+      SellerPackageErrorCode.InvalidPackagePath,
+      `invalid_package_path: ${filePath}`,
+    )
+  }
+  if (!linkStatus.isFile()) {
     throw new SellerPackageError(
       SellerPackageErrorCode.InvalidPackageFile,
       `invalid_package_file: ${filePath}`,

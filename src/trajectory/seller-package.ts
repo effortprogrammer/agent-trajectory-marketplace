@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs"
 
-import { inspectTrace } from "./evidence"
+import { inspectTrace, inspectTraceFile } from "./evidence"
 import { resolveReadableProjectPath, resolveWritableProjectPath } from "./path-safety"
 import { assertPackageClaimsMatch } from "./seller-package-claims"
 import {
@@ -137,14 +137,7 @@ export const createSellerPackage = (input: {
   }
 }
 
-export const inspectSellerPackage = (input: { readonly packageDir: string }) => {
-  const parsed = inspectPackageInputSchema.parse(input)
-  const packageDir = resolveReadableProjectPath({
-    inputPath: parsed.packageDir,
-    code: SellerPackageErrorCode.InvalidPackagePath,
-    throwPathError: throwSellerPathError,
-  })
-
+export const inspectSellerPackageDirectory = (packageDir: string) => {
   assertUsableDirectory(packageDir, SellerPackageErrorCode.InvalidPackagePath)
   assertClosedPackageDirectory(packageDir, packageDirectoryFilePaths)
 
@@ -179,7 +172,7 @@ export const inspectSellerPackage = (input: { readonly packageDir: string }) => 
     assertManifestHash(packageDir, manifest, filePath)
   }
   const tracePath = requirePackageFile(packageDir, "trace.atf.json")
-  const traceInspect = inspectTrace({ tracePath })
+  const traceInspect = inspectTraceFile(tracePath)
   assertMarketplaceReady(traceInspect.marketplaceReady, tracePath)
   const traceSha256 = sha256File(tracePath)
   assertPackageClaimsMatch({
@@ -199,4 +192,15 @@ export const inspectSellerPackage = (input: { readonly packageDir: string }) => 
     eventCount: traceInspect.eventCount,
     filesVerified: [...packageFilePaths],
   }
+}
+
+export const inspectSellerPackage = (input: { readonly packageDir: string }) => {
+  const parsed = inspectPackageInputSchema.parse(input)
+  const packageDir = resolveReadableProjectPath({
+    inputPath: parsed.packageDir,
+    code: SellerPackageErrorCode.InvalidPackagePath,
+    throwPathError: throwSellerPathError,
+  })
+
+  return inspectSellerPackageDirectory(packageDir)
 }
