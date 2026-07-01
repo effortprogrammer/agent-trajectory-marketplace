@@ -16,34 +16,31 @@ This repo intentionally lives outside the Buygent codebase. It provides a Bun-po
 
 ## Quickstart
 
-Install the public CLI from npm after installing the Bun runtime:
+Use a source checkout unless an operator gives you a verified packaged build:
 
 ```bash
-npm install -g agent-trajectory-marketplace
-trajectory-marketplace health
+git clone https://github.com/effortprogrammer/agent-trajectory-marketplace.git
+cd agent-trajectory-marketplace
+bun install
+bun run dev -- health
 ```
 
 Then drive the seller-package flow:
 
 ```bash
-trajectory-marketplace trajectory init hermes --workspace .tmp/trajectory-e2e
-trajectory-marketplace trajectory demo hermes --workspace .tmp/trajectory-e2e --export .tmp/trajectory-e2e/artifacts/trace.atf.json
-trajectory-marketplace trajectory inspect --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --json
-trajectory-marketplace trajectory bundle --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --out .omo/evidence/trajectory-e2e
-trajectory-marketplace trajectory seller package --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --out .omo/seller-packages/hermes-demo --seller agent-local --title "Hermes demo self-log"
-trajectory-marketplace trajectory seller inspect --path .omo/seller-packages/hermes-demo --json
-```
-
-To run the same flow from a source checkout:
-
-```bash
-bun install
 bun run dev -- trajectory init hermes --workspace .tmp/trajectory-e2e
 bun run dev -- trajectory demo hermes --workspace .tmp/trajectory-e2e --export .tmp/trajectory-e2e/artifacts/trace.atf.json
 bun run dev -- trajectory inspect --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --json
 bun run dev -- trajectory bundle --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --out .omo/evidence/trajectory-e2e
 bun run dev -- trajectory seller package --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --out .omo/seller-packages/hermes-demo --seller agent-local --title "Hermes demo self-log"
 bun run dev -- trajectory seller inspect --path .omo/seller-packages/hermes-demo --json
+```
+
+If an operator gives you a verified packaged build, use the packaged command instead:
+
+```bash
+trajectory-marketplace health
+trajectory-marketplace trajectory seller inspect --path .omo/seller-packages/hermes-demo --json
 ```
 
 Or bootstrap the manual QA workspace:
@@ -77,9 +74,13 @@ Prefer `TRAJECTORY_REGISTRY_API_KEY` over `--api-key` so seller secrets do not l
 
 Hosted Closed Alpha access is waitlist-gated. Operators move seller and buyer records through
 `requested`, `invited`, `approved`, `rejected`, and `revoked`; hosted API keys are issued only for
-approved access records and are stored as hashes, with rotation and revocation audited.
+approved access records and are stored as hashes, with rotation and revocation audited. Applicants,
+sellers, buyers, and operators can follow [docs/marketplace-closed-alpha-guide.md](docs/marketplace-closed-alpha-guide.md)
+for waitlist applications, invite expectations, setup, API key handling, seller publishing,
+hosted buyer API reads, local-dev buyer CLI checks, troubleshooting, deletion or takedown requests,
+and support.
 
-This alpha intentionally excludes payments, payouts, HF Datasets/Parquet conversion, and web UI. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria, [docs/marketplace-hosted-architecture.md](docs/marketplace-hosted-architecture.md) for the hosted runtime and ENV/SECRET contract, and [docs/marketplace-registry.md](docs/marketplace-registry.md) for the registry trust model and production migration checklist.
+This alpha intentionally excludes public signup, payments, payouts, HF Datasets/Parquet conversion, and web UI. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria, [docs/marketplace-hosted-architecture.md](docs/marketplace-hosted-architecture.md) for the hosted runtime and ENV/SECRET contract, and [docs/marketplace-registry.md](docs/marketplace-registry.md) for the registry trust model and production migration checklist.
 
 ## Verification
 
