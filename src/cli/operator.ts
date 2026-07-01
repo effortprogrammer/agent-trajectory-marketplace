@@ -25,16 +25,21 @@ type OperatorActorOptions = OperatorStateOptions &
     accessId: string
   }>
 
+type OperatorKeyOptions = Readonly<{
+  key?: string
+  keyEnv?: string
+}>
+
 type OperatorSellerOptions = OperatorActorOptions &
+  OperatorKeyOptions &
   Readonly<{
-    key: string
     participantId: string
     sellerId: string
   }>
 
 type OperatorBuyerOptions = OperatorActorOptions &
+  OperatorKeyOptions &
   Readonly<{
-    key: string
     participantId: string
   }>
 
@@ -45,7 +50,7 @@ type OperatorWaitlistRequestOptions = OperatorActorOptions &
     sellerId?: string
   }>
 
-type OperatorKeyRotateOptions = OperatorActorOptions & Readonly<{ key: string }>
+type OperatorKeyRotateOptions = OperatorActorOptions & OperatorKeyOptions
 
 const printJson = (value: unknown) => {
   console.log(JSON.stringify(value, null, 2))
@@ -56,6 +61,24 @@ const parseOperatorRole = (value: string): "buyer" | "seller" => {
     return value
   }
   throw new Error("invalid_request: --role must be buyer or seller")
+}
+
+const resolveOperatorKey = (options: OperatorKeyOptions): string => {
+  if (options.key !== undefined && options.keyEnv !== undefined) {
+    throw new Error("invalid_request: use either --key-env or deprecated --key, not both")
+  }
+  if (options.keyEnv !== undefined) {
+    const key = process.env[options.keyEnv]
+    if (key === undefined || key.trim().length === 0) {
+      throw new Error(`invalid_request: --key-env ${options.keyEnv} is unset or empty`)
+    }
+    return key
+  }
+  if (options.key !== undefined) {
+    console.error("warning: --key is unsafe/deprecated; prefer --key-env <ENV_NAME>")
+    return options.key
+  }
+  throw new Error("invalid_request: pass --key-env <ENV_NAME>")
 }
 
 const mutateState = (
@@ -80,14 +103,15 @@ export const registerOperatorCommand = (registryCommand: Command) => {
     .requiredOption("--access-id <id>", "Access record id")
     .requiredOption("--participant-id <id>", "Waitlist participant id")
     .requiredOption("--seller-id <id>", "Seller id allowed to publish")
-    .requiredOption("--key <key>", "Plaintext key material to hash into state")
+    .option("--key-env <name>", "Read key material from an environment variable")
+    .option("--key <key>", "UNSAFE/deprecated: plaintext key material in argv")
     .requiredOption("--actor <id>", "Operator actor id for audit")
     .action((options: OperatorSellerOptions) => {
       mutateState(options, (state) =>
         createOperatorSeller(state, {
           accessId: options.accessId,
           actorId: options.actor,
-          key: options.key,
+          key: resolveOperatorKey(options),
           participantId: options.participantId,
           sellerId: options.sellerId,
         }),
@@ -101,14 +125,15 @@ export const registerOperatorCommand = (registryCommand: Command) => {
     .requiredOption("--state <path>", "Operator access state JSON path")
     .requiredOption("--access-id <id>", "Access record id")
     .requiredOption("--participant-id <id>", "Waitlist participant id")
-    .requiredOption("--key <key>", "Plaintext key material to hash into state")
+    .option("--key-env <name>", "Read key material from an environment variable")
+    .option("--key <key>", "UNSAFE/deprecated: plaintext key material in argv")
     .requiredOption("--actor <id>", "Operator actor id for audit")
     .action((options: OperatorBuyerOptions) => {
       mutateState(options, (state) =>
         grantOperatorBuyer(state, {
           accessId: options.accessId,
           actorId: options.actor,
-          key: options.key,
+          key: resolveOperatorKey(options),
           participantId: options.participantId,
         }),
       )
@@ -168,14 +193,15 @@ export const registerOperatorCommand = (registryCommand: Command) => {
     .description("Rotate a staging API key for approved access")
     .requiredOption("--state <path>", "Operator access state JSON path")
     .requiredOption("--access-id <id>", "Access record id")
-    .requiredOption("--key <key>", "Plaintext key material to hash into state")
+    .option("--key-env <name>", "Read key material from an environment variable")
+    .option("--key <key>", "UNSAFE/deprecated: plaintext key material in argv")
     .requiredOption("--actor <id>", "Operator actor id for audit")
     .action((options: OperatorKeyRotateOptions) => {
       mutateState(options, (state) =>
         rotateOperatorKey(state, {
           accessId: options.accessId,
           actorId: options.actor,
-          key: options.key,
+          key: resolveOperatorKey(options),
         }),
       )
     })
