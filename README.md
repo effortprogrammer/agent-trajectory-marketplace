@@ -72,7 +72,7 @@ bun run dev -- trajectory marketplace download "$LISTING_ID" --registry "$REGIST
 bun run dev -- trajectory seller inspect --path .tmp/registry-download --json
 ```
 
-This alpha intentionally excludes payments, payouts, HF Datasets/Parquet conversion, and web UI. See [docs/marketplace-registry.md](docs/marketplace-registry.md) for the trust model and production migration checklist.
+This alpha intentionally excludes payments, payouts, HF Datasets/Parquet conversion, and web UI. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria, and [docs/marketplace-registry.md](docs/marketplace-registry.md) for the registry trust model and production migration checklist.
 
 ## Verification
 
