@@ -1,19 +1,24 @@
 import type { Command } from "commander"
 
 import { createRegistryDatabase } from "../registry/database"
-import { parseRegistryServeConfig, runRegistryServerProcess } from "../registry/server"
+import {
+  parseHostedRegistryServeEnvConfig,
+  parseRegistryServeConfig,
+  runRegistryServerProcess,
+} from "../registry/server"
 import { createRegistryStorage, type RegistryStorageBackend } from "../registry/storage"
 import { backupRegistryStorage, restoreRegistryStorage } from "../registry/storage-backup"
 
 type RegistryServeOptions = Readonly<{
   auditLog?: string
-  db: string
-  host: string
-  port: string
+  db?: string
+  host?: string
+  hosted?: boolean
+  port?: string
   sellerKey: readonly string[]
-  storage: string
+  storage?: string
   storageBackend?: string
-  tmp: string
+  tmp?: string
 }>
 
 type RegistryBackupOptions = Readonly<{
@@ -71,29 +76,32 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
   registryCommand
     .command("serve")
     .description("Run the local marketplace registry server")
-    .requiredOption("--host <host>", "Registry bind host")
-    .requiredOption("--port <port>", "Registry bind port; use 0 for a random port")
-    .requiredOption("--db <path>", "Registry SQLite database path")
-    .requiredOption("--storage <path>", "Registry package storage root")
+    .option("--host <host>", "Registry bind host")
+    .option("--port <port>", "Registry bind port; use 0 for a random port")
+    .option("--db <path>", "Registry SQLite database path")
+    .option("--storage <path>", "Registry package storage root")
     .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
-    .requiredOption("--tmp <path>", "Registry temporary upload root")
+    .option("--tmp <path>", "Registry temporary upload root")
     .option("--audit-log <path>", "Append structured registry audit events to an NDJSON file")
+    .option("--hosted", "Load hosted registry config from REGISTRY_* environment variables")
     .option("--seller-key <sellerId:key>", "Seller API key mapping", collectSellerKey, [])
     .action(async (options: RegistryServeOptions) => {
-      await runRegistryServerProcess(
-        parseRegistryServeConfig({
-          host: options.host,
-          port: options.port,
-          db: options.db,
-          ...(options.auditLog === undefined ? {} : { auditLog: options.auditLog }),
-          storage: options.storage,
-          tmp: options.tmp,
-          sellerKey: options.sellerKey,
-          ...(options.storageBackend === undefined
-            ? {}
-            : { storageBackend: options.storageBackend }),
-        }),
-      )
+      const config =
+        options.hosted === true
+          ? parseHostedRegistryServeEnvConfig(process.env)
+          : parseRegistryServeConfig({
+              ...(options.host === undefined ? {} : { host: options.host }),
+              ...(options.port === undefined ? {} : { port: options.port }),
+              ...(options.db === undefined ? {} : { db: options.db }),
+              ...(options.auditLog === undefined ? {} : { auditLog: options.auditLog }),
+              ...(options.storage === undefined ? {} : { storage: options.storage }),
+              ...(options.tmp === undefined ? {} : { tmp: options.tmp }),
+              sellerKey: options.sellerKey,
+              ...(options.storageBackend === undefined
+                ? {}
+                : { storageBackend: options.storageBackend }),
+            })
+      await runRegistryServerProcess(config)
     })
 
   registryCommand
