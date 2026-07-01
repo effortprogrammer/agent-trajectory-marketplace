@@ -4,6 +4,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { z } from "zod"
 
+import { hostedSummarySchema } from "../src/registry/hosted-e2e"
+
 const hostedE2eSummarySchema = z
   .object({
     registryUrl: z.string().url(),
@@ -77,6 +79,48 @@ describe("hosted registry e2e script", () => {
 
     expect(result.exitCode).toBe(1)
     expect(result.stderr).toContain("HOSTED_REGISTRY_E2E_ENABLED must be true")
+  })
+
+  test("rejects production-looking public registry URLs unless explicitly allowed", async () => {
+    const production = await runHostedE2e(["--validate-env"], {
+      HOSTED_REGISTRY_E2E_ENABLED: "true",
+      HOSTED_REGISTRY_URL: "https://registry.agent-trajectory-marketplace.com",
+      HOSTED_REGISTRY_API_KEY: "test-key",
+    })
+    const staging = await runHostedE2e(["--validate-env"], {
+      HOSTED_REGISTRY_E2E_ENABLED: "true",
+      HOSTED_REGISTRY_URL: "https://registry-staging.agent-trajectory-marketplace.com",
+      HOSTED_REGISTRY_API_KEY: "test-key",
+    })
+    const explicitlyAllowed = await runHostedE2e(["--validate-env"], {
+      HOSTED_REGISTRY_E2E_ENABLED: "true",
+      HOSTED_REGISTRY_URL: "https://registry.agent-trajectory-marketplace.com",
+      HOSTED_REGISTRY_API_KEY: "test-key",
+      HOSTED_REGISTRY_E2E_ALLOW_PROD: "true",
+    })
+
+    expect(production.exitCode).toBe(1)
+    expect(production.stderr).toContain("production-like")
+    expect(staging.exitCode).toBe(0)
+    expect(explicitlyAllowed.exitCode).toBe(0)
+  })
+
+  test("rejects unsafe hosted smoke probe summaries", () => {
+    const safeSummary = {
+      registryUrl: "http://127.0.0.1:4123",
+      listingId: "listing-0123456789abcdef",
+      wrongKeyExit: 1,
+      extraFileStatus: 400,
+      traversalStatus: 400,
+      downloadInspectReady: true,
+    }
+
+    expect(() => hostedSummarySchema.parse({ ...safeSummary, wrongKeyExit: 0 })).toThrow()
+    expect(() => hostedSummarySchema.parse({ ...safeSummary, extraFileStatus: 201 })).toThrow()
+    expect(() => hostedSummarySchema.parse({ ...safeSummary, traversalStatus: 200 })).toThrow()
+    expect(() =>
+      hostedSummarySchema.parse({ ...safeSummary, downloadInspectReady: false }),
+    ).toThrow()
   })
 
   test("writes the hosted summary shape during a fake local smoke run", async () => {

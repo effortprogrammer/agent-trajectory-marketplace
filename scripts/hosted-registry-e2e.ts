@@ -9,6 +9,7 @@ import {
   runHostedRegistrySmoke,
   validateHostedEnv,
 } from "../src/registry/hosted-e2e"
+import { HostedE2eError } from "../src/registry/hosted-e2e-error"
 
 const defaultSummaryPath =
   ".omo/evidence/marketplace-prelaunch-roadmap/task-11-hosted-e2e-summary.json"
@@ -20,16 +21,6 @@ type CliOptions = Readonly<{
   summaryPath: string
   validateEnv: boolean
 }>
-
-class HostedE2eError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
-    super(message)
-    this.name = "HostedE2eError"
-  }
-}
 
 const printHelp = () => {
   console.log(`Usage: bun scripts/hosted-registry-e2e.ts [options]
