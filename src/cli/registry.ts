@@ -1,11 +1,14 @@
 import type { Command } from "commander"
 
 import { createRegistryDatabase } from "../registry/database"
+import { readRegistryOperatorState } from "../registry/operator"
 import { parseRegistryServeConfig, runRegistryServerProcess } from "../registry/server"
 import { createRegistryStorage, type RegistryStorageBackend } from "../registry/storage"
 import { backupRegistryStorage, restoreRegistryStorage } from "../registry/storage-backup"
+import { registerOperatorCommand } from "./operator"
 
 type RegistryServeOptions = Readonly<{
+  accessRecords?: string
   auditLog?: string
   db: string
   host: string
@@ -63,6 +66,9 @@ const openRegistryStorage = (options: {
   }
 }
 
+const accessRecordsFromOption = (path: string | undefined) =>
+  path === undefined ? undefined : readRegistryOperatorState(path).records
+
 export const registerRegistryCommand = (trajectoryCommand: Command) => {
   const registryCommand = trajectoryCommand
     .command("registry")
@@ -78,13 +84,16 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
     .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
     .requiredOption("--tmp <path>", "Registry temporary upload root")
     .option("--audit-log <path>", "Append structured registry audit events to an NDJSON file")
+    .option("--access-records <path>", "Closed-alpha operator access state JSON path")
     .option("--seller-key <sellerId:key>", "Seller API key mapping", collectSellerKey, [])
     .action(async (options: RegistryServeOptions) => {
+      const accessRecords = accessRecordsFromOption(options.accessRecords)
       await runRegistryServerProcess(
         parseRegistryServeConfig({
           host: options.host,
           port: options.port,
           db: options.db,
+          ...(accessRecords === undefined ? {} : { accessRecords }),
           ...(options.auditLog === undefined ? {} : { auditLog: options.auditLog }),
           storage: options.storage,
           tmp: options.tmp,
@@ -95,6 +104,8 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
         }),
       )
     })
+
+  registerOperatorCommand(registryCommand)
 
   registryCommand
     .command("backup")
