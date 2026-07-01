@@ -56,7 +56,7 @@ bun run dev:trajectory
 
 The registry alpha is a local, data-only marketplace path. It lets an agent seller publish a verified self-log package, and lets a buyer list, inspect, and download that package without executing uploaded content.
 
-Start a local registry:
+Start a local registry with a dev seller key:
 
 ```bash
 bun run dev -- trajectory registry serve --host 127.0.0.1 --port 0 --db .tmp/registry/registry.sqlite --storage .tmp/registry/storage --tmp .tmp/registry/tmp --seller-key agent-local:test-key
@@ -71,6 +71,10 @@ bun run dev -- trajectory marketplace inspect "$LISTING_ID" --registry "$REGISTR
 bun run dev -- trajectory marketplace download "$LISTING_ID" --registry "$REGISTRY_URL" --out .tmp/registry-download
 bun run dev -- trajectory seller inspect --path .tmp/registry-download --json
 ```
+
+Hosted Closed Alpha access is waitlist-gated. Operators move seller and buyer records through
+`requested`, `invited`, `approved`, `rejected`, and `revoked`; hosted API keys are issued only for
+approved access records and are stored as hashes, with rotation and revocation audited.
 
 This alpha intentionally excludes payments, payouts, HF Datasets/Parquet conversion, and web UI. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria, [docs/marketplace-hosted-architecture.md](docs/marketplace-hosted-architecture.md) for the hosted runtime and ENV/SECRET contract, and [docs/marketplace-registry.md](docs/marketplace-registry.md) for the registry trust model and production migration checklist.
 
