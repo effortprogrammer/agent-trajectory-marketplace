@@ -1,6 +1,7 @@
 import type { Command } from "commander"
 
 import { createRegistryDatabase } from "../registry/database"
+import { readRegistryOperatorState } from "../registry/operator"
 import {
   parseHostedRegistryServeEnvConfig,
   parseRegistryServeConfig,
@@ -8,8 +9,10 @@ import {
 } from "../registry/server"
 import { createRegistryStorage, type RegistryStorageBackend } from "../registry/storage"
 import { backupRegistryStorage, restoreRegistryStorage } from "../registry/storage-backup"
+import { registerOperatorCommand } from "./operator"
 
 type RegistryServeOptions = Readonly<{
+  accessRecords?: string
   auditLog?: string
   db?: string
   host?: string
@@ -68,6 +71,9 @@ const openRegistryStorage = (options: {
   }
 }
 
+const accessRecordsFromOption = (path: string | undefined) =>
+  path === undefined ? undefined : readRegistryOperatorState(path).records
+
 export const registerRegistryCommand = (trajectoryCommand: Command) => {
   const registryCommand = trajectoryCommand
     .command("registry")
@@ -84,25 +90,32 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
     .option("--tmp <path>", "Registry temporary upload root")
     .option("--audit-log <path>", "Append structured registry audit events to an NDJSON file")
     .option("--hosted", "Load hosted registry config from REGISTRY_* environment variables")
+    .option("--access-records <path>", "Closed-alpha operator access state JSON path")
     .option("--seller-key <sellerId:key>", "Seller API key mapping", collectSellerKey, [])
     .action(async (options: RegistryServeOptions) => {
-      const config =
-        options.hosted === true
-          ? parseHostedRegistryServeEnvConfig(process.env)
-          : parseRegistryServeConfig({
-              ...(options.host === undefined ? {} : { host: options.host }),
-              ...(options.port === undefined ? {} : { port: options.port }),
-              ...(options.db === undefined ? {} : { db: options.db }),
-              ...(options.auditLog === undefined ? {} : { auditLog: options.auditLog }),
-              ...(options.storage === undefined ? {} : { storage: options.storage }),
-              ...(options.tmp === undefined ? {} : { tmp: options.tmp }),
-              sellerKey: options.sellerKey,
-              ...(options.storageBackend === undefined
-                ? {}
-                : { storageBackend: options.storageBackend }),
-            })
-      await runRegistryServerProcess(config)
+      if (options.hosted === true) {
+        await runRegistryServerProcess(parseHostedRegistryServeEnvConfig(process.env))
+        return
+      }
+      const accessRecords = accessRecordsFromOption(options.accessRecords)
+      await runRegistryServerProcess(
+        parseRegistryServeConfig({
+          ...(options.host === undefined ? {} : { host: options.host }),
+          ...(options.port === undefined ? {} : { port: options.port }),
+          ...(options.db === undefined ? {} : { db: options.db }),
+          ...(accessRecords === undefined ? {} : { accessRecords }),
+          ...(options.auditLog === undefined ? {} : { auditLog: options.auditLog }),
+          ...(options.storage === undefined ? {} : { storage: options.storage }),
+          ...(options.tmp === undefined ? {} : { tmp: options.tmp }),
+          sellerKey: options.sellerKey,
+          ...(options.storageBackend === undefined
+            ? {}
+            : { storageBackend: options.storageBackend }),
+        }),
+      )
     })
+
+  registerOperatorCommand(registryCommand)
 
   registryCommand
     .command("backup")
