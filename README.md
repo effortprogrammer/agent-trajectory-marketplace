@@ -65,12 +65,15 @@ bun run dev -- trajectory registry serve --host 127.0.0.1 --port 0 --db .tmp/reg
 Use the `baseUrl` from the startup JSON line, then publish and browse:
 
 ```bash
-bun run dev -- trajectory seller publish --path .omo/seller-packages/hermes-demo --registry "$REGISTRY_URL" --api-key test-key --json
+export TRAJECTORY_REGISTRY_API_KEY="test-key"
+bun run dev -- trajectory seller publish --path .omo/seller-packages/hermes-demo --registry "$REGISTRY_URL" --json
 bun run dev -- trajectory marketplace list --registry "$REGISTRY_URL" --json
 bun run dev -- trajectory marketplace inspect "$LISTING_ID" --registry "$REGISTRY_URL" --json
 bun run dev -- trajectory marketplace download "$LISTING_ID" --registry "$REGISTRY_URL" --out .tmp/registry-download
 bun run dev -- trajectory seller inspect --path .tmp/registry-download --json
 ```
+
+Prefer `TRAJECTORY_REGISTRY_API_KEY` over `--api-key` so seller secrets do not land in shell history. The closed-alpha machine-readable API contract is [docs/marketplace-registry-openapi.yaml](docs/marketplace-registry-openapi.yaml); it covers `Authorization: Bearer <api-key>`, `/v1/seller-packages`, `/v1/listings`, stable `error.code` values, and the `/v1` version policy.
 
 This alpha intentionally excludes payments, payouts, HF Datasets/Parquet conversion, and web UI. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria, [docs/marketplace-hosted-architecture.md](docs/marketplace-hosted-architecture.md) for the hosted runtime and ENV/SECRET contract, and [docs/marketplace-registry.md](docs/marketplace-registry.md) for the registry trust model and production migration checklist.
 
