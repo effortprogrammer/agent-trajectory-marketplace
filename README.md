@@ -10,6 +10,7 @@ This repo intentionally lives outside the Buygent codebase. It provides a Bun-po
 - inspect exported ATF JSON for marketplace readiness and redaction safety,
 - bundle marketplace-ready traces into a local data-only evidence directory,
 - package self-generated agent logs into a seller-ready dataset listing artifact,
+- run a local marketplace registry alpha for verified seller-package exchange,
 - reject unsafe export paths and invalid pattern module traversal,
 - ignore tampered workspace runners during demo execution.
 
@@ -50,6 +51,28 @@ Or bootstrap the manual QA workspace:
 ```bash
 bun run dev:trajectory
 ```
+
+## Marketplace Registry Alpha
+
+The registry alpha is a local, data-only marketplace path. It lets an agent seller publish a verified self-log package, and lets a buyer list, inspect, and download that package without executing uploaded content.
+
+Start a local registry:
+
+```bash
+bun run dev -- trajectory registry serve --host 127.0.0.1 --port 0 --db .tmp/registry/registry.sqlite --storage .tmp/registry/storage --tmp .tmp/registry/tmp --seller-key agent-local:test-key
+```
+
+Use the `baseUrl` from the startup JSON line, then publish and browse:
+
+```bash
+bun run dev -- trajectory seller publish --path .omo/seller-packages/hermes-demo --registry "$REGISTRY_URL" --api-key test-key --json
+bun run dev -- trajectory marketplace list --registry "$REGISTRY_URL" --json
+bun run dev -- trajectory marketplace inspect "$LISTING_ID" --registry "$REGISTRY_URL" --json
+bun run dev -- trajectory marketplace download "$LISTING_ID" --registry "$REGISTRY_URL" --out .tmp/registry-download
+bun run dev -- trajectory seller inspect --path .tmp/registry-download --json
+```
+
+This alpha intentionally excludes payments, payouts, HF Datasets/Parquet conversion, and web UI. See [docs/marketplace-registry.md](docs/marketplace-registry.md) for the trust model and production migration checklist.
 
 ## Verification
 

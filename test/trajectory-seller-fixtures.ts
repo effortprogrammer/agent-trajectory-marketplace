@@ -92,11 +92,14 @@ const inheritedEnvironment = () => {
   return env
 }
 
-export const runCli = async (args: readonly string[]): Promise<CliResult> => {
+export const runCli = async (
+  args: readonly string[],
+  extraEnv: Readonly<Record<string, string>> = {},
+): Promise<CliResult> => {
   const result = Bun.spawn({
     cmd: [process.execPath, "src/cli/index.ts", ...args],
     cwd: process.cwd(),
-    env: { ...inheritedEnvironment(), LANG: "en_US.UTF-8" },
+    env: { ...inheritedEnvironment(), ...extraEnv, LANG: "en_US.UTF-8" },
     stdout: "pipe",
     stderr: "pipe",
   })
