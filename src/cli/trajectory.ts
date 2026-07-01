@@ -52,6 +52,7 @@ type SellerPublishOptions = Readonly<{
 }>
 
 type RegistryServeOptions = Readonly<{
+  auditLog?: string
   db: string
   host: string
   port: string
@@ -213,6 +214,7 @@ export const registerTrajectoryCommand = (program: Command) => {
     .requiredOption("--db <path>", "Registry SQLite database path")
     .requiredOption("--storage <path>", "Registry package storage root")
     .requiredOption("--tmp <path>", "Registry temporary upload root")
+    .option("--audit-log <path>", "Append structured registry audit events to an NDJSON file")
     .option("--seller-key <sellerId:key>", "Seller API key mapping", collectSellerKey, [])
     .action(async (options: RegistryServeOptions) => {
       await runRegistryServerProcess(
@@ -220,6 +222,7 @@ export const registerTrajectoryCommand = (program: Command) => {
           host: options.host,
           port: options.port,
           db: options.db,
+          ...(options.auditLog === undefined ? {} : { auditLog: options.auditLog }),
           storage: options.storage,
           tmp: options.tmp,
           sellerKey: options.sellerKey,
