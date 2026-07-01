@@ -1,0 +1,10 @@
+{
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "healthcheckPath": "/health",
+    "restartPolicyType": "ON_FAILURE",
+    "startCommand": "bun src/cli/index.ts trajectory registry serve --hosted"
+  }
+}
