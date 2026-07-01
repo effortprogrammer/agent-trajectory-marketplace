@@ -8,6 +8,7 @@ const defaultEnvEvidence = `${evidenceRoot}/task-13-staging-env-template-validat
 const defaultRollbackEvidence = `${evidenceRoot}/task-13-rollback-dry-run.json`
 const startCommand = "bun src/cli/index.ts trajectory registry serve --hosted"
 const templatePath = "docs/railway-staging.env.example"
+const safeRedactedSecretPlaceholderPattern = /^<redacted:[a-z0-9]+(?:-[a-z0-9]+)*>$/
 
 const requiredHostedEnvNames = [
   "REGISTRY_ENV",
@@ -164,7 +165,7 @@ const validateEnvTemplate = (options: CliOptions) => {
   const emptyEnvNames = requiredHostedEnvNames.filter((name) => env[name]?.trim().length === 0)
   const unredactedSecretNames = [...secretEnvNames].filter((name) => {
     const value = env[name]
-    return value === undefined || !value.startsWith("<redacted:")
+    return value === undefined || !safeRedactedSecretPlaceholderPattern.test(value)
   })
   if (missingEnvNames.length > 0 || emptyEnvNames.length > 0 || unredactedSecretNames.length > 0) {
     throw new PreflightError("staging env template is incomplete or contains unredacted secrets")

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { z } from "zod"
 
 const railwayConfigSchema = z
@@ -68,6 +70,48 @@ describe("Railway staging deployment package", () => {
     expect(script).toContain("HOSTED_REGISTRY_E2E_ENABLED")
     expect(script).toContain("scripts/hosted-registry-e2e.ts --validate-env")
     expect(script).not.toContain("HOSTED_REGISTRY_E2E_ALLOW_PROD")
+  })
+
+  test("Given a poisoned redaction placeholder When env template preflight runs Then validation fails without writing success evidence", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "railway-staging-preflight-"))
+    try {
+      // Given: a staging env template whose secret placeholder has appended secret-like content.
+      const templatePath = join(workspace, "railway-staging.env.example")
+      const evidencePath = join(workspace, "poisoned-redaction-evidence.json")
+      const poisonedTemplate = readFileSync("docs/railway-staging.env.example", "utf8").replace(
+        "REGISTRY_PACKAGE_STORAGE_SECRET_ACCESS_KEY=<redacted:filesystem-adapter-placeholder>",
+        "REGISTRY_PACKAGE_STORAGE_SECRET_ACCESS_KEY=<redacted:filesystem-adapter-placeholder>leaked-secret",
+      )
+      writeFileSync(templatePath, poisonedTemplate, "utf8")
+
+      // When: the preflight is executed through the CLI surface.
+      const child = Bun.spawn({
+        cmd: [
+          "bun",
+          "scripts/railway-staging-preflight.ts",
+          "validate-env-template",
+          "--template",
+          templatePath,
+          "--evidence",
+          evidencePath,
+        ],
+        stderr: "pipe",
+        stdout: "pipe",
+      })
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+
+      // Then: validation rejects the poisoned placeholder and never writes success evidence.
+      expect(exitCode).not.toBe(0)
+      expect(stderr).toContain("staging env template is incomplete or contains unredacted secrets")
+      expect(stdout).not.toContain(evidencePath)
+      expect(existsSync(evidencePath)).toBe(false)
+    } finally {
+      rmSync(workspace, { force: true, recursive: true })
+    }
   })
 
   test("Given Todo 13 staging deploy prep When operator docs are present Then actual Railway resource creation remains out of scope", () => {
