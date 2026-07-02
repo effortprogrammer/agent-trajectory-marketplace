@@ -38,7 +38,6 @@ const forbiddenDockerInstructionPatterns = [
 ] as const
 
 const requiredHostedEnvNames = [
-  "NIXPACKS_NODE_VERSION",
   "REGISTRY_ENV",
   "REGISTRY_HOST",
   "REGISTRY_PORT",
@@ -125,6 +124,7 @@ describe("Railway staging deployment package", () => {
     for (const envName of requiredHostedEnvNames) {
       expect(script).toContain(envName)
     }
+    expect(script).not.toContain(["NIXPACKS", "NODE", "VERSION"].join("_"))
     expect(script).toContain("HOSTED_REGISTRY_E2E_ENABLED")
     expect(script).toContain("scripts/hosted-registry-e2e.ts --validate-env")
     expect(script).not.toContain("HOSTED_REGISTRY_E2E_ALLOW_PROD")
