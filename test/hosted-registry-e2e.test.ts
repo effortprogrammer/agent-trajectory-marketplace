@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { z } from "zod"
 
-import { hostedSummarySchema } from "../src/registry/hosted-e2e"
+import { hostedSummarySchema, runHostedRegistrySmoke } from "../src/registry/hosted-e2e"
+import { parseRegistryServeConfig, startRegistryServer } from "../src/registry/server"
 
 const hostedE2eSummarySchema = z
   .object({
@@ -175,5 +176,40 @@ describe("hosted registry e2e script", () => {
     expect(summary.downloadInspectReady).toBe(true)
     expect(result.stdout).toContain(summary.listingId)
     expect(existsSync(join(process.cwd(), ".tmp", "hosted-registry-e2e-local-work"))).toBe(false)
+  })
+
+  test("runs twice against one registry without deterministic listing conflicts", async () => {
+    const workspaceRoot = join(process.cwd(), ".tmp")
+    mkdirSync(workspaceRoot, { recursive: true })
+    const workspace = mkdtempSync(join(workspaceRoot, "hosted-registry-e2e-repeat-"))
+    workspaces.push(workspace)
+    const server = startRegistryServer(
+      parseRegistryServeConfig({
+        host: "127.0.0.1",
+        port: "0",
+        db: join(workspace, "registry.sqlite"),
+        storage: join(workspace, "storage"),
+        tmp: join(workspace, "tmp"),
+        sellerKey: "agent-local:test-key",
+      }),
+    )
+    try {
+      const first = await runHostedRegistrySmoke({
+        apiKey: "test-key",
+        buyerApiKey: "test-key",
+        registryUrl: server.baseUrl,
+        localRoot: join(workspace, "first"),
+      })
+      const second = await runHostedRegistrySmoke({
+        apiKey: "test-key",
+        buyerApiKey: "test-key",
+        registryUrl: server.baseUrl,
+        localRoot: join(workspace, "second"),
+      })
+
+      expect(second.listingId).not.toBe(first.listingId)
+    } finally {
+      await server.stop()
+    }
   })
 })
