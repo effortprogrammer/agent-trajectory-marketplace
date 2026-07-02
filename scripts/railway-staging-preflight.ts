@@ -195,9 +195,9 @@ const validateEnvTemplate = (options: CliOptions) => {
     railwayStartCommand: startCommand,
     healthCommand: 'curl --fail --show-error "$STAGING_REGISTRY_URL/health"',
     hostedE2eValidationCommand:
-      "HOSTED_REGISTRY_E2E_ENABLED=true HOSTED_REGISTRY_URL=$STAGING_REGISTRY_URL HOSTED_REGISTRY_API_KEY=<redacted:seller-key> bun scripts/hosted-registry-e2e.ts --validate-env",
+      "HOSTED_REGISTRY_E2E_ENABLED=true HOSTED_REGISTRY_URL=$STAGING_REGISTRY_URL HOSTED_REGISTRY_API_KEY=<redacted:seller-key> HOSTED_REGISTRY_BUYER_API_KEY=<redacted:buyer-key> bun scripts/hosted-registry-e2e.ts --validate-env",
     hostedE2eCommand:
-      "HOSTED_REGISTRY_E2E_ENABLED=true HOSTED_REGISTRY_URL=$STAGING_REGISTRY_URL HOSTED_REGISTRY_API_KEY=<redacted:seller-key> bun scripts/hosted-registry-e2e.ts --summary .omo/evidence/marketplace-prelaunch-roadmap/task-13-hosted-e2e-summary.json",
+      "HOSTED_REGISTRY_E2E_ENABLED=true HOSTED_REGISTRY_URL=$STAGING_REGISTRY_URL HOSTED_REGISTRY_API_KEY=<redacted:seller-key> HOSTED_REGISTRY_BUYER_API_KEY=<redacted:buyer-key> bun scripts/hosted-registry-e2e.ts --summary .omo/evidence/marketplace-prelaunch-roadmap/task-13-hosted-e2e-summary.json",
     stagingOnlyFilesystemStorage: {
       packageBucket: readTemplateValue(env, "REGISTRY_PACKAGE_BUCKET"),
       note: "The current hosted adapter uses filesystem object layout; use a Railway volume for staging only until object storage credentials are provisioned.",

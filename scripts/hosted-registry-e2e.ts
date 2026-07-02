@@ -35,6 +35,7 @@ Hosted env:
   HOSTED_REGISTRY_E2E_ENABLED=true
   HOSTED_REGISTRY_URL=<staging registry URL>
   HOSTED_REGISTRY_API_KEY=<seller API key>
+  HOSTED_REGISTRY_BUYER_API_KEY=<buyer API key>
   HOSTED_REGISTRY_E2E_ALLOW_PROD=true   Override production-host guard`)
 }
 

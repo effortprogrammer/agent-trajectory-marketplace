@@ -52,16 +52,19 @@ type SellerPublishOptions = Readonly<{
 }>
 
 type MarketplaceListOptions = Readonly<{
+  apiKey?: string
   json?: boolean
   registry: string
 }>
 
 type MarketplaceInspectOptions = Readonly<{
+  apiKey?: string
   json?: boolean
   registry: string
 }>
 
 type MarketplaceDownloadOptions = Readonly<{
+  apiKey?: string
   out: string
   registry: string
 }>
@@ -81,6 +84,14 @@ const sellerPublishApiKey = (options: SellerPublishOptions) => {
     )
   }
   return apiKey
+}
+
+const marketplaceBuyerApiKey = (
+  options: MarketplaceListOptions | MarketplaceInspectOptions | MarketplaceDownloadOptions,
+) => {
+  const { TRAJECTORY_REGISTRY_BUYER_API_KEY: envApiKey } = process.env
+  const apiKey = options.apiKey ?? envApiKey
+  return apiKey === undefined || apiKey.trim().length === 0 ? undefined : apiKey
 }
 
 export const registerTrajectoryCommand = (program: Command) => {
@@ -200,18 +211,30 @@ export const registerTrajectoryCommand = (program: Command) => {
     .command("list")
     .description("List public marketplace registry listings")
     .requiredOption("--registry <url>", "Marketplace registry base URL")
+    .option("--api-key <key>", "Buyer registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
     .option("--json", "Print listings as JSON")
     .action(async (options: MarketplaceListOptions) => {
-      printJson(await listRegistryListings({ registryUrl: options.registry }))
+      const apiKey = marketplaceBuyerApiKey(options)
+      printJson(
+        apiKey === undefined
+          ? await listRegistryListings({ registryUrl: options.registry })
+          : await listRegistryListings({ apiKey, registryUrl: options.registry }),
+      )
     })
 
   marketplaceCommand
     .command("inspect <listingId>")
     .description("Inspect one marketplace registry listing")
     .requiredOption("--registry <url>", "Marketplace registry base URL")
+    .option("--api-key <key>", "Buyer registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
     .option("--json", "Print listing detail as JSON")
     .action(async (listingId: string, options: MarketplaceInspectOptions) => {
-      printJson(await inspectRegistryListing({ listingId, registryUrl: options.registry }))
+      const apiKey = marketplaceBuyerApiKey(options)
+      printJson(
+        apiKey === undefined
+          ? await inspectRegistryListing({ listingId, registryUrl: options.registry })
+          : await inspectRegistryListing({ apiKey, listingId, registryUrl: options.registry }),
+      )
     })
 
   marketplaceCommand
@@ -219,13 +242,22 @@ export const registerTrajectoryCommand = (program: Command) => {
     .description("Download a marketplace listing as a local seller package")
     .requiredOption("--registry <url>", "Marketplace registry base URL")
     .requiredOption("--out <path>", "Output seller package directory")
+    .option("--api-key <key>", "Buyer registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
     .action(async (listingId: string, options: MarketplaceDownloadOptions) => {
+      const apiKey = marketplaceBuyerApiKey(options)
       printJson(
-        await downloadRegistryListingPackage({
-          listingId,
-          registryUrl: options.registry,
-          outDir: options.out,
-        }),
+        apiKey === undefined
+          ? await downloadRegistryListingPackage({
+              listingId,
+              registryUrl: options.registry,
+              outDir: options.out,
+            })
+          : await downloadRegistryListingPackage({
+              apiKey,
+              listingId,
+              registryUrl: options.registry,
+              outDir: options.out,
+            }),
       )
     })
 }

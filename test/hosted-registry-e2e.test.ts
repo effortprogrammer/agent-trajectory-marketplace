@@ -67,6 +67,9 @@ describe("hosted registry e2e script", () => {
     expect(workflow).toContain(
       `HOSTED_REGISTRY_API_KEY: ${githubSecretExpression("HOSTED_REGISTRY_API_KEY")}`,
     )
+    expect(workflow).toContain(
+      `HOSTED_REGISTRY_BUYER_API_KEY: ${githubSecretExpression("HOSTED_REGISTRY_BUYER_API_KEY")}`,
+    )
     expect(workflow).toContain("scripts/hosted-registry-e2e.ts")
   })
 
@@ -75,10 +78,42 @@ describe("hosted registry e2e script", () => {
       HOSTED_REGISTRY_E2E_ENABLED: "",
       HOSTED_REGISTRY_URL: "",
       HOSTED_REGISTRY_API_KEY: "",
+      HOSTED_REGISTRY_BUYER_API_KEY: "",
     })
 
     expect(result.exitCode).toBe(1)
     expect(result.stderr).toContain("HOSTED_REGISTRY_E2E_ENABLED must be true")
+  })
+
+  test("requires a separate buyer API key for hosted marketplace reads", async () => {
+    const result = await runHostedE2e(["--validate-env"], {
+      HOSTED_REGISTRY_E2E_ENABLED: "true",
+      HOSTED_REGISTRY_URL: "https://registry-staging.agent-trajectory-marketplace.com",
+      HOSTED_REGISTRY_API_KEY: "seller-key",
+      HOSTED_REGISTRY_BUYER_API_KEY: "",
+    })
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain("HOSTED_REGISTRY_BUYER_API_KEY")
+  })
+
+  test("accepts a separate buyer API key for hosted marketplace reads", async () => {
+    const result = await runHostedE2e(["--validate-env"], {
+      HOSTED_REGISTRY_E2E_ENABLED: "true",
+      HOSTED_REGISTRY_URL: "https://registry-staging.agent-trajectory-marketplace.com",
+      HOSTED_REGISTRY_API_KEY: "seller-key",
+      HOSTED_REGISTRY_BUYER_API_KEY: "buyer-key",
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain('"ok":true')
+  })
+
+  test("prints buyer API key requirements in hosted smoke help", async () => {
+    const result = await runHostedE2e(["--help"])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("HOSTED_REGISTRY_BUYER_API_KEY=<buyer API key>")
   })
 
   test("rejects production-looking public registry URLs unless explicitly allowed", async () => {
@@ -86,16 +121,19 @@ describe("hosted registry e2e script", () => {
       HOSTED_REGISTRY_E2E_ENABLED: "true",
       HOSTED_REGISTRY_URL: "https://registry.agent-trajectory-marketplace.com",
       HOSTED_REGISTRY_API_KEY: "test-key",
+      HOSTED_REGISTRY_BUYER_API_KEY: "buyer-key",
     })
     const staging = await runHostedE2e(["--validate-env"], {
       HOSTED_REGISTRY_E2E_ENABLED: "true",
       HOSTED_REGISTRY_URL: "https://registry-staging.agent-trajectory-marketplace.com",
       HOSTED_REGISTRY_API_KEY: "test-key",
+      HOSTED_REGISTRY_BUYER_API_KEY: "buyer-key",
     })
     const explicitlyAllowed = await runHostedE2e(["--validate-env"], {
       HOSTED_REGISTRY_E2E_ENABLED: "true",
       HOSTED_REGISTRY_URL: "https://registry.agent-trajectory-marketplace.com",
       HOSTED_REGISTRY_API_KEY: "test-key",
+      HOSTED_REGISTRY_BUYER_API_KEY: "buyer-key",
       HOSTED_REGISTRY_E2E_ALLOW_PROD: "true",
     })
 
