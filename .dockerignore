@@ -1,0 +1,11 @@
+.git
+.github
+.omo
+.omo/**
+.tmp
+.tmp/**
+node_modules
+dist
+coverage
+*.log
+.DS_Store

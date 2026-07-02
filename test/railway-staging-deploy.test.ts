@@ -8,7 +8,8 @@ const railwayConfigSchema = z
   .object({
     build: z
       .object({
-        builder: z.literal("NIXPACKS"),
+        builder: z.literal("DOCKERFILE"),
+        dockerfilePath: z.literal("Dockerfile"),
       })
       .strict(),
     deploy: z
@@ -20,6 +21,21 @@ const railwayConfigSchema = z
       .strict(),
   })
   .strict()
+
+const forbiddenDockerSecretNames = [
+  "REGISTRY_ACCESS_RECORDS",
+  "REGISTRY_ADMIN_KEY_HASHES",
+  "REGISTRY_PACKAGE_STORAGE_ACCESS_KEY_ID",
+  "REGISTRY_PACKAGE_STORAGE_SECRET_ACCESS_KEY",
+  "REGISTRY_OTEL_EXPORTER_OTLP_HEADERS",
+] as const
+
+const forbiddenDockerInstructionPatterns = [
+  ...forbiddenDockerSecretNames.map(
+    (name) => new RegExp(`^(?:ARG|ENV)\\s+${name}(?:[=\\s]|$)`, "m"),
+  ),
+  /^(?:ARG|ENV)\s+REGISTRY_[A-Z0-9_]*(?:[=\s]|$)/m,
+] as const
 
 const requiredHostedEnvNames = [
   "NIXPACKS_NODE_VERSION",
@@ -57,19 +73,45 @@ const packageConfigSchema = z
   .passthrough()
 
 describe("Railway staging deployment package", () => {
-  test("Given Todo 13 staging deploy prep When Railway config is read Then hosted serve starts without production targeting", () => {
+  test("Given Todo 13 staging deploy prep When Railway config and Dockerfile are read Then staging uses a Bun Dockerfile without build-time registry secrets", () => {
     const railwayConfig = railwayConfigSchema.parse(
       JSON.parse(readFileSync("railway.json", "utf8")),
     )
     const packageConfig = packageConfigSchema.parse(
       JSON.parse(readFileSync("package.json", "utf8")),
     )
+    const dockerfilePath = "Dockerfile"
+    const dockerignorePath = ".dockerignore"
+    const dockerfile = readFileSync(dockerfilePath, "utf8")
+    const dockerignore = readFileSync(dockerignorePath, "utf8")
     const serializedConfig = JSON.stringify(railwayConfig)
 
+    expect(existsSync(dockerfilePath)).toBe(true)
+    expect(existsSync(dockerignorePath)).toBe(true)
+    expect(railwayConfig.build.builder).toBe("DOCKERFILE")
+    expect(railwayConfig.build.dockerfilePath).toBe("Dockerfile")
     expect(railwayConfig.deploy.startCommand).toBe(
       "bun src/cli/index.ts trajectory registry serve --hosted",
     )
     expect(packageConfig.engines.node).toBe("20")
+    expect(dockerfile).toContain("FROM oven/bun:")
+    expect(dockerfile).toContain("bun install --frozen-lockfile")
+    expect(dockerfile).toContain("bun run build")
+    expect(dockerfile).toContain(
+      'CMD ["bun", "src/cli/index.ts", "trajectory", "registry", "serve", "--hosted"]',
+    )
+    expect(dockerfile).not.toContain("COPY . .")
+    expect(dockerfile).not.toContain("ADD .")
+    expect(dockerfile).not.toContain(".omo")
+    expect(dockerfile).not.toContain(".tmp")
+    expect(dockerfile).not.toContain("node_modules")
+    expect(dockerignore).toContain(".omo")
+    expect(dockerignore).toContain(".omo/**")
+    expect(dockerignore).toContain(".tmp")
+    expect(dockerignore).toContain("node_modules")
+    for (const pattern of forbiddenDockerInstructionPatterns) {
+      expect(dockerfile).not.toMatch(pattern)
+    }
     expect(serializedConfig).not.toContain("PRODUCTION_REGISTRY_URL")
     expect(serializedConfig).not.toContain("registry.agent-trajectory-marketplace.com")
   })
