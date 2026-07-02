@@ -22,6 +22,7 @@ const railwayConfigSchema = z
   .strict()
 
 const requiredHostedEnvNames = [
+  "NIXPACKS_NODE_VERSION",
   "REGISTRY_ENV",
   "REGISTRY_HOST",
   "REGISTRY_PORT",
@@ -44,16 +45,31 @@ const requiredHostedEnvNames = [
   "REGISTRY_OTEL_EXPORTER_OTLP_ENDPOINT",
 ] as const
 
+const packageConfigSchema = z
+  .object({
+    engines: z
+      .object({
+        bun: z.string().min(1),
+        node: z.literal("20"),
+      })
+      .strict(),
+  })
+  .passthrough()
+
 describe("Railway staging deployment package", () => {
   test("Given Todo 13 staging deploy prep When Railway config is read Then hosted serve starts without production targeting", () => {
     const railwayConfig = railwayConfigSchema.parse(
       JSON.parse(readFileSync("railway.json", "utf8")),
+    )
+    const packageConfig = packageConfigSchema.parse(
+      JSON.parse(readFileSync("package.json", "utf8")),
     )
     const serializedConfig = JSON.stringify(railwayConfig)
 
     expect(railwayConfig.deploy.startCommand).toBe(
       "bun src/cli/index.ts trajectory registry serve --hosted",
     )
+    expect(packageConfig.engines.node).toBe("20")
     expect(serializedConfig).not.toContain("PRODUCTION_REGISTRY_URL")
     expect(serializedConfig).not.toContain("registry.agent-trajectory-marketplace.com")
   })

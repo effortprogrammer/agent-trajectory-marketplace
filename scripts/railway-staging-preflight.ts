@@ -11,6 +11,7 @@ const templatePath = "docs/railway-staging.env.example"
 const safeRedactedSecretPlaceholderPattern = /^<redacted:[a-z0-9]+(?:-[a-z0-9]+)*>$/
 
 const requiredHostedEnvNames = [
+  "NIXPACKS_NODE_VERSION",
   "REGISTRY_ENV",
   "REGISTRY_HOST",
   "REGISTRY_PORT",
@@ -172,6 +173,9 @@ const validateEnvTemplate = (options: CliOptions) => {
   }
   if (readTemplateValue(env, "REGISTRY_ENV") !== "staging") {
     throw new PreflightError("REGISTRY_ENV must be staging")
+  }
+  if (readTemplateValue(env, "NIXPACKS_NODE_VERSION") !== "20") {
+    throw new PreflightError("NIXPACKS_NODE_VERSION must be 20")
   }
   if (
     readTemplateValue(env, "REGISTRY_PUBLIC_BASE_URL") !==
