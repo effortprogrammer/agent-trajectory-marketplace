@@ -27,6 +27,7 @@
   },
   "files": [
     "dist",
+    "web",
     "LICENSE",
     "README.md"
   ],

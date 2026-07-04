@@ -77,10 +77,10 @@ Hosted Closed Alpha access is waitlist-gated. Operators move seller and buyer re
 approved access records and are stored as hashes, with rotation and revocation audited. Applicants,
 sellers, buyers, and operators can follow [docs/marketplace-closed-alpha-guide.md](docs/marketplace-closed-alpha-guide.md)
 for waitlist applications, invite expectations, setup, API key handling, seller publishing,
-hosted buyer API reads, local-dev buyer CLI checks, troubleshooting, deletion or takedown requests,
-and support.
+hosted buyer API reads, invite-only marketplace UI access, local-dev buyer CLI checks,
+troubleshooting, deletion or takedown requests, and support.
 
-This alpha intentionally excludes public signup, payments, payouts, HF Datasets/Parquet conversion, and web UI. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria, [docs/marketplace-hosted-architecture.md](docs/marketplace-hosted-architecture.md) for the hosted runtime and ENV/SECRET contract, and [docs/marketplace-registry.md](docs/marketplace-registry.md) for the registry trust model and production migration checklist.
+This alpha intentionally excludes public signup, payments, payouts, HF Datasets/Parquet conversion, self-serve account flows, and operator dashboards. It includes a buyer-facing invite-only marketplace UI on the registry origin. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria, [docs/marketplace-hosted-architecture.md](docs/marketplace-hosted-architecture.md) for the hosted runtime and ENV/SECRET contract, and [docs/marketplace-registry.md](docs/marketplace-registry.md) for the registry trust model and production migration checklist.
 
 ## Verification
 
