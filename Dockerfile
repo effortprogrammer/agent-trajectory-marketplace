@@ -16,5 +16,6 @@ COPY package.json bun.lock tsconfig.json ./
 RUN bun install --frozen-lockfile --production
 
 COPY src ./src
+COPY web ./web
 
 CMD ["bun", "src/cli/index.ts", "trajectory", "registry", "serve", "--hosted"]

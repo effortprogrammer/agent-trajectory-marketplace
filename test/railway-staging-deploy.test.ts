@@ -96,6 +96,7 @@ describe("Railway staging deployment package", () => {
     expect(dockerfile).toContain("FROM oven/bun:")
     expect(dockerfile).toContain("bun install --frozen-lockfile")
     expect(dockerfile).toContain("bun run build")
+    expect(dockerfile).toContain("COPY web ./web")
     expect(dockerfile).toContain(
       'CMD ["bun", "src/cli/index.ts", "trajectory", "registry", "serve", "--hosted"]',
     )
