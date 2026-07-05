@@ -113,6 +113,7 @@ const requiredIds = [
   "listing-search",
   "signal-access",
   "signal-events",
+  "signal-files",
   "signal-listings",
   "summary-strip",
 ]
