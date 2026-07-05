@@ -13,6 +13,7 @@ import {
   transitionOperatorWaitlist,
   writeRegistryOperatorState,
 } from "../registry/operator"
+import { registerOperatorManualCommerceCommands } from "./operator-manual-commerce"
 import { registerOperatorStorageCommands } from "./operator-storage"
 
 type OperatorStateOptions = Readonly<{
@@ -186,6 +187,8 @@ export const registerOperatorCommand = (registryCommand: Command) => {
         )
       })
   }
+
+  registerOperatorManualCommerceCommands(operatorCommand, waitlistCommand)
 
   const keyCommand = operatorCommand.command("key").description("Rotate, revoke, and inspect keys")
   keyCommand

@@ -10,12 +10,85 @@ export const packageFilePaths = [
 
 export const sellerPackageInputSchema = z
   .object({
+    metadataPath: z.string().min(1).optional(),
     outDir: z.string().min(1),
     sellerId: z.string().min(1),
     title: z.string().min(1),
     tracePath: z.string().min(1),
   })
   .strict()
+
+const marketplaceUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => value.startsWith("https://") || value.startsWith("http://"))
+
+export const marketplaceAccessPolicyValues = [
+  "request_required",
+  "free",
+  "entitlement_required",
+  "purchase_required",
+] as const
+
+export const marketplaceMetadataSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    price: z
+      .object({
+        mode: z.enum(["free", "request_access", "entitlement", "purchase"]),
+        display: z.string().min(1).max(120),
+      })
+      .strict(),
+    license: z
+      .object({
+        name: z.string().min(1).max(120),
+        url: marketplaceUrlSchema.optional(),
+      })
+      .strict(),
+    usageTerms: z
+      .object({
+        allowed: z.array(z.string().min(1).max(240)).min(1).max(20),
+        prohibited: z.array(z.string().min(1).max(240)).min(1).max(20),
+      })
+      .strict(),
+    sellerProfile: z
+      .object({
+        displayName: z.string().min(1).max(120),
+        supportUrl: marketplaceUrlSchema.optional(),
+      })
+      .strict(),
+    sample: z
+      .object({
+        summary: z.string().min(1).max(4096),
+        maxPreviewEvents: z.number().int().nonnegative().max(100),
+      })
+      .strict(),
+    accessPolicy: z.enum(marketplaceAccessPolicyValues),
+  })
+  .strict()
+
+export type MarketplaceMetadata = z.infer<typeof marketplaceMetadataSchema>
+
+export const fallbackMarketplaceMetadata = (input: {
+  readonly eventCount: number
+  readonly sellerId: string
+  readonly title: string
+}): MarketplaceMetadata =>
+  marketplaceMetadataSchema.parse({
+    schemaVersion: 1,
+    price: { mode: "free", display: "Free" },
+    license: { name: "Closed Alpha Evaluation" },
+    usageTerms: {
+      allowed: ["evaluation"],
+      prohibited: ["resale"],
+    },
+    sellerProfile: { displayName: input.sellerId },
+    sample: {
+      summary: input.title,
+      maxPreviewEvents: Math.min(input.eventCount, 10),
+    },
+    accessPolicy: "free",
+  })
 
 export const inspectPackageInputSchema = z
   .object({
@@ -84,6 +157,7 @@ export const manifestFileSchema = z
         redactionClean: z.boolean(),
       })
       .strict(),
+    marketplace: marketplaceMetadataSchema.optional(),
   })
   .strict()
 
@@ -92,6 +166,7 @@ export type ManifestFile = z.infer<typeof manifestFileSchema>
 export const SellerPackageErrorCode = {
   InvalidDatasetJson: "invalid_dataset_json",
   InvalidManifestJson: "invalid_manifest_json",
+  InvalidMarketplaceMetadata: "invalid_marketplace_metadata",
   InvalidOutputPath: "invalid_output_path",
   InvalidPackageContents: "invalid_package_contents",
   InvalidPackageFile: "invalid_package_file",

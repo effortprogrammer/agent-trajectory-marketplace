@@ -5,8 +5,10 @@ import { resolveReadableProjectPath, resolveWritableProjectPath } from "./path-s
 import { assertPackageClaimsMatch } from "./seller-package-claims"
 import {
   datasetFileSchema,
+  fallbackMarketplaceMetadata,
   inspectPackageInputSchema,
   manifestFileSchema,
+  marketplaceMetadataSchema,
   packageFilePaths,
   previewFileSchema,
   redactionReportFileSchema,
@@ -42,6 +44,7 @@ const assertMarketplaceReady = (marketplaceReady: boolean, tracePath: string) =>
 }
 
 export const createSellerPackage = (input: {
+  readonly metadataPath?: string
   readonly outDir: string
   readonly sellerId: string
   readonly title: string
@@ -50,6 +53,18 @@ export const createSellerPackage = (input: {
   const parsed = sellerPackageInputSchema.parse(input)
   const inspect = inspectTrace({ tracePath: parsed.tracePath })
   assertMarketplaceReady(inspect.marketplaceReady, inspect.tracePath)
+  const metadata =
+    parsed.metadataPath === undefined
+      ? undefined
+      : readJsonFile(
+          resolveReadableProjectPath({
+            inputPath: parsed.metadataPath,
+            code: SellerPackageErrorCode.InvalidMarketplaceMetadata,
+            throwPathError: throwSellerPathError,
+          }),
+          marketplaceMetadataSchema,
+          SellerPackageErrorCode.InvalidMarketplaceMetadata,
+        )
   const packageDir = resolveWritableProjectPath({
     inputPath: parsed.outDir,
     code: SellerPackageErrorCode.InvalidOutputPath,
@@ -118,6 +133,7 @@ export const createSellerPackage = (input: {
         marketplaceReady: inspect.marketplaceReady,
         redactionClean: inspect.checks.redactionClean,
       },
+      ...(metadata === undefined ? {} : { marketplace: metadata }),
     })
   } catch (error) {
     if (cleanupOnFailure) {
@@ -134,6 +150,7 @@ export const createSellerPackage = (input: {
     tracePath,
     listingReady: inspect.marketplaceReady,
     eventCount: inspect.eventCount,
+    ...(metadata === undefined ? {} : { metadataPath: manifestPath }),
   }
 }
 
@@ -190,6 +207,13 @@ export const inspectSellerPackageDirectory = (packageDir: string) => {
     sellerId: seller.sellerId,
     datasetId: dataset.datasetId,
     eventCount: traceInspect.eventCount,
+    metadata:
+      manifest.marketplace ??
+      fallbackMarketplaceMetadata({
+        eventCount: dataset.eventCount,
+        sellerId: seller.sellerId,
+        title: dataset.title,
+      }),
     filesVerified: [...packageFilePaths],
   }
 }

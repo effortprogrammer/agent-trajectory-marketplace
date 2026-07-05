@@ -32,7 +32,7 @@ bun run dev -- trajectory init hermes --workspace .tmp/trajectory-e2e
 bun run dev -- trajectory demo hermes --workspace .tmp/trajectory-e2e --export .tmp/trajectory-e2e/artifacts/trace.atf.json
 bun run dev -- trajectory inspect --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --json
 bun run dev -- trajectory bundle --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --out .omo/evidence/trajectory-e2e
-bun run dev -- trajectory seller package --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --out .omo/seller-packages/hermes-demo --seller agent-local --title "Hermes demo self-log"
+bun run dev -- trajectory seller package --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --out .omo/seller-packages/hermes-demo --seller agent-local --title "Hermes demo self-log" --metadata .tmp/marketplace-metadata.json
 bun run dev -- trajectory seller inspect --path .omo/seller-packages/hermes-demo --json
 ```
 
@@ -70,7 +70,7 @@ bun run dev -- trajectory marketplace download "$LISTING_ID" --registry "$REGIST
 bun run dev -- trajectory seller inspect --path .tmp/registry-download --json
 ```
 
-Prefer `TRAJECTORY_REGISTRY_API_KEY` over `--api-key` so seller secrets do not land in shell history. The closed-alpha machine-readable API contract is [docs/marketplace-registry-openapi.yaml](docs/marketplace-registry-openapi.yaml); it covers `Authorization: Bearer <api-key>`, `/v1/seller-packages`, `/v1/listings`, stable `error.code` values, and the `/v1` version policy.
+Prefer `TRAJECTORY_REGISTRY_API_KEY` over `--api-key` so seller secrets do not land in shell history. The closed-alpha machine-readable API contract is [docs/marketplace-registry-openapi.yaml](docs/marketplace-registry-openapi.yaml); it covers `Authorization: Bearer <api-key>`, `/v1/seller-packages`, `/v1/listings`, `/v1/waitlist-requests`, listing metadata, fail-closed access state, stable `error.code` values, and the `/v1` version policy.
 
 Hosted Closed Alpha access is waitlist-gated. Operators move seller and buyer records through
 `requested`, `invited`, `approved`, `rejected`, and `revoked`; hosted API keys are issued only for
@@ -80,7 +80,7 @@ for waitlist applications, invite expectations, setup, API key handling, seller 
 hosted buyer API reads, invite-only marketplace UI access, local-dev buyer CLI checks,
 troubleshooting, deletion or takedown requests, and support.
 
-This alpha intentionally excludes public signup, payments, payouts, HF Datasets/Parquet conversion, self-serve account flows, and operator dashboards. It includes a buyer-facing invite-only marketplace UI on the registry origin. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria, [docs/marketplace-hosted-architecture.md](docs/marketplace-hosted-architecture.md) for the hosted runtime and ENV/SECRET contract, and [docs/marketplace-registry.md](docs/marketplace-registry.md) for the registry trust model and production migration checklist.
+Request-required, purchase-required, and entitlement-required listings do not download with a buyer key alone; an operator must grant the buyer a listing entitlement. This alpha intentionally excludes public signup, live Stripe checkout, payouts, paid refunds, tax handling, HF Datasets/Parquet conversion, self-serve account flows, and operator dashboards. It includes a buyer-facing invite-only marketplace UI on the registry origin. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria, [docs/marketplace-hosted-architecture.md](docs/marketplace-hosted-architecture.md) for the hosted runtime and ENV/SECRET contract, and [docs/marketplace-registry.md](docs/marketplace-registry.md) for the registry trust model and production migration checklist.
 
 ## Verification
 

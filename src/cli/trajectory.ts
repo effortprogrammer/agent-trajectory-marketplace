@@ -33,6 +33,8 @@ type BundleOptions = Readonly<{
 }>
 
 type SellerPackageOptions = Readonly<{
+  json?: boolean
+  metadata?: string
   out: string
   seller: string
   title: string
@@ -65,6 +67,7 @@ type MarketplaceInspectOptions = Readonly<{
 
 type MarketplaceDownloadOptions = Readonly<{
   apiKey?: string
+  json?: boolean
   out: string
   registry: string
 }>
@@ -164,6 +167,8 @@ export const registerTrajectoryCommand = (program: Command) => {
     .requiredOption("--out <path>", "Seller package output directory")
     .requiredOption("--seller <id>", "Seller agent identity")
     .requiredOption("--title <title>", "Dataset listing title")
+    .option("--metadata <path>", "Closed-alpha marketplace metadata JSON")
+    .option("--json", "Print the package result as JSON")
     .action((options: SellerPackageOptions) => {
       printJson(
         createSellerPackage({
@@ -171,6 +176,7 @@ export const registerTrajectoryCommand = (program: Command) => {
           outDir: options.out,
           sellerId: options.seller,
           title: options.title,
+          ...(options.metadata === undefined ? {} : { metadataPath: options.metadata }),
         }),
       )
     })
@@ -209,7 +215,7 @@ export const registerTrajectoryCommand = (program: Command) => {
 
   marketplaceCommand
     .command("list")
-    .description("List public marketplace registry listings")
+    .description("List closed-alpha marketplace registry listings")
     .requiredOption("--registry <url>", "Marketplace registry base URL")
     .option("--api-key <key>", "Buyer registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
     .option("--json", "Print listings as JSON")
@@ -243,6 +249,7 @@ export const registerTrajectoryCommand = (program: Command) => {
     .requiredOption("--registry <url>", "Marketplace registry base URL")
     .requiredOption("--out <path>", "Output seller package directory")
     .option("--api-key <key>", "Buyer registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
+    .option("--json", "Print download result as JSON")
     .action(async (listingId: string, options: MarketplaceDownloadOptions) => {
       const apiKey = marketplaceBuyerApiKey(options)
       printJson(

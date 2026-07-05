@@ -7,6 +7,7 @@ export const packageOutputSchema = z.object({
   packageDir: z.string(),
   manifestPath: z.string(),
   datasetPath: z.string(),
+  metadataPath: z.string().optional(),
   sellerPath: z.string(),
   tracePath: z.string(),
   listingReady: z.boolean(),
@@ -19,6 +20,22 @@ export const packageInspectSchema = z.object({
   sellerId: z.string(),
   datasetId: z.string(),
   eventCount: z.number(),
+  metadata: z
+    .object({
+      price: z.object({ mode: z.string(), display: z.string() }),
+      license: z.object({ name: z.string(), url: z.string().optional() }),
+      usageTerms: z.object({
+        allowed: z.array(z.string()),
+        prohibited: z.array(z.string()),
+      }),
+      sellerProfile: z.object({
+        displayName: z.string(),
+        supportUrl: z.string().optional(),
+      }),
+      sample: z.object({ summary: z.string(), maxPreviewEvents: z.number() }),
+      accessPolicy: z.string(),
+    })
+    .optional(),
   filesVerified: z.array(z.string()),
 })
 
@@ -51,6 +68,22 @@ export const manifestSchema = z.object({
     marketplaceReady: z.boolean(),
     redactionClean: z.boolean(),
   }),
+  marketplace: z
+    .object({
+      price: z.object({ mode: z.string(), display: z.string() }),
+      license: z.object({ name: z.string(), url: z.string().optional() }),
+      usageTerms: z.object({
+        allowed: z.array(z.string()),
+        prohibited: z.array(z.string()),
+      }),
+      sellerProfile: z.object({
+        displayName: z.string(),
+        supportUrl: z.string().optional(),
+      }),
+      sample: z.object({ summary: z.string(), maxPreviewEvents: z.number() }),
+      accessPolicy: z.string(),
+    })
+    .optional(),
 })
 
 export const traceSchema = z.object({

@@ -74,6 +74,9 @@ const openRegistryStorage = (options: {
 const accessRecordsFromOption = (path: string | undefined) =>
   path === undefined ? undefined : readRegistryOperatorState(path).records
 
+const accessRecordsLoaderFromOption = (path: string | undefined) =>
+  path === undefined ? undefined : () => readRegistryOperatorState(path).records
+
 export const registerRegistryCommand = (trajectoryCommand: Command) => {
   const registryCommand = trajectoryCommand
     .command("registry")
@@ -98,12 +101,15 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
         return
       }
       const accessRecords = accessRecordsFromOption(options.accessRecords)
+      const accessRecordsLoader = accessRecordsLoaderFromOption(options.accessRecords)
       await runRegistryServerProcess(
         parseRegistryServeConfig({
           ...(options.host === undefined ? {} : { host: options.host }),
           ...(options.port === undefined ? {} : { port: options.port }),
           ...(options.db === undefined ? {} : { db: options.db }),
           ...(accessRecords === undefined ? {} : { accessRecords }),
+          ...(accessRecordsLoader === undefined ? {} : { accessRecordsLoader }),
+          ...(options.accessRecords === undefined ? {} : { operatorState: options.accessRecords }),
           ...(options.auditLog === undefined ? {} : { auditLog: options.auditLog }),
           ...(options.storage === undefined ? {} : { storage: options.storage }),
           ...(options.tmp === undefined ? {} : { tmp: options.tmp }),
