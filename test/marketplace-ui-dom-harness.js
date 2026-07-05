@@ -37,7 +37,9 @@ class FakeStyle {
 }
 
 class FakeElement extends FakeNode {
+  attributes = new Map()
   className = ""
+  hidden = false
   id = ""
   style = new FakeStyle()
   type = ""
@@ -58,6 +60,14 @@ class FakeElement extends FakeNode {
     for (const listener of this.listeners.get(type) ?? []) {
       listener(event)
     }
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name)
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value))
   }
 }
 
@@ -101,29 +111,18 @@ class FakeStorage {
   }
 }
 
-const requiredIds = [
-  "buyer-key",
-  "clear-key",
-  "credential-form",
-  "credential-note",
-  "buyer-onboarding-form",
-  "buyer-onboarding-contact",
-  "buyer-onboarding-use",
-  "detail-panel-content",
-  "listing-grid",
-  "refresh-listings",
-  "registry-state",
-  "listing-search",
-  "seller-onboarding-form",
-  "seller-onboarding-contact",
-  "seller-onboarding-id",
-  "seller-onboarding-use",
-  "signal-access",
-  "signal-events",
-  "signal-files",
-  "signal-listings",
-  "summary-strip",
-]
+const requiredIds = `
+  buyer-key clear-key credential-form credential-note downloads-view-content
+  buyer-onboarding-form buyer-onboarding-contact buyer-onboarding-use detail-panel-content
+  listing-grid my-access-view-content nav-downloads nav-marketplace nav-my-access
+  nav-operator-console nav-requests nav-seller-console open-requests-view refresh-listings
+  registry-state requests-actions-content requests-view-content listing-search seller-onboarding-form
+  seller-onboarding-contact seller-onboarding-id seller-onboarding-use signal-access
+  signal-events signal-files signal-listings summary-strip view-downloads view-marketplace
+  view-my-access view-requests
+`
+  .trim()
+  .split(/\s+/)
 
 export const listing = {
   listingId: "listing-1111111111111111",
