@@ -112,16 +112,16 @@ class FakeStorage {
 }
 
 const requiredIds = `
-  account-email account-form account-login account-logout account-note account-password
+  account-email account-form account-login account-logout account-note account-password admin-nav
   account-signup device-approval-form device-approve device-deny device-user-code
-  downloads-view-content
+  my-data-access-tab my-data-downloads-tab my-data-access-content my-data-downloads-content
   buyer-onboarding-form buyer-onboarding-contact buyer-onboarding-use detail-panel-content
-  listing-grid my-access-view-content nav-downloads nav-marketplace nav-my-access
-  nav-operator-console nav-requests nav-seller-console open-requests-view refresh-listings
-  registry-state requests-actions-content requests-view-content listing-search seller-onboarding-form
+  listing-grid nav-marketplace nav-my-data nav-operator nav-requests nav-seller-publish
+  open-requests-view refresh-listings registry-state operator-actions-content
+  requests-actions-content requests-view-content listing-search seller-actions-content seller-onboarding-form
   seller-onboarding-contact seller-onboarding-id seller-onboarding-use signal-access
-  signal-events signal-files signal-listings summary-strip view-downloads view-marketplace
-  view-my-access view-requests
+  signal-events signal-files signal-listings summary-strip view-marketplace
+  view-my-data view-operator view-requests view-seller
 `
   .trim()
   .split(/\s+/)
@@ -230,6 +230,16 @@ const signedInAuthBody = () => ({
     displayName: "Buyer Example",
   },
   access: { approved: false, roles: [], entitlements: [] },
+})
+
+export const operatorAuthBody = () => ({
+  ok: true,
+  account: {
+    accountId: "account-operator-1111111111",
+    email: "operator@example.test",
+    displayName: "Operator Example",
+  },
+  access: { approved: true, roles: ["operator"], entitlements: [] },
 })
 
 export const defaultMarketplaceFetch = async (input, _init) => {
