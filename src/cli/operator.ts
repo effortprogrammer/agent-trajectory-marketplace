@@ -13,6 +13,7 @@ import {
   transitionOperatorWaitlist,
   writeRegistryOperatorState,
 } from "../registry/operator"
+import { registerOperatorAccountCommands } from "./operator-account"
 import { registerOperatorManualCommerceCommands } from "./operator-manual-commerce"
 import { registerOperatorStorageCommands } from "./operator-storage"
 
@@ -232,6 +233,8 @@ export const registerOperatorCommand = (registryCommand: Command) => {
     .action((options: OperatorStateOptions & Readonly<{ accessId: string }>) => {
       printJson(inspectOperatorKey(readRegistryOperatorState(options.state), options.accessId))
     })
+
+  registerOperatorAccountCommands(operatorCommand)
 
   registerOperatorStorageCommands(operatorCommand)
 

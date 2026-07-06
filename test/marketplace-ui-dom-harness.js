@@ -112,7 +112,9 @@ class FakeStorage {
 }
 
 const requiredIds = `
-  buyer-key clear-key credential-form credential-note downloads-view-content
+  account-email account-form account-login account-logout account-note account-password
+  account-signup device-approval-form device-approve device-deny device-user-code
+  downloads-view-content
   buyer-onboarding-form buyer-onboarding-contact buyer-onboarding-use detail-panel-content
   listing-grid my-access-view-content nav-downloads nav-marketplace nav-my-access
   nav-operator-console nav-requests nav-seller-console open-requests-view refresh-listings
@@ -176,10 +178,10 @@ export const listing = {
   ],
 }
 
-export const jsonResponse = (body, status = 200) =>
+export const jsonResponse = (body, status = 200, headers = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
   })
 
 export const detailBody = () => ({
@@ -214,36 +216,56 @@ export const waitFor = async (predicate) => {
   throw new Error("condition was not met")
 }
 
-const unauthorizedResponse = () =>
-  jsonResponse(
-    {
-      ok: false,
-      error: {
-        code: "unauthorized",
-        message: "unauthorized: Bearer token required",
-        requestId: "req-test",
-      },
-    },
-    401,
-  )
+const signedOutAuthBody = () => ({
+  ok: true,
+  account: null,
+  access: { approved: false, roles: [], entitlements: [] },
+})
 
-export const defaultMarketplaceFetch = async (input, init) => {
+const signedInAuthBody = () => ({
+  ok: true,
+  account: {
+    accountId: "account-1111111111111111",
+    email: "buyer@example.test",
+    displayName: "Buyer Example",
+  },
+  access: { approved: false, roles: [], entitlements: [] },
+})
+
+export const defaultMarketplaceFetch = async (input, _init) => {
   const path = String(input)
-  const headers = init?.headers ?? {}
-  const authorization = headers.authorization ?? headers.Authorization ?? ""
   if (path === "/ready") {
     return new Response("", { status: 200 })
   }
-  if (path === "/v1/listings" && authorization === "Bearer approved-buyer-key") {
+  if (path === "/v1/auth/me") {
+    return jsonResponse(signedOutAuthBody())
+  }
+  if (path === "/v1/auth/signup" || path === "/v1/auth/login") {
+    return jsonResponse(signedInAuthBody(), 200, { "x-atm-csrf": "csrf-test" })
+  }
+  if (path === "/v1/auth/logout") {
+    return jsonResponse(signedOutAuthBody())
+  }
+  if (path === "/v1/auth/device/approve") {
+    return jsonResponse({ ok: true, state: "approved" })
+  }
+  if (path === "/v1/listings") {
     return jsonResponse({ ok: true, listings: [listing] })
   }
-  if (
-    path === "/v1/listings/listing-1111111111111111" &&
-    authorization === "Bearer approved-buyer-key"
-  ) {
+  if (path === "/v1/listings/listing-1111111111111111") {
     return jsonResponse(detailBody())
   }
-  return unauthorizedResponse()
+  return jsonResponse(
+    {
+      ok: false,
+      error: {
+        code: "not_found",
+        message: `not_found: unsupported route ${path}`,
+        requestId: "req-test",
+      },
+    },
+    404,
+  )
 }
 
 export const installMarketplaceHarness = (fetchHandler = defaultMarketplaceFetch) => {

@@ -70,17 +70,27 @@ bun run dev -- trajectory marketplace download "$LISTING_ID" --registry "$REGIST
 bun run dev -- trajectory seller inspect --path .tmp/registry-download --json
 ```
 
-Prefer `TRAJECTORY_REGISTRY_API_KEY` over `--api-key` so seller secrets do not land in shell history. The closed-alpha machine-readable API contract is [docs/marketplace-registry-openapi.yaml](docs/marketplace-registry-openapi.yaml); it covers `Authorization: Bearer <api-key>`, `/v1/seller-packages`, `/v1/listings`, `/v1/waitlist-requests`, listing metadata, fail-closed access state, stable `error.code` values, and the `/v1` version policy.
+Prefer `TRAJECTORY_REGISTRY_API_KEY` over `--api-key` so seller secrets do not land in shell history. The closed-alpha machine-readable API contract is [docs/marketplace-registry-openapi.yaml](docs/marketplace-registry-openapi.yaml); it covers `Authorization: Bearer <api-key>`, `/v1/seller-packages`, `/v1/listings`, `/v1/auth/signup`, `/v1/auth/device`, `/v1/auth/token`, `/v1/waitlist-requests`, listing metadata, fail-closed access state, stable `error.code` values, and the `/v1` version policy.
 
 Hosted Closed Alpha access is waitlist-gated. Operators move seller and buyer records through
-`requested`, `invited`, `approved`, `rejected`, and `revoked`; hosted API keys are issued only for
-approved access records and are stored as hashes, with rotation and revocation audited. Applicants,
-sellers, buyers, and operators can follow [docs/marketplace-closed-alpha-guide.md](docs/marketplace-closed-alpha-guide.md)
-for waitlist applications, invite expectations, setup, API key handling, seller publishing,
-hosted buyer API reads, invite-only marketplace UI access, local-dev buyer CLI checks,
-troubleshooting, deletion or takedown requests, and support.
+`requested`, `invited`, `approved`, `rejected`, and `revoked`; hosted seller or buyer API keys are
+issued only for approved access records and are stored as hashes, with rotation and revocation
+audited. Web account signup creates an identity only. It does not approve buyer/seller access,
+grant listing entitlements, start checkout, or issue payment artifacts. CLI device-code login starts
+from `trajectory auth login`, opens the marketplace approval URL, and stores a CLI account token
+only after a signed-in web account approves the code. `trajectory auth signup` prints the web signup
+URL; CLI account creation is intentionally disabled.
 
-Request-required, purchase-required, and entitlement-required listings do not download with a buyer key alone; an operator must grant the buyer a listing entitlement. This alpha intentionally excludes public signup, live Stripe checkout, payouts, paid refunds, tax handling, HF Datasets/Parquet conversion, self-serve account flows, and operator dashboards. It includes a buyer-facing invite-only marketplace UI on the registry origin. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria, [docs/marketplace-hosted-architecture.md](docs/marketplace-hosted-architecture.md) for the hosted runtime and ENV/SECRET contract, and [docs/marketplace-registry.md](docs/marketplace-registry.md) for the registry trust model and production migration checklist.
+Request-required, purchase-required, and entitlement-required listings do not download with account
+login or a legacy buyer key alone; an operator must link the account or buyer record to an approved
+access record and grant the listing entitlement. This alpha intentionally excludes live Stripe checkout,
+payouts, paid refunds, tax handling, HF Datasets/Parquet conversion, seller/operator dashboards, and
+self-serve entitlement approval. It includes a buyer-facing invite-only marketplace UI on the
+registry origin. See [docs/marketplace-launch-boundary.md](docs/marketplace-launch-boundary.md) for
+the Closed Alpha launch boundary, explicit deferrals, and Go/No-Go criteria,
+[docs/marketplace-hosted-architecture.md](docs/marketplace-hosted-architecture.md) for the hosted
+runtime and ENV/SECRET contract, and [docs/marketplace-registry.md](docs/marketplace-registry.md)
+for the registry trust model and production migration checklist.
 
 ## Verification
 
