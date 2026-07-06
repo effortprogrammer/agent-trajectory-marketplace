@@ -112,8 +112,9 @@ class FakeStorage {
 }
 
 const requiredIds = `
-  account-email account-form account-login account-logout account-note account-password admin-nav
-  account-signup device-approval-form device-approve device-deny device-user-code
+  account-auth-backdrop account-auth-close account-auth-dialog account-auth-open account-auth-submit
+  account-email account-form account-google account-login account-logout account-note account-password
+  account-signup admin-nav device-approval-form device-approve device-deny device-user-code
   my-data-access-tab my-data-downloads-tab my-data-access-content my-data-downloads-content
   buyer-onboarding-form buyer-onboarding-contact buyer-onboarding-use detail-panel-content
   listing-grid nav-marketplace nav-my-data nav-operator nav-requests nav-seller-publish
