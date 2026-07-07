@@ -186,7 +186,70 @@ export const jsonResponse = (body, status = 200, headers = {}) =>
     headers: { "content-type": "application/json", ...headers },
   })
 
-export const detailBody = () => ({
+export const morphologyBody = () => ({
+  eventCount: 6,
+  uniqueEventNames: 4,
+  kindDistribution: [
+    { kind: "function_enter", count: 2, share: 0.3333 },
+    { kind: "function_exit", count: 2, share: 0.3333 },
+    { kind: "tool_call", count: 1, share: 0.1667 },
+    { kind: "llm_call", count: 1, share: 0.1667 },
+  ],
+  toolCallDistribution: [{ name: "trajectory.demo", count: 1 }],
+  llmCallCount: 1,
+  functionSpanCount: 2,
+  maxFunctionDepth: 2,
+})
+
+export const topologyBody = () => ({
+  sampledEventCount: 5,
+  totalEventCount: 6,
+  truncated: true,
+  roots: [
+    { kind: "session_start", name: "trajectory.demo", depth: 0, children: [] },
+    {
+      kind: "function_enter",
+      name: "run_pipeline",
+      depth: 0,
+      children: [
+        { kind: "llm_call", name: "trajectory.demo", depth: 1, children: [] },
+        {
+          kind: "function_enter",
+          name: "call_tool",
+          depth: 1,
+          children: [{ kind: "tool_call", name: "search_docs", depth: 2, children: [] }],
+        },
+      ],
+    },
+  ],
+})
+
+export const usageBody = () => ({
+  viewCount: 4,
+  downloadCount: 2,
+  accessRequestCount: 1,
+  lastDownloadedAt: "2026-07-05T00:00:00.000Z",
+})
+
+export const reviewsBody = (overrides = {}) => ({
+  reviewCount: 1,
+  averageRating: 4,
+  reviews: [
+    {
+      reviewId: "review-1111111111111111",
+      listingId: listing.listingId,
+      reviewerLabel: "buyer-1a2b3c4d",
+      rating: 4,
+      comment: "Solid coverage for tool-use evaluations.",
+      createdAt: "2026-07-05T00:00:00.000Z",
+      updatedAt: "2026-07-05T00:00:00.000Z",
+    },
+  ],
+  viewerCanReview: false,
+  ...overrides,
+})
+
+export const detailBody = (overrides = {}) => ({
   ok: true,
   listing,
   preview: {
@@ -197,6 +260,11 @@ export const detailBody = () => ({
     sample: listing.metadata.sample,
   },
   redactionReport: { redactionClean: true, redactedFindingCount: 0 },
+  morphology: morphologyBody(),
+  topology: topologyBody(),
+  usage: usageBody(),
+  reviews: reviewsBody(),
+  ...overrides,
 })
 
 export const elementText = (node) =>
