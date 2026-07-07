@@ -1,6 +1,11 @@
 import type { Command } from "commander"
 
 import { publishSellerPackageToRegistry, RegistryClientError } from "../registry/client"
+import {
+  exportCollectedSession,
+  listCollectRuntimes,
+  listCollectSessions,
+} from "../trajectory/collect"
 import { bundleTrace, inspectTrace } from "../trajectory/evidence"
 import { initPrototypeWorkspace, runPrototypeDemo } from "../trajectory/prototype"
 import { createSellerPackage, inspectSellerPackage } from "../trajectory/seller-package"
@@ -16,6 +21,17 @@ type DemoOptions = Readonly<{
   export: string
   pattern?: string
   workspace: string
+}>
+
+type CollectSessionsOptions = Readonly<{
+  limit?: string
+  source?: string
+}>
+
+type CollectExportOptions = Readonly<{
+  export: string
+  session: string
+  source?: string
 }>
 
 type InspectOptions = Readonly<{
@@ -97,6 +113,49 @@ export const registerTrajectoryCommand = (program: Command) => {
           workspace: options.workspace,
           exportPath: options.export,
           ...(options.pattern === undefined ? {} : { patternPath: options.pattern }),
+        }),
+      )
+    })
+
+  const collectCommand = trajectoryCommand
+    .command("collect")
+    .description("Collect trajectories from coding-harness session logs")
+
+  collectCommand
+    .command("runtimes")
+    .description("List coding-harness runtimes with a registered collector adapter")
+    .action(() => {
+      printJson(listCollectRuntimes())
+    })
+
+  collectCommand
+    .command("sessions <runtime>")
+    .description("List harness sessions discovered under the runtime's log directory")
+    .option("--source <dir>", "Harness log directory; defaults to the adapter's known location")
+    .option("--limit <count>", "Maximum number of sessions to list", "20")
+    .action((runtime: string, options: CollectSessionsOptions) => {
+      printJson(
+        listCollectSessions({
+          runtime,
+          ...(options.source === undefined ? {} : { sourceDir: options.source }),
+          ...(options.limit === undefined ? {} : { limit: Number(options.limit) }),
+        }),
+      )
+    })
+
+  collectCommand
+    .command("export <runtime>")
+    .description("Convert one harness session log into an ATF trace")
+    .requiredOption("--session <idOrPath>", "Session id or path to a session log file")
+    .requiredOption("--export <path>", "Output path for the exported ATF JSON trace")
+    .option("--source <dir>", "Harness log directory; defaults to the adapter's known location")
+    .action((runtime: string, options: CollectExportOptions) => {
+      printJson(
+        exportCollectedSession({
+          runtime,
+          session: options.session,
+          exportPath: options.export,
+          ...(options.source === undefined ? {} : { sourceDir: options.source }),
         }),
       )
     })

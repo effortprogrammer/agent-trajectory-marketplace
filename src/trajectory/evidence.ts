@@ -14,13 +14,22 @@ import { z } from "zod"
 
 import { resolveReadableProjectPath, resolveWritableProjectPath } from "./path-safety"
 
-const requiredEventKinds = [
+// The Python prototype instruments code directly, so its traces must show the
+// full vocabulary including verification labels. Harness-adapter traces
+// (status "collected") are converted from real session logs and never
+// fabricate verification events, so their required set is smaller.
+const instrumentedRequiredEventKinds = [
   "function_enter",
   "function_exit",
   "llm_call",
   "tool_call",
   "verification",
 ] as const
+
+const collectedRequiredEventKinds = ["session_start", "llm_call", "tool_call"] as const
+
+const requiredEventKindsForStatus = (status: string): readonly string[] =>
+  status === "collected" ? collectedRequiredEventKinds : instrumentedRequiredEventKinds
 
 const secretMarkers = ["authorization", "bearer", "api_key", "secret", "token"] as const
 
@@ -64,6 +73,7 @@ export type InspectTraceResult = Readonly<{
   requiredKinds: readonly string[]
   redactedFindings: readonly RedactedFinding[]
   checks: Readonly<{
+    collected: boolean
     eventCountMatches: boolean
     instrumented: boolean
     redactionClean: boolean
@@ -189,8 +199,10 @@ export const inspectTraceFile = (tracePath: string): InspectTraceResult => {
 
   const kindCounts = countKinds(trace.events)
   const eventKinds = Object.keys(kindCounts).sort()
+  const requiredEventKinds = requiredEventKindsForStatus(trace.status)
   const requiredKinds = requiredEventKinds.filter((kind) => kindCounts[kind] !== undefined)
   const checks = {
+    collected: trace.status === "collected",
     eventCountMatches: true,
     instrumented: trace.status === "instrumented",
     redactionClean: true,
@@ -199,7 +211,7 @@ export const inspectTraceFile = (tracePath: string): InspectTraceResult => {
 
   return {
     valid: true,
-    marketplaceReady: checks.instrumented && checks.requiredKindsPresent,
+    marketplaceReady: (checks.instrumented || checks.collected) && checks.requiredKindsPresent,
     runtime: trace.runtime,
     status: trace.status,
     eventCount: trace.eventCount,
