@@ -6,6 +6,7 @@ import { z } from "zod"
 
 import {
   type HarnessAdapter,
+  type HarnessSessionInput,
   type HarnessSessionRef,
   type HarnessTraceDocument,
   type HarnessTraceEvent,
@@ -144,7 +145,8 @@ const parseRolloutRecords = (sessionPath: string): readonly RolloutRecord[] => {
 // - reasoning items (encrypted model reasoning), developer/user response
 //   messages, and event_msg bookkeeping (token_count, task lifecycle) are
 //   never exported.
-const convertCodexSession = (sessionPath: string): HarnessTraceDocument => {
+const convertCodexSession = (session: HarnessSessionInput): HarnessTraceDocument => {
+  const sessionPath = session.sessionPath
   if (!existsSync(sessionPath) || !statSync(sessionPath).isFile()) {
     throw new TrajectoryAdapterError("missing_session", `missing_session: ${sessionPath}`)
   }

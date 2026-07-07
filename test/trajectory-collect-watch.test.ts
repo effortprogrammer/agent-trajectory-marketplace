@@ -154,7 +154,12 @@ describe("collect watch sweep", () => {
   })
 
   test("resolves default runtimes and rejects unknown ones at startup", () => {
-    expect(resolveCollectWatchRuntimes(undefined)).toEqual(["claude-code", "codex"])
+    expect(resolveCollectWatchRuntimes(undefined)).toEqual([
+      "claude-code",
+      "codex",
+      "hermes",
+      "openclaw",
+    ])
     expect(resolveCollectWatchRuntimes(["codex"])).toEqual(["codex"])
     expect(() => resolveCollectWatchRuntimes(["opencode"])).toThrow("unknown_runtime")
   })

@@ -94,13 +94,13 @@ export const listCollectSessions = (input: {
   }
 }
 
-const resolveSessionPath = (input: {
+const resolveSessionInput = (input: {
   readonly runtime: string
   readonly session: string
   readonly sourceDir?: string
-}): string => {
+}): { readonly sessionPath: string; readonly sessionId?: string } => {
   if (existsSync(input.session) && statSync(input.session).isFile()) {
-    return input.session
+    return { sessionPath: input.session }
   }
   const adapter = getHarnessAdapter(input.runtime)
   const sourceDir = resolveSourceDir(input.runtime, input.sourceDir)
@@ -113,7 +113,7 @@ const resolveSessionPath = (input: {
       `missing_session: ${input.session} is neither a session file nor a session id under ${sourceDir}`,
     )
   }
-  return match.sessionPath
+  return { sessionPath: match.sessionPath, sessionId: match.sessionId }
 }
 
 export const exportCollectedSession = (input: {
@@ -124,12 +124,12 @@ export const exportCollectedSession = (input: {
 }): CollectExportResult => {
   const parsed = exportInputSchema.parse(input)
   const adapter = getHarnessAdapter(parsed.runtime)
-  const sessionPath = resolveSessionPath({
+  const sessionInput = resolveSessionInput({
     runtime: parsed.runtime,
     session: parsed.session,
     ...(parsed.sourceDir === undefined ? {} : { sourceDir: parsed.sourceDir }),
   })
-  const trace = adapter.convertSession(sessionPath)
+  const trace = adapter.convertSession(sessionInput)
   const exportPath = resolveWritableProjectPath({
     inputPath: parsed.exportPath,
     code: "invalid_export_path",
@@ -140,7 +140,7 @@ export const exportCollectedSession = (input: {
   return {
     runtime: trace.runtime,
     status: trace.status,
-    sessionPath,
+    sessionPath: sessionInput.sessionPath,
     exportPath,
     eventCount: trace.eventCount,
     eventKinds: [...new Set(trace.events.map((event) => event.kind))].sort(),

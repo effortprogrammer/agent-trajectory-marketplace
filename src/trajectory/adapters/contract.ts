@@ -35,6 +35,14 @@ export const harnessSessionRefSchema = z
   .strict()
 export type HarnessSessionRef = z.infer<typeof harnessSessionRefSchema>
 
+// Identifies one session to convert. sessionPath alone is enough for
+// harnesses that keep one file per session; store-backed harnesses (e.g. a
+// single SQLite database holding every session) also need the sessionId.
+export type HarnessSessionInput = Readonly<{
+  sessionPath: string
+  sessionId?: string
+}>
+
 export type HarnessAdapter = Readonly<{
   // Stable runtime id stamped into exported traces, e.g. "claude-code".
   runtime: string
@@ -46,7 +54,7 @@ export type HarnessAdapter = Readonly<{
   // Enumerate sessions under a log root, newest first.
   listSessions: (sourceDir: string) => readonly HarnessSessionRef[]
   // Convert one session log into an ATF trace document.
-  convertSession: (sessionPath: string) => HarnessTraceDocument
+  convertSession: (session: HarnessSessionInput) => HarnessTraceDocument
 }>
 
 export const TrajectoryAdapterErrorCode = {

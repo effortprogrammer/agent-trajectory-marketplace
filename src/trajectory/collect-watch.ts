@@ -150,7 +150,9 @@ export const runCollectSweep = (
     }
 
     for (const ref of refs) {
-      const stateKey = `${runtime}:${ref.sessionPath}`
+      // sessionId is part of the key because store-backed harnesses (e.g.
+      // hermes state.db) expose many sessions behind one sessionPath.
+      const stateKey = `${runtime}:${ref.sessionPath}:${ref.sessionId}`
       const previous = sessions[stateKey]
       if (
         previous !== undefined &&
@@ -167,7 +169,10 @@ export const runCollectSweep = (
       }
 
       try {
-        const trace = adapter.convertSession(ref.sessionPath)
+        const trace = adapter.convertSession({
+          sessionPath: ref.sessionPath,
+          sessionId: ref.sessionId,
+        })
         const runtimeDir = join(outDir, runtime)
         mkdirSync(runtimeDir, { recursive: true })
         const exportPath = join(runtimeDir, `${ref.sessionId}.atf.json`)

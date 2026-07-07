@@ -137,11 +137,17 @@ describe("harness adapter registry", () => {
     expect(listHarnessAdapters().map((adapter) => adapter.runtime)).toEqual([
       "claude-code",
       "codex",
+      "hermes",
+      "openclaw",
     ])
     expect(getHarnessAdapter("claude-code").displayName).toBe("Claude Code")
     expect(getHarnessAdapter("codex").displayName).toBe("Codex CLI")
+    expect(getHarnessAdapter("hermes").displayName).toBe("Hermes Agent")
+    expect(getHarnessAdapter("openclaw").displayName).toBe("OpenClaw")
     expect(() => getHarnessAdapter("opencode")).toThrow("unknown_runtime: opencode")
-    expect(() => getHarnessAdapter("opencode")).toThrow("available: claude-code, codex")
+    expect(() => getHarnessAdapter("opencode")).toThrow(
+      "available: claude-code, codex, hermes, openclaw",
+    )
   })
 
   test("redacts secret markers and truncates long detail text", () => {
@@ -156,7 +162,7 @@ describe("harness adapter registry", () => {
 describe("claude-code adapter", () => {
   test("converts a transcript into turn-structured ATF events without leaking thinking", () => {
     const { sessionPath } = writeFixtureSession()
-    const trace = claudeCodeAdapter.convertSession(sessionPath)
+    const trace = claudeCodeAdapter.convertSession({ sessionPath })
 
     expect(trace.runtime).toBe("claude-code")
     expect(trace.status).toBe("collected")
@@ -195,10 +201,10 @@ describe("claude-code adapter", () => {
 
   test("rejects missing and non-jsonl sessions", () => {
     const { sessionPath } = writeFixtureSession({ fileName: "session.txt" })
-    expect(() => claudeCodeAdapter.convertSession(`${sessionPath}.missing`)).toThrow(
+    expect(() => claudeCodeAdapter.convertSession({ sessionPath: `.missing` })).toThrow(
       "missing_session",
     )
-    expect(() => claudeCodeAdapter.convertSession(sessionPath)).toThrow("invalid_session")
+    expect(() => claudeCodeAdapter.convertSession({ sessionPath })).toThrow("invalid_session")
   })
 
   test("lists sessions under project directories newest first", () => {
@@ -315,7 +321,7 @@ const writeCodexFixtureSession = () => {
 describe("codex adapter", () => {
   test("converts a rollout into turn-structured ATF events without leaking reasoning", () => {
     const { sessionPath } = writeCodexFixtureSession()
-    const trace = codexAdapter.convertSession(sessionPath)
+    const trace = codexAdapter.convertSession({ sessionPath })
 
     expect(trace.runtime).toBe("codex")
     expect(trace.status).toBe("collected")
@@ -357,7 +363,7 @@ describe("codex adapter", () => {
     writeFileSync(bogusPath, `${JSON.stringify({ type: "event_msg", payload: {} })}\n`, "utf8")
     utimesSync(bogusPath, new Date("2026-01-01"), new Date("2026-01-01"))
 
-    expect(() => codexAdapter.convertSession(bogusPath)).toThrow("invalid_session")
+    expect(() => codexAdapter.convertSession({ sessionPath: bogusPath })).toThrow("invalid_session")
 
     const sessions = codexAdapter.listSessions(sourceDir)
     expect(sessions).toHaveLength(2)

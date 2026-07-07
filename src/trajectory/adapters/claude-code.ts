@@ -6,6 +6,7 @@ import { z } from "zod"
 
 import {
   type HarnessAdapter,
+  type HarnessSessionInput,
   type HarnessSessionRef,
   type HarnessTraceDocument,
   type HarnessTraceEvent,
@@ -135,7 +136,8 @@ const parseTranscriptRecords = (sessionPath: string): readonly TranscriptRecord[
 // - thinking blocks are never exported (private reasoning), meta records and
 //   synthetic/error assistant records are skipped, and sidechain (subagent)
 //   records are skipped in v1.
-const convertClaudeCodeSession = (sessionPath: string): HarnessTraceDocument => {
+const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDocument => {
+  const sessionPath = session.sessionPath
   if (!existsSync(sessionPath) || !statSync(sessionPath).isFile()) {
     throw new TrajectoryAdapterError("missing_session", `missing_session: ${sessionPath}`)
   }
