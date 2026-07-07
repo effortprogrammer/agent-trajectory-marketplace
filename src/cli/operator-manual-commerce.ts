@@ -4,10 +4,10 @@ import {
   grantOperatorEntitlement,
   inspectOperatorCommerce,
   listOperatorWaitlist,
+  mutateRegistryOperatorState,
   type RegistryOperatorState,
   readRegistryOperatorState,
   revokeOperatorEntitlement,
-  writeRegistryOperatorState,
 } from "../registry/operator"
 
 type OperatorStateOptions = Readonly<{
@@ -38,8 +38,7 @@ const mutateState = (
   options: OperatorStateOptions,
   mutate: (state: RegistryOperatorState) => RegistryOperatorState,
 ) => {
-  const nextState = mutate(readRegistryOperatorState(options.state))
-  writeRegistryOperatorState(options.state, nextState)
+  const nextState = mutateRegistryOperatorState(options.state, mutate)
   printJson(nextState)
 }
 

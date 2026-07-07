@@ -148,7 +148,9 @@ const countKinds = (events: readonly TraceEvent[]) => {
 
 const isRedacted = (detail: string) => detail.trim() === "[redacted]"
 
-const containsSecretMarker = (detail: string) => {
+// Shared with registry-side text moderation (e.g. buyer review comments) so
+// every user-supplied string is screened against the same marker list.
+export const containsSecretMarker = (detail: string) => {
   const normalizedDetail = detail.toLowerCase()
   return secretMarkers.some((marker) => normalizedDetail.includes(marker))
 }

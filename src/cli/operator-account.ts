@@ -3,10 +3,10 @@ import type { Command } from "commander"
 import {
   inspectOperatorKey,
   linkOperatorAccount,
+  mutateRegistryOperatorState,
   type RegistryOperatorState,
   readRegistryOperatorState,
   unlinkOperatorAccount,
-  writeRegistryOperatorState,
 } from "../registry/operator"
 
 type OperatorStateOptions = Readonly<{
@@ -32,8 +32,7 @@ const mutateState = (
   options: OperatorStateOptions,
   mutate: (state: RegistryOperatorState) => RegistryOperatorState,
 ) => {
-  const nextState = mutate(readRegistryOperatorState(options.state))
-  writeRegistryOperatorState(options.state, nextState)
+  const nextState = mutateRegistryOperatorState(options.state, mutate)
   printJson(nextState)
 }
 

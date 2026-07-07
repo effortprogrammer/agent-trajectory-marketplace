@@ -1,17 +1,17 @@
 import type { Command } from "commander"
-
+import { createRegistryDatabase } from "../registry/database"
 import {
   createOperatorSeller,
   exportOperatorAudit,
   grantOperatorBuyer,
   inspectOperatorKey,
+  mutateRegistryOperatorState,
   type RegistryOperatorState,
   readRegistryOperatorState,
   requestOperatorAccess,
   revokeOperatorKey,
   rotateOperatorKey,
   transitionOperatorWaitlist,
-  writeRegistryOperatorState,
 } from "../registry/operator"
 import { registerOperatorAccountCommands } from "./operator-account"
 import { registerOperatorManualCommerceCommands } from "./operator-manual-commerce"
@@ -87,8 +87,7 @@ const mutateState = (
   options: OperatorStateOptions,
   mutate: (state: RegistryOperatorState) => RegistryOperatorState,
 ) => {
-  const nextState = mutate(readRegistryOperatorState(options.state))
-  writeRegistryOperatorState(options.state, nextState)
+  const nextState = mutateRegistryOperatorState(options.state, mutate)
   printJson(nextState)
 }
 
@@ -96,6 +95,49 @@ export const registerOperatorCommand = (registryCommand: Command) => {
   const operatorCommand = registryCommand
     .command("operator")
     .description("Run closed-alpha registry operator actions against local staging state")
+
+  const reviewCommand = operatorCommand
+    .command("review")
+    .description("Moderate buyer reviews stored in the registry database")
+
+  reviewCommand
+    .command("list")
+    .description("List stored reviews for one listing")
+    .requiredOption("--db <path>", "Registry SQLite database path")
+    .requiredOption("--listing-id <id>", "Listing id")
+    .action((options: Readonly<{ db: string; listingId: string }>) => {
+      const database = createRegistryDatabase({ dbPath: options.db })
+      try {
+        printJson({
+          listingId: options.listingId,
+          reviews: database.listListingReviews(options.listingId),
+        })
+      } finally {
+        database.close()
+      }
+    })
+
+  reviewCommand
+    .command("remove")
+    .description("Remove one review (abuse/takedown moderation)")
+    .requiredOption("--db <path>", "Registry SQLite database path")
+    .requiredOption("--listing-id <id>", "Listing id")
+    .requiredOption("--review-id <id>", "Review id to remove")
+    .action((options: Readonly<{ db: string; listingId: string; reviewId: string }>) => {
+      const database = createRegistryDatabase({ dbPath: options.db })
+      try {
+        printJson({
+          listingId: options.listingId,
+          reviewId: options.reviewId,
+          removed: database.deleteListingReview({
+            listingId: options.listingId,
+            reviewId: options.reviewId,
+          }),
+        })
+      } finally {
+        database.close()
+      }
+    })
 
   const sellerCommand = operatorCommand.command("seller").description("Manage seller access")
   sellerCommand
