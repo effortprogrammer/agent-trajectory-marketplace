@@ -2,21 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { z } from "zod"
 
 import { hostedSummarySchema, runHostedRegistrySmoke } from "../src/registry/hosted-e2e"
 import { parseRegistryServeConfig, startRegistryServer } from "../src/registry/server"
 
-const hostedE2eSummarySchema = z
-  .object({
-    registryUrl: z.string().url(),
-    listingId: z.string().regex(/^listing-[a-f0-9]{16}$/),
-    wrongKeyExit: z.number().int(),
-    extraFileStatus: z.number().int(),
-    traversalStatus: z.number().int(),
-    downloadInspectReady: z.boolean(),
-  })
-  .strict()
+const hostedE2eSummarySchema = hostedSummarySchema
 
 const workspaces: string[] = []
 
@@ -175,8 +165,22 @@ describe("hosted registry e2e script", () => {
     expect(summary.traversalStatus).toBe(400)
     expect(summary.downloadInspectReady).toBe(true)
     expect(result.stdout).toContain(summary.listingId)
+    expect(summary.accountLoop).toMatchObject({
+      signupStatus: 202,
+      emailCode: "<redacted-email-code>",
+      loginStatus: 200,
+      accessRequestState: "requested",
+      buyerWaitlistState: "requested",
+      preApprovalGrantRejected: true,
+      preGrantDownloadStatus: 403,
+      postGrantDownloadStatus: 200,
+      cliDownloadInspectReady: true,
+      deviceLoginTokenPrinted: false,
+      cliLogoutRevoked: true,
+    })
+    expect(result.stdout).not.toMatch(/"emailCode":\s*"\d{6}"/)
     expect(existsSync(join(process.cwd(), ".tmp", "hosted-registry-e2e-local-work"))).toBe(false)
-  })
+  }, 60000)
 
   test("runs twice against one registry without deterministic listing conflicts", async () => {
     const workspaceRoot = join(process.cwd(), ".tmp")

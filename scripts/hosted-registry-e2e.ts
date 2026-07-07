@@ -13,7 +13,6 @@ import { HostedE2eError } from "../src/registry/hosted-e2e-error"
 
 const defaultSummaryPath =
   ".omo/evidence/marketplace-prelaunch-roadmap/task-11-hosted-e2e-summary.json"
-const fakeLocalRoot = ".tmp/hosted-registry-e2e-local-work"
 
 type CliOptions = Readonly<{
   fakeLocal: boolean
@@ -88,6 +87,10 @@ const main = async (args: readonly string[]) => {
     return
   }
   if (options.fakeLocal) {
+    // Per-run isolated root: the fake-local loop must never share its registry,
+    // operator state, or email outbox with any other runner.
+    mkdirSync(".tmp", { recursive: true })
+    const fakeLocalRoot = mkdtempSync(join(resolve(".tmp"), "hosted-registry-e2e-local-"))
     writeSummary(options.summaryPath, await runFakeHostedRegistrySmoke(fakeLocalRoot))
     return
   }
