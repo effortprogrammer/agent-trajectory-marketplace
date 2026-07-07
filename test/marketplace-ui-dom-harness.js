@@ -112,9 +112,10 @@ class FakeStorage {
 }
 
 const requiredIds = `
-  account-auth-backdrop account-auth-close account-auth-dialog account-auth-open account-auth-submit
-  account-email account-form account-google account-login account-logout account-note account-password
-  account-signup admin-nav device-approval-form device-approve device-deny device-user-code
+  account-auth-backdrop account-auth-close account-auth-dialog account-auth-note account-auth-open
+  account-auth-submit account-change-email account-code account-code-form account-code-submit
+  account-email account-form account-logout account-note account-resend
+  admin-nav device-approval-form device-approve device-deny device-user-code
   my-data-access-tab my-data-downloads-tab my-data-access-content my-data-downloads-content
   buyer-onboarding-form buyer-onboarding-contact buyer-onboarding-use detail-panel-content
   listing-grid nav-marketplace nav-my-data nav-operator nav-requests nav-seller-publish
@@ -251,7 +252,10 @@ export const defaultMarketplaceFetch = async (input, _init) => {
   if (path === "/v1/auth/me") {
     return jsonResponse(signedOutAuthBody())
   }
-  if (path === "/v1/auth/signup" || path === "/v1/auth/login") {
+  if (path === "/v1/auth/signup") {
+    return jsonResponse({ ok: true, state: "code_sent" }, 202)
+  }
+  if (path === "/v1/auth/login") {
     return jsonResponse(signedInAuthBody(), 200, { "x-atm-csrf": "csrf-test" })
   }
   if (path === "/v1/auth/logout") {
