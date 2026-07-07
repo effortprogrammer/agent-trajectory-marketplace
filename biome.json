@@ -38,7 +38,26 @@
       "semicolons": "asNeeded"
     }
   },
+  "overrides": [
+    {
+      "includes": ["website/.vitepress/config.mts"],
+      "linter": {
+        "rules": {
+          "style": { "noDefaultExport": "off" }
+        }
+      }
+    }
+  ],
   "files": {
-    "includes": ["**", "!node_modules", "!dist", "!.tmp", "!.omo", "!coverage"]
+    "includes": [
+      "**",
+      "!node_modules",
+      "!dist",
+      "!.tmp",
+      "!.omo",
+      "!coverage",
+      "!website/.vitepress/dist",
+      "!website/.vitepress/cache"
+    ]
   }
 }

@@ -14,6 +14,19 @@ This repo intentionally lives outside the Buygent codebase. It provides a Bun-po
 - reject unsafe export paths and invalid pattern module traversal,
 - ignore tampered workspace runners during demo execution.
 
+## Documentation
+
+Polished guides live in the VitePress site under [`website/`](website) — seller onboarding
+(collect → package → publish), the resident collector, buyer flows, and CLI/adapter/API
+reference:
+
+```bash
+bun run docs:dev      # local docs at http://localhost:5173
+bun run docs:build    # static build to website/.vitepress/dist
+```
+
+Operational runbooks (registry, telemetry, launch boundary) remain under [`docs/`](docs).
+
 ## Quickstart
 
 Use a source checkout unless an operator gives you a verified packaged build:

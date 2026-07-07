@@ -6,3 +6,5 @@ dist/
 coverage/
 *.log
 
+website/.vitepress/dist
+website/.vitepress/cache
