@@ -154,9 +154,22 @@ export const installCollectWatchService = (input: {
   mkdirSync(join(paths.stdoutLogPath, ".."), { recursive: true })
   writeFileSync(paths.plistPath, plist, "utf8")
   // Re-installing over a loaded agent requires booting the old one out first;
-  // a failed bootout just means nothing was loaded yet.
+  // a failed bootout just means nothing was loaded yet. launchd tears
+  // KeepAlive agents down asynchronously, so wait until the label is gone
+  // before bootstrapping, and retry the bootstrap through the transient
+  // EIO window.
   launchctl(["bootout", `${launchdDomain()}/${paths.label}`])
-  const bootstrap = launchctl(["bootstrap", launchdDomain(), paths.plistPath])
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (!launchctl(["print", `${launchdDomain()}/${paths.label}`]).success) {
+      break
+    }
+    Bun.sleepSync(250)
+  }
+  let bootstrap = launchctl(["bootstrap", launchdDomain(), paths.plistPath])
+  for (let attempt = 0; attempt < 3 && !bootstrap.success; attempt += 1) {
+    Bun.sleepSync(500)
+    bootstrap = launchctl(["bootstrap", launchdDomain(), paths.plistPath])
+  }
   if (!bootstrap.success) {
     throw new TrajectoryAdapterError(
       "service_bootstrap_failed",
