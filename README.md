@@ -25,7 +25,19 @@ bun install
 bun run dev -- health
 ```
 
-Then drive the seller-package flow:
+Collect a real coding-harness session and drive the seller-package flow (see
+[docs/harness-adapters.md](docs/harness-adapters.md) for the adapter contract and event mapping):
+
+```bash
+bun run dev -- trajectory collect runtimes
+bun run dev -- trajectory collect sessions claude-code
+bun run dev -- trajectory collect export claude-code --session <sessionId> --export .tmp/trajectory-e2e/artifacts/trace.atf.json
+bun run dev -- trajectory inspect --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --json
+bun run dev -- trajectory seller package --trace .tmp/trajectory-e2e/artifacts/trace.atf.json --out .omo/seller-packages/claude-code-session --seller agent-local --title "Claude Code session self-log" --metadata .tmp/marketplace-metadata.json
+bun run dev -- trajectory seller inspect --path .omo/seller-packages/claude-code-session --json
+```
+
+Or exercise the synthetic prototype workspace instead of a real harness log:
 
 ```bash
 bun run dev -- trajectory init hermes --workspace .tmp/trajectory-e2e
