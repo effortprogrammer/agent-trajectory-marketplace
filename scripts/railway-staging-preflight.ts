@@ -27,8 +27,17 @@ const requiredHostedEnvNames = [
   "REGISTRY_PACKAGE_STORAGE_ACCESS_KEY_ID",
   "REGISTRY_PACKAGE_STORAGE_SECRET_ACCESS_KEY",
   "REGISTRY_TMP_ROOT",
+  "REGISTRY_OPERATOR_STATE_PATH",
   "REGISTRY_ACCESS_RECORDS",
   "REGISTRY_ADMIN_KEY_HASHES",
+  "REGISTRY_EMAIL_DELIVERY",
+  "REGISTRY_EMAIL_AUTH_SECRET",
+  "REGISTRY_SMTP_HOST",
+  "REGISTRY_SMTP_PORT",
+  "REGISTRY_SMTP_USERNAME",
+  "REGISTRY_SMTP_PASSWORD",
+  "REGISTRY_SMTP_FROM",
+  "REGISTRY_SMTP_SECURE",
   "REGISTRY_LOG_LEVEL",
   "REGISTRY_OTEL_EXPORTER_OTLP_ENDPOINT",
 ] as const
@@ -38,6 +47,9 @@ const secretEnvNames = new Set([
   "REGISTRY_PACKAGE_STORAGE_SECRET_ACCESS_KEY",
   "REGISTRY_ACCESS_RECORDS",
   "REGISTRY_ADMIN_KEY_HASHES",
+  "REGISTRY_EMAIL_AUTH_SECRET",
+  "REGISTRY_SMTP_USERNAME",
+  "REGISTRY_SMTP_PASSWORD",
 ])
 
 type CommandName = "rollback-dry-run" | "validate-env-template"
@@ -181,6 +193,15 @@ const validateEnvTemplate = (options: CliOptions) => {
   }
   if (readTemplateValue(env, "REGISTRY_PACKAGE_STORAGE_BACKEND") !== "hosted") {
     throw new PreflightError("REGISTRY_PACKAGE_STORAGE_BACKEND must be hosted")
+  }
+  if (readTemplateValue(env, "REGISTRY_EMAIL_DELIVERY") !== "smtp") {
+    throw new PreflightError("REGISTRY_EMAIL_DELIVERY must be smtp in hosted staging/production")
+  }
+  const smtpSecure = readTemplateValue(env, "REGISTRY_SMTP_SECURE")
+  if (smtpSecure !== "starttls" && smtpSecure !== "tls") {
+    throw new PreflightError(
+      "REGISTRY_SMTP_SECURE must be starttls or tls in hosted staging/production",
+    )
   }
 
   writeEvidence(options.evidencePath, {
