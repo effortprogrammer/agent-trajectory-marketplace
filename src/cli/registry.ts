@@ -1,6 +1,7 @@
 import type { Command } from "commander"
 
 import { createRegistryDatabase } from "../registry/database"
+import { parseRegistryEmailAuthEnvConfig } from "../registry/email-delivery"
 import { readRegistryOperatorState } from "../registry/operator"
 import {
   parseHostedRegistryServeEnvConfig,
@@ -104,6 +105,7 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
       const accessRecordsLoader = accessRecordsLoaderFromOption(options.accessRecords)
       await runRegistryServerProcess(
         parseRegistryServeConfig({
+          emailAuth: parseRegistryEmailAuthEnvConfig(process.env, "local"),
           ...(options.host === undefined ? {} : { host: options.host }),
           ...(options.port === undefined ? {} : { port: options.port }),
           ...(options.db === undefined ? {} : { db: options.db }),
