@@ -54,6 +54,8 @@ export const TrajectoryAdapterErrorCode = {
   InvalidSession: "invalid_session",
   MissingSession: "missing_session",
   MissingSourceDir: "missing_source_dir",
+  ServiceBootstrapFailed: "service_bootstrap_failed",
+  ServiceUnsupportedPlatform: "service_unsupported_platform",
   UnknownRuntime: "unknown_runtime",
 } as const
 

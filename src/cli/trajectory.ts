@@ -6,6 +6,16 @@ import {
   listCollectRuntimes,
   listCollectSessions,
 } from "../trajectory/collect"
+import {
+  collectWatchServiceStatus,
+  installCollectWatchService,
+  uninstallCollectWatchService,
+} from "../trajectory/collect-service"
+import {
+  resolveCollectWatchRuntimes,
+  runCollectSweep,
+  runCollectWatchLoop,
+} from "../trajectory/collect-watch"
 import { bundleTrace, inspectTrace } from "../trajectory/evidence"
 import { initPrototypeWorkspace, runPrototypeDemo } from "../trajectory/prototype"
 import { createSellerPackage, inspectSellerPackage } from "../trajectory/seller-package"
@@ -31,6 +41,24 @@ type CollectSessionsOptions = Readonly<{
 type CollectExportOptions = Readonly<{
   export: string
   session: string
+  source?: string
+}>
+
+type CollectWatchOptions = Readonly<{
+  intervalSeconds: string
+  once?: boolean
+  out: string
+  runtime?: readonly string[]
+  settleSeconds: string
+  source?: string
+}>
+
+type CollectServiceInstallOptions = Readonly<{
+  dryRun?: boolean
+  intervalSeconds: string
+  out: string
+  runtime?: readonly string[]
+  settleSeconds: string
   source?: string
 }>
 
@@ -158,6 +186,111 @@ export const registerTrajectoryCommand = (program: Command) => {
           ...(options.source === undefined ? {} : { sourceDir: options.source }),
         }),
       )
+    })
+
+  collectCommand
+    .command("watch")
+    .description("Run a resident collector that continuously converts harness sessions to ATF")
+    .requiredOption("--out <dir>", "Directory for exported ATF traces and the collector state")
+    .option("--runtime <runtimes...>", "Runtimes to watch; defaults to every registered adapter")
+    .option("--source <dir>", "Harness log directory override; requires exactly one --runtime")
+    .option("--interval-seconds <seconds>", "Seconds between collector sweeps", "30")
+    .option(
+      "--settle-seconds <seconds>",
+      "Seconds a session must stay unchanged before it is converted",
+      "60",
+    )
+    .option("--once", "Run a single sweep and exit instead of staying resident")
+    .action(async (options: CollectWatchOptions) => {
+      const runtimes = resolveCollectWatchRuntimes(options.runtime)
+      if (options.source !== undefined && runtimes.length !== 1) {
+        throw new Error("invalid_request: --source requires exactly one --runtime")
+      }
+      const config = {
+        outDir: options.out,
+        runtimes,
+        ...(options.source === undefined ? {} : { sourceDir: options.source }),
+        settleSeconds: Number(options.settleSeconds),
+      }
+      if (options.once === true) {
+        printJson(runCollectSweep(config))
+        return
+      }
+      const intervalSeconds = Number(options.intervalSeconds)
+      printJson({
+        mode: "collect-watch",
+        outDir: options.out,
+        runtimes,
+        intervalSeconds,
+        settleSeconds: config.settleSeconds,
+      })
+      let running = true
+      const stop = () => {
+        running = false
+      }
+      process.on("SIGINT", stop)
+      process.on("SIGTERM", stop)
+      await runCollectWatchLoop({
+        config,
+        intervalSeconds,
+        onSweep: (summary) => {
+          console.log(JSON.stringify(summary))
+        },
+        onSweepError: (error) => {
+          console.error(JSON.stringify({ error: error.message }))
+        },
+        shouldContinue: () => running,
+      })
+    })
+
+  const collectServiceCommand = collectCommand
+    .command("service")
+    .description("Manage the resident collector as a macOS launchd LaunchAgent")
+
+  collectServiceCommand
+    .command("install")
+    .description("Install and start the collector LaunchAgent (RunAtLoad + KeepAlive)")
+    .requiredOption("--out <dir>", "Directory for exported ATF traces and the collector state")
+    .option("--runtime <runtimes...>", "Runtimes to watch; defaults to every registered adapter")
+    .option("--source <dir>", "Harness log directory override; requires exactly one --runtime")
+    .option("--interval-seconds <seconds>", "Seconds between collector sweeps", "30")
+    .option(
+      "--settle-seconds <seconds>",
+      "Seconds a session must stay unchanged before it is converted",
+      "60",
+    )
+    .option("--dry-run", "Render the launchd plist without touching launchctl")
+    .action((options: CollectServiceInstallOptions) => {
+      const runtimes = resolveCollectWatchRuntimes(options.runtime)
+      if (options.source !== undefined && runtimes.length !== 1) {
+        throw new Error("invalid_request: --source requires exactly one --runtime")
+      }
+      printJson(
+        installCollectWatchService({
+          config: {
+            outDir: options.out,
+            runtimes,
+            ...(options.source === undefined ? {} : { sourceDir: options.source }),
+            intervalSeconds: Number(options.intervalSeconds),
+            settleSeconds: Number(options.settleSeconds),
+          },
+          ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+        }),
+      )
+    })
+
+  collectServiceCommand
+    .command("uninstall")
+    .description("Stop and remove the collector LaunchAgent")
+    .action(() => {
+      printJson(uninstallCollectWatchService())
+    })
+
+  collectServiceCommand
+    .command("status")
+    .description("Show whether the collector LaunchAgent is installed and running")
+    .action(() => {
+      printJson(collectWatchServiceStatus())
     })
 
   trajectoryCommand
