@@ -1,10 +1,11 @@
 import { claudeCodeAdapter } from "./claude-code"
+import { codexAdapter } from "./codex"
 import { type HarnessAdapter, TrajectoryAdapterError } from "./contract"
 
-// Built-in adapter registry. Adding support for another harness (codex CLI,
-// opencode, hermes, openclaw, ...) means implementing HarnessAdapter in its
-// own module and appending it here — the collect CLI picks it up unchanged.
-const builtInAdapters: readonly HarnessAdapter[] = [claudeCodeAdapter]
+// Built-in adapter registry. Adding support for another harness (opencode,
+// hermes, openclaw, ...) means implementing HarnessAdapter in its own module
+// and appending it here — the collect CLI picks it up unchanged.
+const builtInAdapters: readonly HarnessAdapter[] = [claudeCodeAdapter, codexAdapter]
 
 const adaptersByRuntime = new Map(builtInAdapters.map((adapter) => [adapter.runtime, adapter]))
 

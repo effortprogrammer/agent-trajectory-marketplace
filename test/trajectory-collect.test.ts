@@ -3,6 +3,7 @@ import { mkdirSync, utimesSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { claudeCodeAdapter } from "../src/trajectory/adapters/claude-code"
+import { codexAdapter } from "../src/trajectory/adapters/codex"
 import { harnessDetailMaxLength, redactHarnessDetail } from "../src/trajectory/adapters/contract"
 import { getHarnessAdapter, listHarnessAdapters } from "../src/trajectory/adapters/registry"
 import { exportCollectedSession } from "../src/trajectory/collect"
@@ -132,11 +133,15 @@ const writeFixtureSession = (input?: { readonly fileName?: string }) => {
 afterEach(cleanupSellerWorkspaces)
 
 describe("harness adapter registry", () => {
-  test("exposes the claude-code adapter and rejects unknown runtimes", () => {
-    expect(listHarnessAdapters().map((adapter) => adapter.runtime)).toContain("claude-code")
+  test("exposes the built-in adapters and rejects unknown runtimes", () => {
+    expect(listHarnessAdapters().map((adapter) => adapter.runtime)).toEqual([
+      "claude-code",
+      "codex",
+    ])
     expect(getHarnessAdapter("claude-code").displayName).toBe("Claude Code")
-    expect(() => getHarnessAdapter("codex-cli")).toThrow("unknown_runtime: codex-cli")
-    expect(() => getHarnessAdapter("codex-cli")).toThrow("available: claude-code")
+    expect(getHarnessAdapter("codex").displayName).toBe("Codex CLI")
+    expect(() => getHarnessAdapter("opencode")).toThrow("unknown_runtime: opencode")
+    expect(() => getHarnessAdapter("opencode")).toThrow("available: claude-code, codex")
   })
 
   test("redacts secret markers and truncates long detail text", () => {
@@ -212,6 +217,172 @@ describe("claude-code adapter", () => {
     )
   })
 })
+
+const codexSessionId = "rollout-2026-07-01T10-00-00-abc123"
+
+const codexRolloutLines: readonly unknown[] = [
+  {
+    timestamp: "2026-07-01T10:00:00.000Z",
+    type: "session_meta",
+    payload: {
+      id: "abc123",
+      session_id: "abc123",
+      cwd: "/tmp/project",
+      originator: "codex_cli",
+      cli_version: "0.142.4",
+    },
+  },
+  { type: "event_msg", payload: { type: "task_started" } },
+  { type: "turn_context", payload: { turn_id: "turn-ctx-1", model: "gpt-5.4-mini" } },
+  { type: "event_msg", payload: { type: "user_message", message: "Refactor the auth module" } },
+  {
+    type: "response_item",
+    payload: { type: "reasoning", id: "rs_1", encrypted_content: "gAAAAA-private-reasoning" },
+  },
+  {
+    type: "response_item",
+    payload: {
+      type: "message",
+      role: "developer",
+      content: [{ type: "input_text", text: "system instructions blob" }],
+    },
+  },
+  {
+    type: "response_item",
+    payload: {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: "Starting the refactor now" }],
+    },
+  },
+  {
+    type: "response_item",
+    payload: {
+      type: "function_call",
+      name: "exec_command",
+      call_id: "call_1",
+      arguments: JSON.stringify({ cmd: "rg -n auth src/", workdir: "/tmp/project" }),
+    },
+  },
+  {
+    type: "response_item",
+    payload: {
+      type: "function_call_output",
+      call_id: "call_1",
+      output: "Chunk ID: x\nProcess exited with code 0\nOutput:\nsrc/auth.ts",
+    },
+  },
+  {
+    type: "response_item",
+    payload: {
+      type: "function_call",
+      name: "exec_command",
+      call_id: "call_2",
+      arguments: JSON.stringify({ cmd: "bun test" }),
+    },
+  },
+  {
+    type: "response_item",
+    payload: {
+      type: "function_call_output",
+      call_id: "call_2",
+      output: "Process exited with code 1\nOutput:\n1 fail",
+    },
+  },
+  { type: "event_msg", payload: { type: "token_count", info: { total: 1200 } } },
+  { type: "event_msg", payload: { type: "user_message", message: "now use api_key=sk-demo" } },
+  {
+    type: "response_item",
+    payload: {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: "Done" }],
+    },
+  },
+  { type: "event_msg", payload: { type: "task_complete" } },
+]
+
+const writeCodexFixtureSession = () => {
+  const workspace = createWorkspacePath()
+  const dayDir = join(workspace, "codex-source", "2026", "07", "01")
+  mkdirSync(dayDir, { recursive: true })
+  const sessionPath = join(dayDir, `${codexSessionId}.jsonl`)
+  const lines = codexRolloutLines.map((line) => JSON.stringify(line))
+  writeFileSync(sessionPath, `${lines.join("\n")}\ntorn-tail{\n`, "utf8")
+  return { workspace, sourceDir: join(workspace, "codex-source"), sessionPath }
+}
+
+describe("codex adapter", () => {
+  test("converts a rollout into turn-structured ATF events without leaking reasoning", () => {
+    const { sessionPath } = writeCodexFixtureSession()
+    const trace = codexAdapter.convertSession(sessionPath)
+
+    expect(trace.runtime).toBe("codex")
+    expect(trace.status).toBe("collected")
+    expect(trace.events.map((event) => `${event.kind}:${event.name}`)).toEqual([
+      "session_start:abc123",
+      "function_enter:turn-1",
+      "llm_call:gpt-5.4-mini",
+      "tool_call:exec_command",
+      "tool_result:exec_command",
+      "tool_call:exec_command",
+      "tool_result:exec_command",
+      "function_exit:turn-1",
+      "function_enter:turn-2",
+      "llm_call:gpt-5.4-mini",
+      "function_exit:turn-2",
+    ])
+
+    const serialized = JSON.stringify(trace)
+    expect(serialized).not.toContain("gAAAAA")
+    expect(serialized).not.toContain("system instructions blob")
+    expect(serialized).not.toContain("sk-demo")
+
+    expect(trace.events[0]?.detail).toBe("codex 0.142.4 cwd=/tmp/project originator=codex_cli")
+    expect(trace.events[1]?.detail).toBe("Refactor the auth module")
+    expect(trace.events[2]?.detail).toBe("Starting the refactor now")
+    expect(trace.events[3]?.detail).toBe("rg -n auth src/")
+    expect(trace.events[4]?.detail).toBe("ok")
+    expect(trace.events[6]?.detail).toBe("error")
+    expect(trace.events[8]?.detail).toBe("[redacted]")
+
+    const inspection = inspectTraceFile(writeTraceForInspection(trace))
+    expect(inspection.marketplaceReady).toBe(true)
+    expect(inspection.checks.collected).toBe(true)
+  })
+
+  test("rejects rollouts without session metadata and lists nested sessions", () => {
+    const { workspace, sourceDir, sessionPath } = writeCodexFixtureSession()
+    const bogusPath = join(sourceDir, "2026", "07", "01", "no-meta.jsonl")
+    writeFileSync(bogusPath, `${JSON.stringify({ type: "event_msg", payload: {} })}\n`, "utf8")
+    utimesSync(bogusPath, new Date("2026-01-01"), new Date("2026-01-01"))
+
+    expect(() => codexAdapter.convertSession(bogusPath)).toThrow("invalid_session")
+
+    const sessions = codexAdapter.listSessions(sourceDir)
+    expect(sessions).toHaveLength(2)
+    expect(sessions[0]?.sessionPath).toBe(sessionPath)
+    expect(sessions[0]?.projectDir).toBe(join("2026", "07", "01"))
+
+    const exportPath = join(workspace, "artifacts", "codex.atf.json")
+    const result = exportCollectedSession({
+      runtime: "codex",
+      session: codexSessionId,
+      sourceDir,
+      exportPath,
+    })
+    expect(result.runtime).toBe("codex")
+    expect(result.eventCount).toBe(11)
+  })
+})
+
+const writeTraceForInspection = (trace: unknown) => {
+  const workspace = createWorkspacePath()
+  mkdirSync(workspace, { recursive: true })
+  const tracePath = join(workspace, "trace.atf.json")
+  writeFileSync(tracePath, `${JSON.stringify(trace)}\n`, "utf8")
+  return tracePath
+}
 
 describe("collect export", () => {
   test("resolves a session id against the source dir and exports a marketplace-ready trace", () => {
