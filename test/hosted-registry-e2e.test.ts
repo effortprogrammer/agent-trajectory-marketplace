@@ -137,18 +137,28 @@ describe("hosted registry e2e script", () => {
   test("rejects unsafe hosted smoke probe summaries", () => {
     const safeSummary = {
       registryUrl: "http://127.0.0.1:4123",
-      listingId: "listing-0123456789abcdef",
-      wrongKeyExit: 1,
-      extraFileStatus: 400,
-      traversalStatus: 400,
-      downloadInspectReady: true,
+      publishRetiredExit: 1,
+      publishRetiredMentionsGone: true,
+      listRetiredStatus: 410,
+      detailRetiredStatus: 410,
+      fileRetiredStatus: 410,
+      extraFileStatus: 410,
+      traversalStatus: 410,
+      localPackageInspectReady: true,
     }
 
-    expect(() => hostedSummarySchema.parse({ ...safeSummary, wrongKeyExit: 0 })).toThrow()
+    expect(hostedSummarySchema.parse(safeSummary).publishRetiredExit).toBe(1)
+    expect(() => hostedSummarySchema.parse({ ...safeSummary, publishRetiredExit: 0 })).toThrow()
+    expect(() =>
+      hostedSummarySchema.parse({ ...safeSummary, publishRetiredMentionsGone: false }),
+    ).toThrow()
+    expect(() => hostedSummarySchema.parse({ ...safeSummary, listRetiredStatus: 200 })).toThrow()
+    expect(() => hostedSummarySchema.parse({ ...safeSummary, detailRetiredStatus: 200 })).toThrow()
+    expect(() => hostedSummarySchema.parse({ ...safeSummary, fileRetiredStatus: 200 })).toThrow()
     expect(() => hostedSummarySchema.parse({ ...safeSummary, extraFileStatus: 201 })).toThrow()
     expect(() => hostedSummarySchema.parse({ ...safeSummary, traversalStatus: 200 })).toThrow()
     expect(() =>
-      hostedSummarySchema.parse({ ...safeSummary, downloadInspectReady: false }),
+      hostedSummarySchema.parse({ ...safeSummary, localPackageInspectReady: false }),
     ).toThrow()
   })
 
@@ -160,24 +170,29 @@ describe("hosted registry e2e script", () => {
     const summary = hostedE2eSummarySchema.parse(JSON.parse(readFileSync(summaryPath, "utf8")))
 
     expect(result.exitCode).toBe(0)
-    expect(summary.wrongKeyExit).toBe(1)
-    expect(summary.extraFileStatus).toBe(400)
-    expect(summary.traversalStatus).toBe(400)
-    expect(summary.downloadInspectReady).toBe(true)
-    expect(result.stdout).toContain(summary.listingId)
+    expect(summary.publishRetiredExit).not.toBe(0)
+    expect(summary.publishRetiredMentionsGone).toBe(true)
+    expect(summary.listRetiredStatus).toBe(410)
+    expect(summary.detailRetiredStatus).toBe(410)
+    expect(summary.fileRetiredStatus).toBe(410)
+    expect(summary.extraFileStatus).toBe(410)
+    expect(summary.traversalStatus).toBe(410)
+    expect(summary.localPackageInspectReady).toBe(true)
     expect(summary.accountLoop).toMatchObject({
       signupStatus: 202,
       emailCode: "<redacted-email-code>",
       loginStatus: 200,
+      listingsRetiredStatus: 410,
       accessRequestState: "requested",
       buyerWaitlistState: "requested",
       preApprovalGrantRejected: true,
-      preGrantDownloadStatus: 403,
-      postGrantDownloadStatus: 200,
-      cliDownloadInspectReady: true,
+      preGrantDownloadStatus: 410,
+      preGrantDownloadCode: "gone",
+      postGrantDownloadStatus: 410,
       deviceLoginTokenPrinted: false,
       cliLogoutRevoked: true,
     })
+    expect(summary.accountLoop?.cliDownloadRetiredExit).toBeGreaterThan(0)
     expect(result.stdout).not.toMatch(/"emailCode":\s*"\d{6}"/)
     expect(existsSync(join(process.cwd(), ".tmp", "hosted-registry-e2e-local-work"))).toBe(false)
   }, 60000)
@@ -211,7 +226,12 @@ describe("hosted registry e2e script", () => {
         localRoot: join(workspace, "second"),
       })
 
-      expect(second.listingId).not.toBe(first.listingId)
+      // The retired surface is idempotent: repeated smoke runs against one
+      // registry keep answering 410 without accumulating state or conflicts.
+      expect(first.listRetiredStatus).toBe(410)
+      expect(second.listRetiredStatus).toBe(410)
+      expect(second.publishRetiredExit).not.toBe(0)
+      expect(second.localPackageInspectReady).toBe(true)
     } finally {
       await server.stop()
     }

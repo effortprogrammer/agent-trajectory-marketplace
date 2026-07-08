@@ -1,0 +1,19 @@
+{
+  "supplyId": "supply-1111111111111111",
+  "terms": {
+    "reservePrice": {
+      "amountMinorUnits": 450000,
+      "currency": "USD",
+      "display": "$4,500 reserve"
+    },
+    "deliverySlaHours": 168,
+    "proofProfile": {
+      "description": "Delivered bundle must match the candidate proof: 480 sessions, event mix within 5% of the proof sample distribution, all listed hashes present.",
+      "mustMatchProofHashes": true,
+      "expectedEventCount": 29760
+    },
+    "failureConsequences": ["commitment_strike", "listing_suspension"],
+    "failureNotes": "Missed SLA or validation mismatch records a commitment strike; a second strike suspends the seller's supply listings pending operator review."
+  },
+  "auctionDeadline": "2026-08-01T00:00:00.000Z"
+}

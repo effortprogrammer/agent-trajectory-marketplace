@@ -84,18 +84,9 @@ Start a local registry with a dev seller key:
 bun run dev -- trajectory registry serve --host 127.0.0.1 --port 0 --db .tmp/registry/registry.sqlite --storage .tmp/registry/storage --tmp .tmp/registry/tmp --seller-key agent-local:test-key
 ```
 
-Use the `baseUrl` from the startup JSON line, then publish and browse:
+The six-file package publish/list/inspect/download endpoints are test-only legacy and retired: `trajectory seller publish` and `trajectory marketplace list/inspect/download` now fail with the typed `410 gone` error. Marketplace supply is seller-custodied through the account-gated `/v1/supply/*` surface — buyers post Wanted Dataset demand signals, sellers answer with proof-backed Candidate Datasets, and only Committed Datasets (reserve price, delivery SLA, proof profile, failure consequences) enter anonymous binding auctions, with data released only after operator-validated fulfillment. Local packaging (`trajectory seller package` / `seller inspect`) remains supported for producing hash-verifiable delivery artifacts.
 
-```bash
-export TRAJECTORY_REGISTRY_API_KEY="test-key"
-bun run dev -- trajectory seller publish --path .omo/seller-packages/hermes-demo --registry "$REGISTRY_URL" --json
-bun run dev -- trajectory marketplace list --registry "$REGISTRY_URL" --json
-bun run dev -- trajectory marketplace inspect "$LISTING_ID" --registry "$REGISTRY_URL" --json
-bun run dev -- trajectory marketplace download "$LISTING_ID" --registry "$REGISTRY_URL" --out .tmp/registry-download
-bun run dev -- trajectory seller inspect --path .tmp/registry-download --json
-```
-
-Prefer `TRAJECTORY_REGISTRY_API_KEY` over `--api-key` so seller secrets do not land in shell history. The closed-alpha machine-readable API contract is [docs/marketplace-registry-openapi.yaml](docs/marketplace-registry-openapi.yaml); it covers `Authorization: Bearer <api-key>`, `/v1/seller-packages`, `/v1/listings`, `/v1/auth/signup`, `/v1/auth/device`, `/v1/auth/token`, `/v1/waitlist-requests`, listing metadata, fail-closed access state, stable `error.code` values, and the `/v1` version policy.
+Prefer `TRAJECTORY_REGISTRY_API_KEY` over `--api-key` so seller secrets do not land in shell history. The closed-alpha machine-readable API contract is [docs/marketplace-registry-openapi.yaml](docs/marketplace-registry-openapi.yaml); it covers `Authorization: Bearer <api-key>`, the `/v1/supply/*` seller-custodied supply surface, `/v1/auth/signup`, `/v1/auth/device`, `/v1/auth/token`, `/v1/waitlist-requests`, listing access requests and reviews, fail-closed access state, stable `error.code` values, and the `/v1` version policy.
 
 Hosted Closed Alpha privileged access is operator-gated. Operators move seller and buyer records through
 `requested`, `invited`, `approved`, `rejected`, and `revoked`; hosted seller or buyer API keys are

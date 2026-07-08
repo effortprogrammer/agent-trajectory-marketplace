@@ -1,0 +1,11 @@
+{
+  "title": "Candidate smuggling binding auction fields",
+  "proof": {
+    "quality": "Attempts to open a binding auction from candidate state."
+  },
+  "binding": true,
+  "auction": {
+    "reserveMet": true,
+    "highestBid": { "amountMinorUnits": 250000, "currency": "USD" }
+  }
+}

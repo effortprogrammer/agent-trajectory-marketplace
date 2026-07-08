@@ -1,0 +1,9 @@
+{
+  "title": "Multi-repo refactoring sessions with verified test outcomes",
+  "description": "We need 200+ real coding-agent trajectories that perform multi-file refactors across TypeScript monorepos, each ending with a verified passing test suite. Sessions must include tool-call events (edit, shell, test-run) and explicit failure/retry sequences. Redaction-clean only; no synthetic replays.",
+  "domain": "software-engineering",
+  "harness": "claude-code",
+  "desiredEventCount": 40000,
+  "budgetDisplay": "Indicative budget: mid four figures USD (non-binding)",
+  "acceptedTerms": true
+}

@@ -1,0 +1,20 @@
+{
+  "title": "Candidate with commitment terms missing the delivery SLA",
+  "proof": {
+    "quality": "Proof present, but the attached commitment terms omit deliverySlaHours."
+  },
+  "commitment": {
+    "terms": {
+      "reservePrice": {
+        "amountMinorUnits": 450000,
+        "currency": "USD",
+        "display": "$4,500 reserve"
+      },
+      "proofProfile": {
+        "description": "Must match proof hashes.",
+        "mustMatchProofHashes": true
+      },
+      "failureConsequences": ["commitment_strike"]
+    }
+  }
+}
