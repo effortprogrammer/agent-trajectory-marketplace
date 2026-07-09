@@ -63,7 +63,110 @@
         }
       ],
       "eventCount": 29760,
-      "eventKinds": ["task", "tool_call", "llm_call", "function_span", "verification"]
+      "eventKinds": ["task", "tool_call", "llm_call", "function_span", "verification"],
+      "records": [
+        {
+          "kind": "task",
+          "name": "refactor-session-start",
+          "ts": "2026-05-14T09:12:04Z",
+          "session": {
+            "id": "sess-0413",
+            "harness": "claude-code",
+            "workspace": "repo-auth"
+          }
+        },
+        {
+          "kind": "llm_call",
+          "name": "plan-multi-file-refactor",
+          "ts": "2026-05-14T09:12:09Z",
+          "span": {
+            "id": "span-0002",
+            "parent": "span-0001"
+          },
+          "usage": {
+            "inputChars": 18240,
+            "outputChars": 2210
+          },
+          "latencyMs": 2140
+        },
+        {
+          "kind": "tool_call",
+          "name": "read_file",
+          "ts": "2026-05-14T09:12:14Z",
+          "span": {
+            "id": "span-0003",
+            "parent": "span-0002"
+          },
+          "args": {
+            "path": "src/auth/session.ts"
+          },
+          "result": {
+            "bytes": 18342,
+            "exitCode": 0
+          }
+        },
+        {
+          "kind": "function_span",
+          "name": "extract-session-rotation-helper",
+          "ts": "2026-05-14T09:12:31Z",
+          "span": {
+            "id": "span-0005",
+            "parent": "span-0002"
+          },
+          "durationMs": 312,
+          "outcome": {
+            "helperFile": "src/auth/rotation.ts",
+            "linesAdded": 58
+          }
+        },
+        {
+          "kind": "tool_call",
+          "name": "edit_file",
+          "ts": "2026-05-14T09:13:02Z",
+          "span": {
+            "id": "span-0006",
+            "parent": "span-0002"
+          },
+          "args": {
+            "path": "src/auth/session.ts",
+            "diffLines": 42
+          },
+          "result": {
+            "exitCode": 0
+          }
+        },
+        {
+          "kind": "tool_call",
+          "name": "run_tests",
+          "ts": "2026-05-14T09:14:26Z",
+          "span": {
+            "id": "span-0009",
+            "parent": "span-0001"
+          },
+          "args": {
+            "suite": "auth",
+            "watch": false
+          },
+          "result": {
+            "exitCode": 1,
+            "failures": 2,
+            "durationMs": 8423
+          }
+        },
+        {
+          "kind": "verification",
+          "name": "test-suite-green",
+          "ts": "2026-05-14T09:18:55Z",
+          "span": {
+            "id": "span-0014",
+            "parent": "span-0001"
+          },
+          "suite": "auth",
+          "passed": true,
+          "failures": 0,
+          "retries": null
+        }
+      ]
     },
     "quality": "Every session ends in a verified green test suite; sessions with flaky reruns were dropped. Manual spot-check on a 5% sample.",
     "safety": "Redaction scanner reports 0 findings across all 480 traces; credential-marker sweep clean.",
