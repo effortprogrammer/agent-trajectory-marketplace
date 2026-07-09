@@ -14,6 +14,7 @@ import {
   transitionOperatorWaitlist,
 } from "../registry/operator"
 import { registerOperatorAccountCommands } from "./operator-account"
+import { registerOperatorFulfillmentCommands } from "./operator-fulfillment"
 import { registerOperatorManualCommerceCommands } from "./operator-manual-commerce"
 import { registerOperatorStorageCommands } from "./operator-storage"
 
@@ -314,6 +315,8 @@ export const registerOperatorCommand = (registryCommand: Command) => {
         }
       },
     )
+
+  registerOperatorFulfillmentCommands(operatorCommand)
 
   registerOperatorAccountCommands(operatorCommand)
 

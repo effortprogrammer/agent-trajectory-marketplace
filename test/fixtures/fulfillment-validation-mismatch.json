@@ -1,0 +1,9 @@
+{
+  "validatedAt": "2026-07-09T13:00:00.000Z",
+  "result": "mismatch",
+  "mismatches": [
+    "delivered event count 21000 is below the committed expectedEventCount 29760",
+    "sample event-kind distribution deviates 18% from the committed proof profile (limit 5%)"
+  ],
+  "notes": "Delivered bundle does not match the committed proof profile; blocking entitlement release for operator review."
+}

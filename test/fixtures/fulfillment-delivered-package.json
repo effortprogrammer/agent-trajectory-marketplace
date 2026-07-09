@@ -1,0 +1,21 @@
+{
+  "deliveredAt": "2026-07-09T12:00:00.000Z",
+  "artifacts": [
+    {
+      "label": "sessions-index",
+      "sha256": "5f2b0f1e9c4d8a7b6e5d4c3b2a1908f7e6d5c4b3a291807f6e5d4c3b2a190807",
+      "byteCount": 18432
+    },
+    {
+      "label": "trace-bundle-01",
+      "sha256": "aa11bb22cc33dd44ee55ff667788990011223344556677889900aabbccddeeff",
+      "byteCount": 52428800
+    },
+    {
+      "label": "license-terms",
+      "sha256": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "byteCount": 4096
+    }
+  ],
+  "notes": "Seller-custodied delivery: buyer receives the bundle out-of-band; the registry records hashes only."
+}
