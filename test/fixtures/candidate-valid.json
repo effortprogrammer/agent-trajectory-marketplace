@@ -5,10 +5,62 @@
     "sample": {
       "summary": "Median session: 62 events, 11 tool calls, 3 verification runs. Event mix: 41% tool_call, 28% llm_call, 19% function_span, 12% verification.",
       "events": [
-        { "kind": "task", "name": "refactor-session-start" },
-        { "kind": "tool_call", "name": "edit_file" },
-        { "kind": "tool_call", "name": "run_tests" },
-        { "kind": "verification", "name": "test-suite-green" }
+        {
+          "kind": "task",
+          "name": "refactor-session-start"
+        },
+        {
+          "kind": "llm_call",
+          "name": "plan-multi-file-refactor"
+        },
+        {
+          "kind": "tool_call",
+          "name": "read_file src/auth/session.ts"
+        },
+        {
+          "kind": "tool_call",
+          "name": "read_file src/auth/token-store.ts"
+        },
+        {
+          "kind": "function_span",
+          "name": "extract-session-rotation-helper"
+        },
+        {
+          "kind": "tool_call",
+          "name": "edit_file src/auth/session.ts"
+        },
+        {
+          "kind": "tool_call",
+          "name": "edit_file src/auth/token-store.ts"
+        },
+        {
+          "kind": "llm_call",
+          "name": "review-diff-for-behavior-change"
+        },
+        {
+          "kind": "tool_call",
+          "name": "run_tests auth --watch=false"
+        },
+        {
+          "kind": "verification",
+          "name": "test-suite-red 2 failures"
+        },
+        {
+          "kind": "tool_call",
+          "name": "edit_file src/auth/session.test.ts"
+        },
+        {
+          "kind": "tool_call",
+          "name": "run_tests auth --watch=false"
+        },
+        {
+          "kind": "verification",
+          "name": "test-suite-green"
+        },
+        {
+          "kind": "task",
+          "name": "refactor-session-complete"
+        }
       ],
       "eventCount": 29760,
       "eventKinds": ["task", "tool_call", "llm_call", "function_span", "verification"]

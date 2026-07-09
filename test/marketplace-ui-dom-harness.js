@@ -149,6 +149,12 @@ const proofBody = () => ({
     summary: "Median session: 62 events, 11 tool calls, 3 verification runs.",
     eventCount: 29760,
     eventKinds: ["task", "tool_call", "verification"],
+    events: [
+      { kind: "task", name: "refactor-session-start" },
+      { kind: "tool_call", name: "edit_file src/auth/session.ts" },
+      { kind: "tool_call", name: "run_tests auth" },
+      { kind: "verification", name: "test-suite-green" },
+    ],
   },
   quality: "Every session ends in a verified green test suite.",
   safety: "Redaction scanner reports 0 findings.",
