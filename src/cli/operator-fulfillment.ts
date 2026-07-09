@@ -3,11 +3,7 @@ import { readFileSync } from "node:fs"
 import type { Command } from "commander"
 
 import { createRegistryDatabase, type RegistryDatabase } from "../registry/database"
-import {
-  grantOperatorEntitlement,
-  mutateRegistryOperatorState,
-  readRegistryOperatorState,
-} from "../registry/operator"
+import { grantOperatorEntitlement, mutateRegistryOperatorState } from "../registry/operator"
 import {
   buildFulfillmentTransactionId,
   type SupplyDeliveryManifest,
@@ -111,6 +107,15 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
           const supply = database.getSupplyRecord(auction.supplyId)
           if (supply === undefined || supply.state !== "committed") {
             throw new Error(`supply_state_invalid: ${auction.supplyId} is not committed supply`)
+          }
+          // One live attempt per commitment: a stale duplicate transaction
+          // could later be timed out and demote supply that was actually
+          // fulfilled through its sibling.
+          const openTransactionId = database.findOpenFulfillmentTransactionId(options.commitmentId)
+          if (openTransactionId !== undefined) {
+            throw new Error(
+              `fulfillment_state_invalid: ${options.commitmentId} already has live transaction ${openTransactionId}; resolve it before opening another`,
+            )
           }
           const now = new Date()
           // The delivery SLA clock starts here — at operator confirmation —
@@ -330,6 +335,37 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
           if (current === undefined) {
             throw new Error(`fulfillment_not_found: ${options.transactionId}`)
           }
+          // The transaction's recorded participants are authoritative: a
+          // typo'd CLI flag must not grant access to a different buyer or
+          // rewrite what the transaction recorded at open time.
+          if (
+            current.buyerAccessId !== undefined &&
+            current.buyerAccessId !== options.buyerAccessId
+          ) {
+            throw new Error(
+              `invalid_request: --buyer-access-id ${options.buyerAccessId} does not match the transaction's recorded buyer ${current.buyerAccessId}`,
+            )
+          }
+          if (
+            current.entitlementListingId !== undefined &&
+            current.entitlementListingId !== options.listingId
+          ) {
+            throw new Error(
+              `invalid_request: --listing-id ${options.listingId} does not match the transaction's recorded listing ${current.entitlementListingId}`,
+            )
+          }
+
+          // A fully released transaction is a no-op: re-running the command
+          // must never re-grant an entitlement an operator later revoked.
+          if (current.state === "entitlement_released") {
+            printJson({
+              actor: options.actor,
+              fulfillment: current,
+              grantApplied: false,
+              idempotent: true,
+            })
+            return
+          }
 
           // Two-phase idempotent release keyed by the fulfillment transaction
           // id: SQLite marks the release pending, the operator-state file
@@ -350,58 +386,53 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
               state: "entitlement_release_pending",
               transactionId: options.transactionId,
             })
-          } else if (
-            current.state !== "entitlement_release_pending" &&
-            current.state !== "entitlement_released"
-          ) {
+          } else if (current.state !== "entitlement_release_pending") {
             throw new Error(
               `fulfillment_state_invalid: ${options.transactionId} is ${current.state}; release requires a fulfilled transaction`,
             )
           }
 
-          const alreadyGranted = () => {
-            const record = readRegistryOperatorState(options.state).records.find(
+          // The grant decision runs inside the operator-state lock so two
+          // concurrent releases cannot both observe "not granted" and write
+          // duplicate audit events.
+          let grantApplied = false
+          mutateRegistryOperatorState(options.state, (state) => {
+            const record = state.records.find(
               (candidate) => candidate.accessId === options.buyerAccessId,
             )
-            return (record?.entitlements ?? []).some(
+            const active = (record?.entitlements ?? []).some(
               (entitlement) =>
                 entitlement.listingId === options.listingId && entitlement.state === "active",
             )
-          }
-
-          let grantApplied = false
-          if (!alreadyGranted()) {
-            mutateRegistryOperatorState(options.state, (state) =>
-              grantOperatorEntitlement(state, {
-                accessId: options.buyerAccessId,
-                actorId: options.actor,
-                listingId: options.listingId,
-              }),
-            )
+            if (active) {
+              return state
+            }
             grantApplied = true
-          }
+            return grantOperatorEntitlement(state, {
+              accessId: options.buyerAccessId,
+              actorId: options.actor,
+              listingId: options.listingId,
+            })
+          })
 
-          const released =
-            current.state === "entitlement_released"
-              ? current
-              : database.updateFulfillmentTransaction({
-                  actorId: options.actor,
-                  buyerAccessId: options.buyerAccessId,
-                  detail: grantApplied
-                    ? "entitlement granted in operator state and release recorded"
-                    : "entitlement already present in operator state; release recorded idempotently",
-                  entitlementListingId: options.listingId,
-                  expectedCurrentStates: ["entitlement_release_pending"],
-                  now: new Date().toISOString(),
-                  state: "entitlement_released",
-                  transactionId: options.transactionId,
-                })
+          const released = database.updateFulfillmentTransaction({
+            actorId: options.actor,
+            buyerAccessId: options.buyerAccessId,
+            detail: grantApplied
+              ? "entitlement granted in operator state and release recorded"
+              : "entitlement already present in operator state; release recorded idempotently",
+            entitlementListingId: options.listingId,
+            expectedCurrentStates: ["entitlement_release_pending"],
+            now: new Date().toISOString(),
+            state: "entitlement_released",
+            transactionId: options.transactionId,
+          })
 
           printJson({
             actor: options.actor,
             fulfillment: released,
             grantApplied,
-            idempotent: !grantApplied && current.state === "entitlement_released",
+            idempotent: false,
           })
         })
       },

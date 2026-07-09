@@ -15,5 +15,5 @@
     "failureConsequences": ["commitment_strike", "listing_suspension"],
     "failureNotes": "Missed SLA or validation mismatch records a commitment strike; a second strike suspends the seller's supply listings pending operator review."
   },
-  "auctionDeadline": "2026-08-01T00:00:00.000Z"
+  "auctionDeadline": "2030-01-01T00:00:00.000Z"
 }
