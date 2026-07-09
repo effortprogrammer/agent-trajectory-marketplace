@@ -329,6 +329,12 @@ const main = async () => {
     await page.locator(".supply-card").first().waitFor({ timeout: 10_000 })
 
     const capture = async (name, selector, readySelector) => {
+      // Records open as full pages (Kaggle-style); return to the catalog
+      // grid before selecting the next card.
+      if (await page.locator("#record-view:visible").count()) {
+        await page.locator("#record-back").click()
+        await page.locator(".supply-card").first().waitFor({ timeout: 10_000 })
+      }
       await page.locator(selector).first().click()
       try {
         await page

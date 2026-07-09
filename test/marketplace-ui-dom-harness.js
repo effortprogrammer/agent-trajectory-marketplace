@@ -118,6 +118,7 @@ const requiredIds = `
   admin-nav device-approval-form device-approve device-deny device-user-code
   my-data-access-tab my-data-downloads-tab my-data-access-content my-data-downloads-content
   buyer-onboarding-form buyer-onboarding-contact buyer-onboarding-use detail-panel-content
+  catalog-view record-view record-back record-breadcrumb-title
   listing-grid nav-marketplace nav-my-data nav-operator nav-requests nav-seller-publish
   open-requests-view refresh-listings registry-state operator-actions-content
   requests-actions-content requests-view-content listing-search seller-actions-content seller-onboarding-form
