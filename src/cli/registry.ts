@@ -20,6 +20,7 @@ type RegistryServeOptions = Readonly<{
   hosted?: boolean
   port?: string
   sellerKey: readonly string[]
+  operatorKey: readonly string[]
   storage?: string
   storageBackend?: string
   tmp?: string
@@ -96,6 +97,12 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
     .option("--hosted", "Load hosted registry config from REGISTRY_* environment variables")
     .option("--access-records <path>", "Closed-alpha operator access state JSON path")
     .option("--seller-key <sellerId:key>", "Seller API key mapping", collectSellerKey, [])
+    .option(
+      "--operator-key <operatorId:key>",
+      "Operator API key mapping for operator-only surfaces",
+      collectSellerKey,
+      [],
+    )
     .action(async (options: RegistryServeOptions) => {
       if (options.hosted === true) {
         await runRegistryServerProcess(parseHostedRegistryServeEnvConfig(process.env))
@@ -116,6 +123,7 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
           ...(options.storage === undefined ? {} : { storage: options.storage }),
           ...(options.tmp === undefined ? {} : { tmp: options.tmp }),
           sellerKey: options.sellerKey,
+          operatorKey: options.operatorKey,
           ...(options.storageBackend === undefined
             ? {}
             : { storageBackend: options.storageBackend }),
