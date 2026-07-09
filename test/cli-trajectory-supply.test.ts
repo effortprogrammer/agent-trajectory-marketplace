@@ -170,3 +170,76 @@ describe("trajectory marketplace supply CLI", () => {
     expect(wrongKey.stderr).toContain("unauthorized")
   })
 })
+
+describe("trajectory marketplace supply inspect CLI", () => {
+  test("shows proof and state for a candidate without any download surface", async () => {
+    const candidate = await runCli([
+      "trajectory",
+      "marketplace",
+      "seller",
+      "candidate",
+      "submit",
+      "--registry",
+      registryUrl(),
+      "--api-key",
+      "test-key",
+      "--fixture",
+      "test/fixtures/candidate-valid.json",
+      "--json",
+    ])
+    expect(candidate.success).toBe(true)
+    const submitted = supplyRecordResponseSchema.parse(parseJsonOutput(candidate.stdout)).supply
+
+    const inspected = await runCli([
+      "trajectory",
+      "marketplace",
+      "supply",
+      "inspect",
+      submitted.supplyId,
+      "--registry",
+      registryUrl(),
+      "--api-key",
+      "buyer-smoke-key",
+      "--json",
+    ])
+    expect(inspected.success).toBe(true)
+    const record = supplyRecordResponseSchema.parse(parseJsonOutput(inspected.stdout)).supply
+    expect(record.state).toBe("candidate")
+    expect(record.proof.hashes).toHaveLength(2)
+    // Metadata/proof/state only: no file names, download paths, or urls.
+    for (const forbidden of ["files", "urlPath", "download", "trace.atf.json"] as const) {
+      expect(inspected.stdout).not.toContain(forbidden)
+    }
+
+    const listed = await runCli([
+      "trajectory",
+      "marketplace",
+      "supply",
+      "list",
+      "--registry",
+      registryUrl(),
+      "--api-key",
+      "buyer-smoke-key",
+      "--json",
+    ])
+    expect(listed.success).toBe(true)
+    expect(listed.stdout).toContain(submitted.supplyId)
+  })
+
+  test("keeps the legacy marketplace inspect surface retired", async () => {
+    const legacy = await runCli([
+      "trajectory",
+      "marketplace",
+      "inspect",
+      "listing-0123456789abcdef",
+      "--registry",
+      registryUrl(),
+      "--api-key",
+      "buyer-smoke-key",
+      "--json",
+    ])
+    expect(legacy.success).toBe(false)
+    expect(legacy.stderr).toContain("gone")
+    expect(legacy.stdout).not.toContain("files")
+  })
+})

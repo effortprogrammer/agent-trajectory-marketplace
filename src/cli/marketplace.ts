@@ -7,7 +7,9 @@ import {
   createWantedDatasetInRegistry,
   downloadRegistryListingPackage,
   inspectRegistryListing,
+  inspectRegistrySupplyRecord,
   listRegistryListings,
+  listRegistrySupply,
   listRegistryWantedDatasets,
   submitSupplyCandidateToRegistry,
   submitSupplyCommitmentToRegistry,
@@ -135,6 +137,45 @@ export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
         await listRegistryWantedDatasets({
           ...(apiKey === undefined ? {} : { apiKey }),
           registryUrl: options.registry,
+        }),
+      )
+    })
+
+  const supplyCommand = marketplaceCommand
+    .command("supply")
+    .description("Browse seller-custodied supply records (metadata, proof, and state only)")
+
+  supplyCommand
+    .command("list")
+    .description("List supply records and wanted demand signals")
+    .requiredOption("--registry <url>", "Marketplace registry base URL")
+    .option("--api-key <key>", "Registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
+    .option("--json", "Print supply records as JSON")
+    .action(async (options: Omit<SupplyFixtureOptions, "fixture">) => {
+      const apiKey = marketplaceBuyerApiKey(options)
+      printJson(
+        await listRegistrySupply({
+          ...(apiKey === undefined ? {} : { apiKey }),
+          registryUrl: options.registry,
+        }),
+      )
+    })
+
+  supplyCommand
+    .command("inspect <supplyRecordId>")
+    .description(
+      "Inspect one supply record or wanted post; there is no download surface before fulfillment",
+    )
+    .requiredOption("--registry <url>", "Marketplace registry base URL")
+    .option("--api-key <key>", "Registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
+    .option("--json", "Print the supply record as JSON")
+    .action(async (supplyRecordId: string, options: Omit<SupplyFixtureOptions, "fixture">) => {
+      const apiKey = marketplaceBuyerApiKey(options)
+      printJson(
+        await inspectRegistrySupplyRecord({
+          ...(apiKey === undefined ? {} : { apiKey }),
+          registryUrl: options.registry,
+          supplyRecordId,
         }),
       )
     })

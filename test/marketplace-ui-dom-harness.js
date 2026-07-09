@@ -128,144 +128,124 @@ const requiredIds = `
   .trim()
   .split(/\s+/)
 
-export const listing = {
-  listingId: "listing-1111111111111111",
-  packageId: "package-local",
-  datasetId: "dataset-local",
-  sellerId: "agent-local",
-  title: "Closed Alpha Launch Trajectory",
-  runtime: "codex",
-  status: "ready",
-  eventCount: 6,
-  eventKinds: ["tool", "message"],
-  traceSha256: "a".repeat(64),
+export const wantedRecord = {
+  wantedId: "wanted-1111111111111111",
+  state: "wanted",
+  title: "Multi-repo refactor sessions wanted",
+  description: "Demand signal for verified refactor trajectories with test outcomes.",
+  domain: "software-engineering",
+  harness: "claude-code",
+  desiredEventCount: 40000,
+  budgetDisplay: "Indicative budget: non-binding",
+  requesterLabel: "buyer-f7c46663",
+  interestCount: 2,
   createdAt: "2026-07-05T00:00:00.000Z",
-  metadata: {
-    schemaVersion: 1,
-    price: { mode: "request_access", display: "Request access" },
-    license: { name: "Closed Alpha Evaluation", url: "https://example.test/license" },
-    usageTerms: {
-      allowed: ["evaluation", "benchmarking"],
-      prohibited: ["resale", "model training without written approval"],
-    },
-    sellerProfile: {
-      displayName: "Agent Local",
-      supportUrl: "https://example.test/support",
-    },
-    sample: {
-      summary: "Sanitized Hermes workflow sample",
-      maxPreviewEvents: 3,
-    },
-    accessPolicy: "request_required",
-  },
-  accessState: {
-    accessPolicy: "request_required",
-    downloadAllowed: false,
-  },
-  commerceState: {
-    provider: "manual",
-    checkoutState: "disabled",
-    purchaseState: "manual_review",
-    entitlementState: "not_granted",
-    receiptState: "unavailable",
-    invoiceState: "unavailable",
-    refundState: "unavailable",
-  },
-  files: [
-    {
-      fileName: "manifest.json",
-      sha256: "b".repeat(64),
-      urlPath: "/v1/listings/listing-1111111111111111/files/manifest.json",
-    },
-  ],
+  updatedAt: "2026-07-05T00:00:00.000Z",
 }
+
+const proofBody = () => ({
+  sample: {
+    summary: "Median session: 62 events, 11 tool calls, 3 verification runs.",
+    eventCount: 29760,
+    eventKinds: ["task", "tool_call", "verification"],
+  },
+  quality: "Every session ends in a verified green test suite.",
+  safety: "Redaction scanner reports 0 findings.",
+  provenance: "Self-generated agent logs from our own harness runs.",
+  terms: "Evaluation allowed; resale prohibited.",
+  hashes: [
+    { label: "sessions-index", sha256: "5".repeat(64) },
+    { label: "trace-bundle-01", sha256: "a".repeat(64) },
+  ],
+})
+
+export const candidateRecord = {
+  supplyId: "supply-2222222222222222",
+  state: "candidate",
+  sellerLabel: "agent-local",
+  title: "480 verified refactor trajectories",
+  description: "Proven-but-unbound supply claim with bounded proof.",
+  proof: proofBody(),
+  indicativeTerms: {
+    priceDisplay: "Indicative: request quote",
+    licenseName: "Closed Alpha Evaluation",
+  },
+  interestCount: 1,
+  createdAt: "2026-07-05T00:00:00.000Z",
+  updatedAt: "2026-07-05T00:00:00.000Z",
+}
+
+export const commitmentTerms = () => ({
+  reservePrice: { amountMinorUnits: 450000, currency: "USD", display: "$4,500 reserve" },
+  deliverySlaHours: 168,
+  proofProfile: {
+    description: "Delivered bundle must match the candidate proof profile.",
+    mustMatchProofHashes: true,
+    expectedEventCount: 29760,
+  },
+  failureConsequences: ["commitment_strike", "listing_suspension"],
+})
+
+export const committedRecord = {
+  supplyId: "supply-3333333333333333",
+  state: "committed",
+  sellerLabel: "agent-local",
+  title: "Committed refactor trajectory bundle",
+  description: "Committed supply with binding reserve, SLA, and consequences.",
+  proof: proofBody(),
+  interestCount: 3,
+  commitmentId: "commitment-3333333333333333",
+  terms: commitmentTerms(),
+  committedAt: "2026-07-06T00:00:00.000Z",
+  createdAt: "2026-07-05T00:00:00.000Z",
+  updatedAt: "2026-07-06T00:00:00.000Z",
+}
+
+export const disputedRecord = {
+  supplyId: "supply-4444444444444444",
+  state: "disputed",
+  sellerLabel: "agent-local",
+  title: "Disputed delivery bundle",
+  proof: proofBody(),
+  interestCount: 0,
+  commitmentId: "commitment-4444444444444444",
+  terms: commitmentTerms(),
+  committedAt: "2026-07-06T00:00:00.000Z",
+  stateReason: "validation mismatch: delivered event count below the committed profile",
+  createdAt: "2026-07-05T00:00:00.000Z",
+  updatedAt: "2026-07-07T00:00:00.000Z",
+}
+
+export const auctionBody = (overrides = {}) => ({
+  commitmentId: committedRecord.commitmentId,
+  supplyId: committedRecord.supplyId,
+  state: "open",
+  deadline: "2026-08-01T00:00:00.000Z",
+  reserveMet: false,
+  bidCount: 1,
+  highestBid: {
+    bidId: "bid-1111111111111111",
+    commitmentId: committedRecord.commitmentId,
+    amountMinorUnits: 400000,
+    currency: "USD",
+    bidderPseudonym: "bidder-0a1b2c3d",
+    placedAt: "2026-07-06T12:00:00.000Z",
+  },
+  ...overrides,
+})
+
+export const supplyListBody = (overrides = {}) => ({
+  ok: true,
+  supply: [candidateRecord, committedRecord],
+  wanted: [wantedRecord],
+  ...overrides,
+})
 
 export const jsonResponse = (body, status = 200, headers = {}) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json", ...headers },
   })
-
-export const morphologyBody = () => ({
-  eventCount: 6,
-  uniqueEventNames: 4,
-  kindDistribution: [
-    { kind: "function_enter", count: 2, share: 0.3333 },
-    { kind: "function_exit", count: 2, share: 0.3333 },
-    { kind: "tool_call", count: 1, share: 0.1667 },
-    { kind: "llm_call", count: 1, share: 0.1667 },
-  ],
-  toolCallDistribution: [{ name: "trajectory.demo", count: 1 }],
-  llmCallCount: 1,
-  functionSpanCount: 2,
-  maxFunctionDepth: 2,
-})
-
-export const topologyBody = () => ({
-  sampledEventCount: 5,
-  totalEventCount: 6,
-  truncated: true,
-  roots: [
-    { kind: "session_start", name: "trajectory.demo", depth: 0, children: [] },
-    {
-      kind: "function_enter",
-      name: "run_pipeline",
-      depth: 0,
-      children: [
-        { kind: "llm_call", name: "trajectory.demo", depth: 1, children: [] },
-        {
-          kind: "function_enter",
-          name: "call_tool",
-          depth: 1,
-          children: [{ kind: "tool_call", name: "search_docs", depth: 2, children: [] }],
-        },
-      ],
-    },
-  ],
-})
-
-export const usageBody = () => ({
-  viewCount: 4,
-  downloadCount: 2,
-  accessRequestCount: 1,
-  lastDownloadedAt: "2026-07-05T00:00:00.000Z",
-})
-
-export const reviewsBody = (overrides = {}) => ({
-  reviewCount: 1,
-  averageRating: 4,
-  reviews: [
-    {
-      reviewId: "review-1111111111111111",
-      listingId: listing.listingId,
-      reviewerLabel: "buyer-1a2b3c4d",
-      rating: 4,
-      comment: "Solid coverage for tool-use evaluations.",
-      createdAt: "2026-07-05T00:00:00.000Z",
-      updatedAt: "2026-07-05T00:00:00.000Z",
-    },
-  ],
-  viewerCanReview: false,
-  ...overrides,
-})
-
-export const detailBody = (overrides = {}) => ({
-  ok: true,
-  listing,
-  preview: {
-    runtime: listing.runtime,
-    status: listing.status,
-    eventCount: listing.eventCount,
-    eventKinds: listing.eventKinds,
-    sample: listing.metadata.sample,
-  },
-  redactionReport: { redactionClean: true, redactedFindingCount: 0 },
-  morphology: morphologyBody(),
-  topology: topologyBody(),
-  usage: usageBody(),
-  reviews: reviewsBody(),
-  ...overrides,
-})
 
 export const elementText = (node) =>
   [node.textContent, ...node.children.map((child) => elementText(child))].join("")
@@ -291,6 +271,14 @@ const signedOutAuthBody = () => ({
   account: null,
   access: { approved: false, roles: [], entitlements: [] },
 })
+
+// The app re-reads /v1/auth/me after login (the login response predates the
+// session cookie), so the default mock keeps one session's auth body here.
+let currentAuthBody = signedOutAuthBody()
+
+export const setMockedAuthSession = (body) => {
+  currentAuthBody = body
+}
 
 const signedInAuthBody = () => ({
   ok: true,
@@ -318,25 +306,39 @@ export const defaultMarketplaceFetch = async (input, _init) => {
     return new Response("", { status: 200 })
   }
   if (path === "/v1/auth/me") {
-    return jsonResponse(signedOutAuthBody())
+    return jsonResponse(currentAuthBody)
   }
   if (path === "/v1/auth/signup") {
     return jsonResponse({ ok: true, state: "code_sent" }, 202)
   }
   if (path === "/v1/auth/login") {
-    return jsonResponse(signedInAuthBody(), 200, { "x-atm-csrf": "csrf-test" })
+    currentAuthBody = signedInAuthBody()
+    return jsonResponse(currentAuthBody, 200, { "x-atm-csrf": "csrf-test" })
   }
   if (path === "/v1/auth/logout") {
-    return jsonResponse(signedOutAuthBody())
+    currentAuthBody = signedOutAuthBody()
+    return jsonResponse(currentAuthBody)
   }
   if (path === "/v1/auth/device/approve") {
     return jsonResponse({ ok: true, state: "approved" })
   }
-  if (path === "/v1/listings") {
-    return jsonResponse({ ok: true, listings: [listing] })
+  if (path === "/v1/supply") {
+    return jsonResponse(supplyListBody())
   }
-  if (path === "/v1/listings/listing-1111111111111111") {
-    return jsonResponse(detailBody())
+  if (path === `/v1/supply/${wantedRecord.wantedId}`) {
+    return jsonResponse({ ok: true, wanted: wantedRecord })
+  }
+  if (path === `/v1/supply/${candidateRecord.supplyId}`) {
+    return jsonResponse({ ok: true, supply: candidateRecord })
+  }
+  if (path === `/v1/supply/${committedRecord.supplyId}`) {
+    return jsonResponse({ ok: true, supply: committedRecord })
+  }
+  if (path === `/v1/supply/${disputedRecord.supplyId}`) {
+    return jsonResponse({ ok: true, supply: disputedRecord })
+  }
+  if (path === `/v1/supply/commitments/${committedRecord.commitmentId}/auction`) {
+    return jsonResponse({ ok: true, auction: auctionBody() })
   }
   return jsonResponse(
     {
@@ -352,6 +354,7 @@ export const defaultMarketplaceFetch = async (input, _init) => {
 }
 
 export const installMarketplaceHarness = (fetchHandler = defaultMarketplaceFetch) => {
+  currentAuthBody = signedOutAuthBody()
   const document = new FakeDocument(requiredIds)
   const objectUrls = []
   const storage = new FakeStorage()
