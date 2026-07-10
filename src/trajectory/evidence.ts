@@ -189,6 +189,20 @@ export type TrajectoryTraceDocument = TraceDocument
 export const readTrajectoryTrace = (tracePath: string): TrajectoryTraceDocument =>
   readTraceDocument(tracePath)
 
+// Schema-validates an in-memory trace value (escrow intake parses traces
+// from archive bytes, never from paths). Returns undefined on schema
+// mismatch so callers can report their own bounded error.
+export const parseTrajectoryTrace = (value: unknown): TrajectoryTraceDocument | undefined => {
+  const parsed = traceSchema.safeParse(value)
+  return parsed.success ? parsed.data : undefined
+}
+
+// Events whose details carry credential-looking material and are not already
+// redacted — shared by trace inspection and the escrow intake scan.
+export const findUnredactedSecretEvents = (
+  events: readonly TrajectoryTraceEvent[],
+): readonly TrajectoryTraceEvent[] => collectUnredactedSecrets(events)
+
 export const inspectTraceFile = (tracePath: string): InspectTraceResult => {
   const trace = readTraceDocument(tracePath)
 
