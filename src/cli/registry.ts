@@ -5,6 +5,7 @@ import { parseRegistryEmailAuthEnvConfig } from "../registry/email-delivery"
 import { readRegistryOperatorState } from "../registry/operator"
 import {
   parseHostedRegistryServeEnvConfig,
+  parseRegistryEscrowEnvConfig,
   parseRegistryServeConfig,
   runRegistryServerProcess,
 } from "../registry/server"
@@ -110,6 +111,7 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
       }
       const accessRecords = accessRecordsFromOption(options.accessRecords)
       const accessRecordsLoader = accessRecordsLoaderFromOption(options.accessRecords)
+      const localEscrow = parseRegistryEscrowEnvConfig(process.env)
       await runRegistryServerProcess(
         parseRegistryServeConfig({
           emailAuth: parseRegistryEmailAuthEnvConfig(process.env, "local"),
@@ -127,6 +129,7 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
           ...(options.storageBackend === undefined
             ? {}
             : { storageBackend: options.storageBackend }),
+          ...(localEscrow === undefined ? {} : { escrow: localEscrow }),
         }),
       )
     })
