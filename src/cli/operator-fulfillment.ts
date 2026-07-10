@@ -1,9 +1,17 @@
+import { Buffer } from "node:buffer"
 import { readFileSync } from "node:fs"
 
 import type { Command } from "commander"
 
 import { createRegistryDatabase, type RegistryDatabase } from "../registry/database"
+import {
+  decryptEscrowArchive,
+  escrowMasterKeyFromHex,
+  rewrapEscrowDek,
+} from "../registry/escrow-crypto"
+import { validateEscrowArchive } from "../registry/escrow-intake"
 import { grantOperatorEntitlement, mutateRegistryOperatorState } from "../registry/operator"
+import { createRegistryStorage, type RegistryStorage } from "../registry/storage"
 import {
   buildFulfillmentTransactionId,
   type SupplyDeliveryManifest,
@@ -11,6 +19,7 @@ import {
   supplyDeliveryManifestSchema,
   supplyValidationReportSchema,
 } from "../registry/supply-contract"
+import { supplyEscrowPolicy } from "../registry/supply-escrow-contract"
 
 const printJson = (value: unknown) => {
   console.log(JSON.stringify(value, null, 2))
@@ -38,6 +47,47 @@ const withDatabase = <T>(dbPath: string, action: (database: RegistryDatabase) =>
 }
 
 const readJsonFixture = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"))
+
+// Escrowed supply (encrypted custody at publish) needs no seller delivery:
+// the dataset was validated and stored at candidate intake, so an opened
+// transaction passes through the transient delivery states as event-log
+// entries and rests at fulfilled with machine-generated artifacts.
+const activeSupplyEscrow = (database: RegistryDatabase, supplyId: string) => {
+  const escrow = database.getSupplyEscrow(supplyId)
+  return escrow === undefined || escrow.deletedAt !== undefined ? undefined : escrow
+}
+
+const escrowMasterKeyFromEnv = (name = "REGISTRY_ESCROW_MASTER_KEY"): Buffer => {
+  const value = process.env[name]
+  if (value === undefined || value.trim().length === 0) {
+    throw new Error(`invalid_request: ${name} is required`)
+  }
+  return escrowMasterKeyFromHex(value)
+}
+
+const escrowRetentionDays = (): number => {
+  const { REGISTRY_ESCROW_RETENTION_DAYS: raw } = process.env
+  if (raw === undefined || raw.trim().length === 0) {
+    return supplyEscrowPolicy.defaultRetentionDays
+  }
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error("invalid_request: REGISTRY_ESCROW_RETENTION_DAYS must be a positive integer")
+  }
+  return parsed
+}
+
+type EscrowStorageOptions = Readonly<{ storage: string; storageBackend?: string }>
+
+const escrowStorageFor = (
+  database: RegistryDatabase,
+  options: EscrowStorageOptions,
+): RegistryStorage =>
+  createRegistryStorage({
+    backend: options.storageBackend === "hosted" ? "hosted" : "local",
+    database,
+    storageRoot: options.storage,
+  })
 
 // Cross-check a delivery manifest against the committed proof profile: when
 // the seller committed to mustMatchProofHashes, every proof hash must appear
@@ -137,7 +187,60 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
             actorId: options.actor,
             now: now.toISOString(),
           })
-          printJson({ actor: options.actor, fulfillment: transaction })
+
+          // Encrypted custody: the dataset is already escrowed and validated,
+          // so the transaction rests at fulfilled immediately. The transient
+          // delivery states land in the event log only, and the delivery
+          // manifest / validation report are machine-generated.
+          const escrow = activeSupplyEscrow(database, auction.supplyId)
+          if (escrow === undefined) {
+            printJson({ actor: options.actor, fulfillment: transaction })
+            return
+          }
+          const generatedManifest: SupplyDeliveryManifest = {
+            deliveredAt: escrow.uploadedAt,
+            artifacts: (supply.proof.hashes ?? []).map((proofHash) => ({
+              label: proofHash.label,
+              sha256: proofHash.sha256,
+            })),
+            notes: "escrowed at publish; delivery satisfied by encrypted custody",
+          }
+          database.updateFulfillmentTransaction({
+            actorId: options.actor,
+            deliveryManifest: generatedManifest,
+            detail: `escrowed dataset on record (${escrow.artifactCount} artifacts, ${escrow.byteCount} ciphertext bytes)`,
+            expectedCurrentStates: ["seller_delivery_requested"],
+            now: new Date().toISOString(),
+            state: "delivered",
+            transactionId: transaction.transactionId,
+          })
+          database.updateFulfillmentTransaction({
+            actorId: options.actor,
+            detail: "escrow validation carried from publish intake",
+            expectedCurrentStates: ["delivered"],
+            now: new Date().toISOString(),
+            state: "validation_pending",
+            transactionId: transaction.transactionId,
+          })
+          const fulfilled = database.updateFulfillmentTransaction({
+            actorId: options.actor,
+            detail: "escrowed dataset validated at publish; awaiting payment confirmation",
+            expectedCurrentStates: ["validation_pending"],
+            now: new Date().toISOString(),
+            state: "fulfilled",
+            transactionId: transaction.transactionId,
+            validationReport: {
+              validatedAt: escrow.uploadedAt,
+              result: "match",
+              notes: "auto-validated at publish intake (hash recomputation over real bytes)",
+            },
+          })
+          printJson({
+            actor: options.actor,
+            fulfillment: fulfilled,
+            escrow: { state: "escrowed", uploadedAt: escrow.uploadedAt },
+            entitlement: "releasable",
+          })
         })
       },
     )
@@ -154,6 +257,12 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
     .action((options: FulfillmentTransactionOptions & Readonly<{ deliveryManifest: string }>) => {
       const manifest = supplyDeliveryManifestSchema.parse(readJsonFixture(options.deliveryManifest))
       withDatabase(options.db, (database) => {
+        const current = database.getFulfillmentTransaction(options.transactionId)
+        if (current !== undefined && activeSupplyEscrow(database, current.supplyId) !== undefined) {
+          throw new Error(
+            "invalid_request: escrowed supply needs no manual delivery; fulfillment open records it automatically",
+          )
+        }
         const transaction = database.updateFulfillmentTransaction({
           actorId: options.actor,
           deliveryManifest: manifest,
@@ -186,6 +295,11 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
         const current = database.getFulfillmentTransaction(options.transactionId)
         if (current === undefined) {
           throw new Error(`fulfillment_not_found: ${options.transactionId}`)
+        }
+        if (activeSupplyEscrow(database, current.supplyId) !== undefined) {
+          throw new Error(
+            "invalid_request: escrowed supply is auto-validated at publish; use fulfillment escrow revalidate for audits",
+          )
         }
         const hashMismatches = proofHashMismatches(
           database,
@@ -324,11 +438,15 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
     .requiredOption("--buyer-access-id <id>", "Approved buyer access record id")
     .requiredOption("--listing-id <id>", "Entitlement listing id (listing-<hex16>)")
     .requiredOption("--actor <id>", "Operator actor id")
+    .option(
+      "--payment-ref <text>",
+      "Off-platform payment reference recorded with the release event",
+    )
     .option("--json", "Print the release outcome as JSON")
     .action(
       (
         options: FulfillmentTransactionOptions &
-          Readonly<{ buyerAccessId: string; listingId: string }>,
+          Readonly<{ buyerAccessId: string; listingId: string; paymentRef?: string }>,
       ) => {
         withDatabase(options.db, (database) => {
           const current = database.getFulfillmentTransaction(options.transactionId)
@@ -415,12 +533,16 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
             })
           })
 
+          const releaseDetail = grantApplied
+            ? "entitlement granted in operator state and release recorded"
+            : "entitlement already present in operator state; release recorded idempotently"
           const released = database.updateFulfillmentTransaction({
             actorId: options.actor,
             buyerAccessId: options.buyerAccessId,
-            detail: grantApplied
-              ? "entitlement granted in operator state and release recorded"
-              : "entitlement already present in operator state; release recorded idempotently",
+            detail:
+              options.paymentRef === undefined
+                ? releaseDetail
+                : `${releaseDetail}; payment-ref ${options.paymentRef}`,
             entitlementListingId: options.listingId,
             expectedCurrentStates: ["entitlement_release_pending"],
             now: new Date().toISOString(),
@@ -428,12 +550,210 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
             transactionId: options.transactionId,
           })
 
+          // Escrowed datasets get their retention clock: the buyer's
+          // re-download window starts at release, and gc deletes after it.
+          let escrowDeleteAfter: string | undefined
+          if (activeSupplyEscrow(database, released.supplyId) !== undefined) {
+            escrowDeleteAfter = new Date(
+              Date.parse(released.updatedAt) + escrowRetentionDays() * 86_400_000,
+            ).toISOString()
+            database.setSupplyEscrowDeleteAfter({
+              supplyId: released.supplyId,
+              deleteAfter: escrowDeleteAfter,
+            })
+          }
+
           printJson({
             actor: options.actor,
             fulfillment: released,
             grantApplied,
             idempotent: false,
+            ...(escrowDeleteAfter === undefined ? {} : { escrowDeleteAfter }),
           })
+        })
+      },
+    )
+
+  const escrowCommand = fulfillmentCommand
+    .command("escrow")
+    .description("Operate the encrypted supply escrow: inspect, gc, revalidate, key rotation")
+
+  escrowCommand
+    .command("inspect")
+    .description("Show the escrow key row and stored object for one supply record")
+    .requiredOption("--db <path>", "Registry SQLite database path")
+    .requiredOption("--storage <path>", "Registry storage root")
+    .requiredOption("--supply-id <id>", "Supply record id")
+    .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
+    .option("--json", "Print the escrow status as JSON")
+    .action(
+      (
+        options: Readonly<{ db: string; supplyId: string; json?: boolean }> & EscrowStorageOptions,
+      ) => {
+        withDatabase(options.db, (database) => {
+          const escrow = database.getSupplyEscrow(options.supplyId)
+          if (escrow === undefined) {
+            throw new Error(`supply_not_found: no escrow for ${options.supplyId}`)
+          }
+          const storage = escrowStorageFor(database, options)
+          const { wrappedDek: _redactedDek, nonce: _nonce, tag: _tag, ...visible } = escrow
+          printJson({
+            escrow: visible,
+            object: storage.statEscrowObject(options.supplyId) ?? null,
+            supplyState: database.getSupplyRecord(options.supplyId)?.state,
+          })
+        })
+      },
+    )
+
+  escrowCommand
+    .command("gc")
+    .description(
+      "Delete escrow objects past their retention window or behind terminal listings; disputes defer",
+    )
+    .requiredOption("--db <path>", "Registry SQLite database path")
+    .requiredOption("--storage <path>", "Registry storage root")
+    .requiredOption("--actor <id>", "Operator actor id")
+    .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
+    .option("--dry-run", "Report deletions without applying them")
+    .option("--json", "Print the gc outcome as JSON")
+    .action(
+      (
+        options: Readonly<{ db: string; actor: string; dryRun?: boolean; json?: boolean }> &
+          EscrowStorageOptions,
+      ) => {
+        withDatabase(options.db, (database) => {
+          const storage = escrowStorageFor(database, options)
+          const now = new Date().toISOString()
+          const deleted: string[] = []
+          const deferred: { supplyId: string; reason: string }[] = []
+          for (const escrow of database.listSupplyEscrows()) {
+            if (escrow.deletedAt !== undefined) {
+              continue
+            }
+            const supply = database.getSupplyRecord(escrow.supplyId)
+            if (supply?.state === "disputed") {
+              deferred.push({ supplyId: escrow.supplyId, reason: "disputed" })
+              continue
+            }
+            const retentionPassed =
+              escrow.deleteAfter !== undefined && Date.parse(now) > Date.parse(escrow.deleteAfter)
+            const terminalListing =
+              supply !== undefined &&
+              (supply.state === "expired" ||
+                supply.state === "failed" ||
+                supply.state === "unavailable")
+            if (!retentionPassed && !terminalListing) {
+              continue
+            }
+            if (options.dryRun !== true) {
+              storage.deleteEscrowObject(escrow.supplyId)
+              database.markSupplyEscrowDeleted({ supplyId: escrow.supplyId, deletedAt: now })
+            }
+            deleted.push(escrow.supplyId)
+          }
+          printJson({ actor: options.actor, dryRun: options.dryRun === true, deleted, deferred })
+        })
+      },
+    )
+
+  escrowCommand
+    .command("revalidate")
+    .description(
+      "Decrypt one escrow object and re-run the intake validation for audits and disputes",
+    )
+    .requiredOption("--db <path>", "Registry SQLite database path")
+    .requiredOption("--storage <path>", "Registry storage root")
+    .requiredOption("--supply-id <id>", "Supply record id")
+    .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
+    .option("--json", "Print the revalidation outcome as JSON")
+    .action(
+      (
+        options: Readonly<{ db: string; supplyId: string; json?: boolean }> & EscrowStorageOptions,
+      ) => {
+        const masterKey = escrowMasterKeyFromEnv()
+        withDatabase(options.db, (database) => {
+          const escrow = database.getSupplyEscrow(options.supplyId)
+          if (escrow === undefined || escrow.deletedAt !== undefined) {
+            throw new Error(`supply_not_found: no live escrow for ${options.supplyId}`)
+          }
+          const storage = escrowStorageFor(database, options)
+          const ciphertext = storage.readEscrowObject({
+            supplyId: options.supplyId,
+            expectedSha256: escrow.ciphertextSha256,
+          })
+          const plaintext = decryptEscrowArchive(masterKey, {
+            ciphertext: Buffer.from(ciphertext),
+            wrappedDek: escrow.wrappedDek,
+            nonce: escrow.nonce,
+            tag: escrow.tag,
+          })
+          // Re-runs the exact publish-intake validation; a human-authored
+          // "match" is never accepted here.
+          const intake = validateEscrowArchive({ archive: plaintext })
+          const lodged = new Set(
+            (database.getSupplyRecord(options.supplyId)?.proof.hashes ?? []).map(
+              (proofHash) => proofHash.sha256,
+            ),
+          )
+          const mismatches = intake.proofHashes
+            .filter((recomputed) => !lodged.has(recomputed.sha256))
+            .map((recomputed) => `recomputed hash for ${recomputed.label} is not in proof.hashes`)
+          printJson({
+            supplyId: options.supplyId,
+            result: mismatches.length === 0 ? "match" : "mismatch",
+            artifactCount: intake.proofHashes.length,
+            totalEventCount: intake.totalEventCount,
+            mismatches,
+          })
+          if (mismatches.length > 0) {
+            process.exitCode = 1
+          }
+        })
+      },
+    )
+
+  escrowCommand
+    .command("rewrap-master-key")
+    .description(
+      "Rotate the escrow master key: re-wrap every DEK under REGISTRY_ESCROW_NEXT_MASTER_KEY and verify a decrypt probe per object",
+    )
+    .requiredOption("--db <path>", "Registry SQLite database path")
+    .requiredOption("--storage <path>", "Registry storage root")
+    .requiredOption("--actor <id>", "Operator actor id")
+    .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
+    .option("--json", "Print the rotation outcome as JSON")
+    .action(
+      (options: Readonly<{ db: string; actor: string; json?: boolean }> & EscrowStorageOptions) => {
+        const currentKey = escrowMasterKeyFromEnv("REGISTRY_ESCROW_MASTER_KEY")
+        const nextKey = escrowMasterKeyFromEnv("REGISTRY_ESCROW_NEXT_MASTER_KEY")
+        withDatabase(options.db, (database) => {
+          const storage = escrowStorageFor(database, options)
+          const rewrapped: string[] = []
+          for (const escrow of database.listSupplyEscrows()) {
+            if (escrow.deletedAt !== undefined) {
+              continue
+            }
+            const nextWrappedDek = rewrapEscrowDek(currentKey, nextKey, escrow.wrappedDek)
+            // Decrypt probe before committing the row: the rotated DEK must
+            // open the stored object or the rotation aborts.
+            const ciphertext = storage.readEscrowObject({
+              supplyId: escrow.supplyId,
+              expectedSha256: escrow.ciphertextSha256,
+            })
+            decryptEscrowArchive(nextKey, {
+              ciphertext: Buffer.from(ciphertext),
+              wrappedDek: nextWrappedDek,
+              nonce: escrow.nonce,
+              tag: escrow.tag,
+            })
+            database.updateSupplyEscrowWrappedDek({
+              supplyId: escrow.supplyId,
+              wrappedDek: nextWrappedDek,
+            })
+            rewrapped.push(escrow.supplyId)
+          }
+          printJson({ actor: options.actor, rewrapped, count: rewrapped.length })
         })
       },
     )
