@@ -22,6 +22,7 @@ import {
   supplyTimestampSchema,
   wantedDatasetRequestSchema,
 } from "../registry/supply-contract"
+import { buildSupplyProofSampleFromTrace } from "../registry/supply-sample"
 import { readStoredRegistrySession } from "./auth-store"
 
 type MarketplaceListOptions = Readonly<{
@@ -64,6 +65,28 @@ type SupplyFixtureOptions = Readonly<{
 }>
 
 type CommitmentSubmitOptions = SupplyFixtureOptions & Readonly<{ supplyId?: string }>
+
+type CandidateSubmitOptions = SupplyFixtureOptions & Readonly<{ trace?: string }>
+
+// With --trace, the proof sample is derived from the actual dataset rows so
+// the marketplace preview always shows real session content; a hand-written
+// fixture summary survives as marketing copy, everything else is computed.
+type CandidateFixtureShape = Readonly<{
+  proof?: Readonly<{ sample?: Readonly<{ summary?: unknown }> }>
+}>
+
+const withDerivedProofSample = (fixture: unknown, tracePath: string | undefined): unknown => {
+  if (tracePath === undefined) {
+    return fixture
+  }
+  const candidate = fixture as CandidateFixtureShape & Record<string, unknown>
+  const summary = candidate.proof?.sample?.summary
+  const sample = buildSupplyProofSampleFromTrace({
+    tracePath,
+    ...(typeof summary === "string" ? { summary } : {}),
+  })
+  return { ...candidate, proof: { ...(candidate.proof ?? {}), sample } }
+}
 
 const marketplaceSellerApiKey = (options: { apiKey?: string; registry: string }) => {
   const { TRAJECTORY_REGISTRY_API_KEY: envApiKey } = process.env
@@ -193,10 +216,16 @@ export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
     .description("Submit one candidate dataset with bounded JSON proof")
     .requiredOption("--registry <url>", "Marketplace registry base URL")
     .requiredOption("--fixture <path>", "Candidate JSON fixture (proof, optional commitment block)")
+    .option(
+      "--trace <path>",
+      "Derive proof.sample (records, events, kinds, counts) from this trace.atf.json; a fixture summary is kept as override",
+    )
     .option("--api-key <key>", "Seller registry API key; prefer TRAJECTORY_REGISTRY_API_KEY")
     .option("--json", "Print the stored supply record as JSON")
-    .action(async (options: SupplyFixtureOptions) => {
-      const fixture = candidateSubmitFixtureSchema.parse(readFixtureJson(options.fixture))
+    .action(async (options: CandidateSubmitOptions) => {
+      const fixture = candidateSubmitFixtureSchema.parse(
+        withDerivedProofSample(readFixtureJson(options.fixture), options.trace),
+      )
       const apiKey = marketplaceSellerApiKey(options)
       const submitted = await submitSupplyCandidateToRegistry({
         ...(apiKey === undefined ? {} : { apiKey }),

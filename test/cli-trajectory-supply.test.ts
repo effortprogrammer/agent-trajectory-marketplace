@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtempSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import {
   supplyRecordResponseSchema,
@@ -96,6 +99,57 @@ describe("trajectory marketplace supply CLI", () => {
     }
     expect(record.terms.deliverySlaHours).toBe(168)
     expect(record.commitmentId).toMatch(/^commitment-[a-f0-9]{16}$/)
+  })
+
+  test("derives the proof sample from an actual trace with --trace", async () => {
+    const workDir = mkdtempSync(join(tmpdir(), "cli-trace-sample-"))
+    const tracePath = join(workDir, "trace.atf.json")
+    const events = [
+      { kind: "function_enter", name: "turn-1", detail: "Fix the failing checkout test." },
+      { kind: "llm_call", name: "claude-sonnet-5", detail: "Reproducing the failure first." },
+      { kind: "tool_call", name: "run_tests", detail: "exit 1: totals.test.ts:112 failed" },
+      { kind: "function_exit", name: "turn-1", detail: "" },
+    ]
+    writeFileSync(
+      tracePath,
+      JSON.stringify({
+        runtime: "hermes",
+        status: "collected",
+        eventCount: events.length,
+        events,
+      }),
+    )
+
+    const candidate = await runCli([
+      "trajectory",
+      "marketplace",
+      "seller",
+      "candidate",
+      "submit",
+      "--registry",
+      registryUrl(),
+      "--api-key",
+      "test-key",
+      "--fixture",
+      "test/fixtures/candidate-valid.json",
+      "--trace",
+      tracePath,
+      "--json",
+    ])
+    expect(candidate.success).toBe(true)
+    const submitted = supplyRecordResponseSchema.parse(parseJsonOutput(candidate.stdout)).supply
+    // The stored sample is the actual dataset head, not the fixture's
+    // hand-written sample: real rows in session order, real counts, with the
+    // fixture's marketing summary preserved as the override.
+    expect(submitted.proof.sample?.records).toEqual(events)
+    expect(submitted.proof.sample?.eventCount).toBe(4)
+    expect(submitted.proof.sample?.eventKinds).toEqual([
+      "function_enter",
+      "llm_call",
+      "tool_call",
+      "function_exit",
+    ])
+    expect(submitted.proof.sample?.summary).toContain("Median session")
   })
 
   test("fails candidate submission when the commitment block omits the delivery SLA", async () => {

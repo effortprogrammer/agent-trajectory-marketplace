@@ -181,6 +181,14 @@ const assertUsableBundleDir = (bundleDir: string) => {
   }
 }
 
+export type TrajectoryTraceEvent = TraceEvent
+export type TrajectoryTraceDocument = TraceDocument
+
+// Validated trace access for callers that derive bounded previews (e.g. the
+// marketplace proof-sample builder) without re-owning the ATF schema.
+export const readTrajectoryTrace = (tracePath: string): TrajectoryTraceDocument =>
+  readTraceDocument(tracePath)
+
 export const inspectTraceFile = (tracePath: string): InspectTraceResult => {
   const trace = readTraceDocument(tracePath)
 
