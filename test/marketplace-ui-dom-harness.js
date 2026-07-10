@@ -332,6 +332,9 @@ export const defaultMarketplaceFetch = async (input, _init) => {
   if (path === "/v1/supply") {
     return jsonResponse(supplyListBody())
   }
+  if (path === "/v1/supply/fulfillments") {
+    return jsonResponse({ ok: true, fulfillments: [] })
+  }
   if (path === `/v1/supply/${wantedRecord.wantedId}`) {
     return jsonResponse({ ok: true, wanted: wantedRecord })
   }
