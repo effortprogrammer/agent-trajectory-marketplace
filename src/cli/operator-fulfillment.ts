@@ -682,12 +682,16 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
             supplyId: options.supplyId,
             expectedSha256: escrow.ciphertextSha256,
           })
-          const plaintext = decryptEscrowArchive(masterKey, {
-            ciphertext: Buffer.from(ciphertext),
-            wrappedDek: escrow.wrappedDek,
-            nonce: escrow.nonce,
-            tag: escrow.tag,
-          })
+          const plaintext = decryptEscrowArchive(
+            masterKey,
+            {
+              ciphertext: Buffer.from(ciphertext),
+              wrappedDek: escrow.wrappedDek,
+              nonce: escrow.nonce,
+              tag: escrow.tag,
+            },
+            options.supplyId,
+          )
           // Re-runs the exact publish-intake validation; a human-authored
           // "match" is never accepted here.
           const intake = validateEscrowArchive({ archive: plaintext })
@@ -734,19 +738,28 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
             if (escrow.deletedAt !== undefined) {
               continue
             }
-            const nextWrappedDek = rewrapEscrowDek(currentKey, nextKey, escrow.wrappedDek)
+            const nextWrappedDek = rewrapEscrowDek(
+              currentKey,
+              nextKey,
+              escrow.wrappedDek,
+              escrow.supplyId,
+            )
             // Decrypt probe before committing the row: the rotated DEK must
             // open the stored object or the rotation aborts.
             const ciphertext = storage.readEscrowObject({
               supplyId: escrow.supplyId,
               expectedSha256: escrow.ciphertextSha256,
             })
-            decryptEscrowArchive(nextKey, {
-              ciphertext: Buffer.from(ciphertext),
-              wrappedDek: nextWrappedDek,
-              nonce: escrow.nonce,
-              tag: escrow.tag,
-            })
+            decryptEscrowArchive(
+              nextKey,
+              {
+                ciphertext: Buffer.from(ciphertext),
+                wrappedDek: nextWrappedDek,
+                nonce: escrow.nonce,
+                tag: escrow.tag,
+              },
+              escrow.supplyId,
+            )
             database.updateSupplyEscrowWrappedDek({
               supplyId: escrow.supplyId,
               wrappedDek: nextWrappedDek,
