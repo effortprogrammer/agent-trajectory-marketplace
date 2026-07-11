@@ -6,6 +6,7 @@ import { z } from "zod"
 
 import {
   type HarnessAdapter,
+  type HarnessEventPayload,
   type HarnessSessionInput,
   type HarnessSessionRef,
   type HarnessTraceDocument,
@@ -13,6 +14,7 @@ import {
   harnessCollectedStatus,
   harnessTraceDocumentSchema,
   redactHarnessDetail,
+  sanitizeHarnessPayload,
   TrajectoryAdapterError,
 } from "./contract"
 
@@ -46,6 +48,13 @@ const transcriptRecordSchema = z
         id: z.string().optional(),
         model: z.string().optional(),
         content: z.union([z.string(), z.array(contentBlockSchema)]).optional(),
+        usage: z
+          .object({
+            input_tokens: z.number().optional(),
+            output_tokens: z.number().optional(),
+          })
+          .passthrough()
+          .optional(),
       })
       .passthrough()
       .optional(),
@@ -84,6 +93,30 @@ const summarizeToolInput = (input: Readonly<Record<string, unknown>> | undefined
 const contentBlocks = (record: TranscriptRecord): readonly ContentBlock[] => {
   const content = record.message?.content
   return Array.isArray(content) ? content : []
+}
+
+// A tool_result block's content is a string, or an array of {type:"text",text}
+// (and occasionally other) blocks. Flatten to the actual returned text — the
+// observation the buyer is paying for.
+const toolResultOutput = (content: unknown): string => {
+  if (typeof content === "string") {
+    return content
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => {
+        if (typeof block === "string") {
+          return block
+        }
+        if (block !== null && typeof block === "object" && "text" in block) {
+          const text = (block as { text?: unknown }).text
+          return typeof text === "string" ? text : ""
+        }
+        return ""
+      })
+      .join("")
+  }
+  return content === undefined ? "" : JSON.stringify(content)
 }
 
 const humanPromptText = (record: TranscriptRecord): string | undefined => {
@@ -159,8 +192,18 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
   }
 
   const events: HarnessTraceEvent[] = []
-  const emit = (kind: string, name: string, detail: string) => {
-    events.push({ kind, name, detail: redactHarnessDetail(detail) })
+  let hasPayload = false
+  const emit = (kind: string, name: string, detail: string, payload?: HarnessEventPayload) => {
+    const sanitized = payload === undefined ? undefined : sanitizeHarnessPayload(payload)
+    if (sanitized !== undefined) {
+      hasPayload = true
+    }
+    events.push({
+      kind,
+      name,
+      detail: redactHarnessDetail(detail),
+      ...(sanitized === undefined ? {} : { payload: sanitized }),
+    })
   }
 
   const first = conversational[0]
@@ -186,7 +229,8 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
       if (prompt !== undefined) {
         closeTurn()
         turnCount += 1
-        emit("function_enter", `turn-${turnCount}`, prompt)
+        // Payload carries the full prompt; detail stays the capped summary.
+        emit("function_enter", `turn-${turnCount}`, prompt, { role: "user", content: prompt })
         continue
       }
       for (const block of contentBlocks(record)) {
@@ -194,7 +238,14 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
           continue
         }
         const toolName = toolNamesByUseId.get(block.tool_use_id ?? "") ?? "tool"
-        emit("tool_result", toolName, block.is_error === true ? "error" : "ok")
+        // Observation: the actual tool output, not just ok/error.
+        const output = toolResultOutput(block.content)
+        emit("tool_result", toolName, block.is_error === true ? "error" : "ok", {
+          ...(block.tool_use_id === undefined ? {} : { toolUseId: block.tool_use_id }),
+          isError: block.is_error === true,
+          output,
+          byteCount: Buffer.byteLength(output, "utf8"),
+        })
       }
       continue
     }
@@ -206,21 +257,52 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
     if (model === undefined || model === syntheticModel) {
       continue
     }
-    for (const block of contentBlocks(record)) {
-      if (block.type === "thinking") {
-        continue
+    // Assistant messages stream one content block per JSONL line but share a
+    // message.id; collect this record's blocks into one structured payload the
+    // first time we see the id.
+    const messageId = record.message?.id
+    const blocks = contentBlocks(record)
+    // Assistant messages stream one block per record sharing message.id, and a
+    // record may hold only a thinking block (dropped). Consume the id — and
+    // emit the single llm_call — on the first record that carries a
+    // non-thinking block, so a leading thinking-only record does not swallow
+    // the assistant turn.
+    const hasNonThinkingBlock = blocks.some((block) => block.type !== "thinking")
+    if (messageId !== undefined && !seenLlmMessageIds.has(messageId) && hasNonThinkingBlock) {
+      seenLlmMessageIds.add(messageId)
+      // Assistant messages stream one block per record; the thinking gate and
+      // tool actions are handled below/here. The payload carries this chunk's
+      // full assistant text (uncapped, vs the 240-char detail) plus usage;
+      // the concrete actions are captured as tool_call events with full input.
+      const assistantText = blocks
+        .filter((block) => block.type === "text")
+        .map((block) => block.text ?? "")
+        .join("")
+        .trim()
+      const usage = record.message?.usage
+      const payload: HarnessEventPayload = {
+        role: "assistant",
+        ...(assistantText.length === 0 ? {} : { content: assistantText }),
+        usage: {
+          model,
+          ...(usage?.input_tokens === undefined ? {} : { inputTokens: usage.input_tokens }),
+          ...(usage?.output_tokens === undefined ? {} : { outputTokens: usage.output_tokens }),
+        },
       }
-      const messageId = record.message?.id
-      if (messageId !== undefined && !seenLlmMessageIds.has(messageId)) {
-        seenLlmMessageIds.add(messageId)
-        emit("llm_call", model, block.type === "text" ? (block.text ?? "") : "")
-      }
+      emit("llm_call", model, assistantText, payload)
+    }
+    for (const block of blocks) {
       if (block.type === "tool_use") {
         const toolName = block.name ?? "tool"
         if (block.id !== undefined) {
           toolNamesByUseId.set(block.id, toolName)
         }
-        emit("tool_call", toolName, summarizeToolInput(block.input))
+        // Action: the full tool input, not a single summarized key. The tool
+        // name is already the event name.
+        emit("tool_call", toolName, summarizeToolInput(block.input), {
+          ...(block.id === undefined ? {} : { toolUseId: block.id }),
+          input: block.input ?? {},
+        })
       }
     }
   }
@@ -229,6 +311,7 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
   return harnessTraceDocumentSchema.parse({
     runtime: claudeCodeRuntime,
     status: harnessCollectedStatus,
+    ...(hasPayload ? { formatVersion: 2 as const } : {}),
     eventCount: events.length,
     events,
   })

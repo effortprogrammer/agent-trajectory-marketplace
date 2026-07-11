@@ -51,6 +51,7 @@ const fixtureTranscriptLines: readonly unknown[] = [
       id: "msg_1",
       model: "claude-opus-4-8",
       content: [{ type: "text", text: "I'll fix the login bug now" }],
+      usage: { input_tokens: 1200, output_tokens: 45 },
     },
     ...meta,
   },
@@ -67,7 +68,18 @@ const fixtureTranscriptLines: readonly unknown[] = [
   },
   {
     type: "user",
-    message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tool_1" }] },
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "tool_1",
+          content: [
+            { type: "text", text: "export function login(session) { return rotate(session) }" },
+          ],
+        },
+      ],
+    },
     ...meta,
   },
   {
@@ -112,7 +124,14 @@ const fixtureTranscriptLines: readonly unknown[] = [
     },
     ...meta,
   },
-  { type: "user", message: { role: "user", content: "use api_key=sk-demo for the fix" }, ...meta },
+  {
+    type: "user",
+    message: {
+      role: "user",
+      content: "deploy with api_key=sk-proj-Abc123Def456Ghi789Jkl012Mno345Pqr678 for the fix",
+    },
+    ...meta,
+  },
   {
     type: "assistant",
     message: { id: "msg_3", model: "claude-opus-4-8", content: [{ type: "text", text: longText }] },
@@ -185,7 +204,9 @@ describe("claude-code adapter", () => {
     const serialized = JSON.stringify(trace)
     expect(serialized).not.toContain("private reasoning")
     expect(serialized).not.toContain("sidechain output")
-    expect(serialized).not.toContain("sk-demo")
+    // The realistically-shaped secret is redacted in BOTH lanes: the detail
+    // summary (blunt marker) and the payload content (credential pattern).
+    expect(serialized).not.toContain("sk-proj-Abc123Def456Ghi789")
 
     expect(trace.events[0]?.detail).toBe("claude-code 2.1.198 cwd=/tmp/project branch=main")
     expect(trace.events[1]?.detail).toBe("Fix the login bug please")
@@ -197,6 +218,48 @@ describe("claude-code adapter", () => {
     expect(trace.events[7]?.detail).toBe("error")
     expect(trace.events[9]?.detail).toBe("[redacted]")
     expect(trace.events[10]?.detail.endsWith("…")).toBe(true)
+  })
+
+  test("captures high-fidelity payloads: observation, action, usage (formatVersion 2)", () => {
+    const { sessionPath } = writeFixtureSession()
+    const trace = claudeCodeAdapter.convertSession({ sessionPath })
+    expect(trace.formatVersion).toBe(2)
+
+    const byKind = (kind: string, index = 0) =>
+      trace.events.filter((event) => event.kind === kind)[index]
+
+    // Observation: the tool_result now carries the real output, not just "ok".
+    const readResult = byKind("tool_result")
+    expect(readResult?.detail).toBe("ok")
+    expect(readResult?.payload?.isError).toBe(false)
+    expect(readResult?.payload?.output).toBe(
+      "export function login(session) { return rotate(session) }",
+    )
+    expect(readResult?.payload?.byteCount).toBeGreaterThan(0)
+
+    // Action: the tool_call carries the full input, not a summarized key.
+    const readCall = byKind("tool_call")
+    expect(readCall?.payload?.input).toEqual({ file_path: "src/login.ts" })
+
+    // Usage: llm_call carries model + token counts.
+    const llm = byKind("llm_call")
+    expect(llm?.payload?.usage).toEqual({
+      model: "claude-opus-4-8",
+      inputTokens: 1200,
+      outputTokens: 45,
+    })
+    expect(llm?.payload?.content).toBe("I'll fix the login bug now")
+
+    // The secret prompt: detail redacted (marker), payload content redacted
+    // (credential pattern) — neither lane leaks it.
+    const secretTurn = trace.events.find(
+      (event) => event.kind === "function_enter" && event.detail === "[redacted]",
+    )
+    expect(secretTurn?.payload?.content).not.toContain("sk-proj-Abc123Def456Ghi789")
+    expect(secretTurn?.payload?.content).toContain("[redacted]")
+
+    // Thinking never reaches the payload.
+    expect(JSON.stringify(trace)).not.toContain("private reasoning")
   })
 
   test("rejects missing and non-jsonl sessions", () => {
