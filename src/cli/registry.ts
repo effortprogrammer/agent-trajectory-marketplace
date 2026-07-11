@@ -6,6 +6,7 @@ import { readRegistryOperatorState } from "../registry/operator"
 import {
   parseHostedRegistryServeEnvConfig,
   parseRegistryEscrowEnvConfig,
+  parseRegistryLoggingEnvConfig,
   parseRegistryServeConfig,
   runRegistryServerProcess,
 } from "../registry/server"
@@ -112,9 +113,14 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
       const accessRecords = accessRecordsFromOption(options.accessRecords)
       const accessRecordsLoader = accessRecordsLoaderFromOption(options.accessRecords)
       const localEscrow = parseRegistryEscrowEnvConfig(process.env)
+      const localLogging = parseRegistryLoggingEnvConfig(process.env)
       await runRegistryServerProcess(
         parseRegistryServeConfig({
           emailAuth: parseRegistryEmailAuthEnvConfig(process.env, "local"),
+          logging: localLogging.logging,
+          ...(localLogging.metricsToken === undefined
+            ? {}
+            : { metricsToken: localLogging.metricsToken }),
           ...(options.host === undefined ? {} : { host: options.host }),
           ...(options.port === undefined ? {} : { port: options.port }),
           ...(options.db === undefined ? {} : { db: options.db }),
