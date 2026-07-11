@@ -46,6 +46,20 @@ const withDatabase = <T>(dbPath: string, action: (database: RegistryDatabase) =>
   }
 }
 
+// Escrow object storage is async (S3-compatible); these commands close the
+// database only after the async work settles.
+const withDatabaseAsync = async <T>(
+  dbPath: string,
+  action: (database: RegistryDatabase) => Promise<T>,
+): Promise<T> => {
+  const database = createRegistryDatabase({ dbPath })
+  try {
+    return await action(database)
+  } finally {
+    database.close()
+  }
+}
+
 const readJsonFixture = (path: string): unknown => JSON.parse(readFileSync(path, "utf8"))
 
 // Escrowed supply (encrypted custody at publish) needs no seller delivery:
@@ -587,10 +601,10 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
     .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
     .option("--json", "Print the escrow status as JSON")
     .action(
-      (
+      async (
         options: Readonly<{ db: string; supplyId: string; json?: boolean }> & EscrowStorageOptions,
       ) => {
-        withDatabase(options.db, (database) => {
+        await withDatabaseAsync(options.db, async (database) => {
           const escrow = database.getSupplyEscrow(options.supplyId)
           if (escrow === undefined) {
             throw new Error(`supply_not_found: no escrow for ${options.supplyId}`)
@@ -599,7 +613,7 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
           const { wrappedDek: _redactedDek, nonce: _nonce, tag: _tag, ...visible } = escrow
           printJson({
             escrow: visible,
-            object: storage.statEscrowObject(options.supplyId) ?? null,
+            object: (await storage.statEscrowObject(options.supplyId)) ?? null,
             supplyState: database.getSupplyRecord(options.supplyId)?.state,
           })
         })
@@ -618,11 +632,11 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
     .option("--dry-run", "Report deletions without applying them")
     .option("--json", "Print the gc outcome as JSON")
     .action(
-      (
+      async (
         options: Readonly<{ db: string; actor: string; dryRun?: boolean; json?: boolean }> &
           EscrowStorageOptions,
       ) => {
-        withDatabase(options.db, (database) => {
+        await withDatabaseAsync(options.db, async (database) => {
           const storage = escrowStorageFor(database, options)
           const now = new Date().toISOString()
           const deleted: string[] = []
@@ -647,7 +661,7 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
               continue
             }
             if (options.dryRun !== true) {
-              storage.deleteEscrowObject(escrow.supplyId)
+              await storage.deleteEscrowObject(escrow.supplyId)
               database.markSupplyEscrowDeleted({ supplyId: escrow.supplyId, deletedAt: now })
             }
             deleted.push(escrow.supplyId)
@@ -668,17 +682,17 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
     .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
     .option("--json", "Print the revalidation outcome as JSON")
     .action(
-      (
+      async (
         options: Readonly<{ db: string; supplyId: string; json?: boolean }> & EscrowStorageOptions,
       ) => {
         const masterKey = escrowMasterKeyFromEnv()
-        withDatabase(options.db, (database) => {
+        await withDatabaseAsync(options.db, async (database) => {
           const escrow = database.getSupplyEscrow(options.supplyId)
           if (escrow === undefined || escrow.deletedAt !== undefined) {
             throw new Error(`supply_not_found: no live escrow for ${options.supplyId}`)
           }
           const storage = escrowStorageFor(database, options)
-          const ciphertext = storage.readEscrowObject({
+          const ciphertext = await storage.readEscrowObject({
             supplyId: options.supplyId,
             expectedSha256: escrow.ciphertextSha256,
           })
@@ -728,10 +742,12 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
     .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
     .option("--json", "Print the rotation outcome as JSON")
     .action(
-      (options: Readonly<{ db: string; actor: string; json?: boolean }> & EscrowStorageOptions) => {
+      async (
+        options: Readonly<{ db: string; actor: string; json?: boolean }> & EscrowStorageOptions,
+      ) => {
         const currentKey = escrowMasterKeyFromEnv("REGISTRY_ESCROW_MASTER_KEY")
         const nextKey = escrowMasterKeyFromEnv("REGISTRY_ESCROW_NEXT_MASTER_KEY")
-        withDatabase(options.db, (database) => {
+        await withDatabaseAsync(options.db, async (database) => {
           const storage = escrowStorageFor(database, options)
           const rewrapped: string[] = []
           for (const escrow of database.listSupplyEscrows()) {
@@ -746,7 +762,7 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
             )
             // Decrypt probe before committing the row: the rotated DEK must
             // open the stored object or the rotation aborts.
-            const ciphertext = storage.readEscrowObject({
+            const ciphertext = await storage.readEscrowObject({
               supplyId: escrow.supplyId,
               expectedSha256: escrow.ciphertextSha256,
             })

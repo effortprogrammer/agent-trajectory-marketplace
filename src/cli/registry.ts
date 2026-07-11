@@ -6,6 +6,7 @@ import { readRegistryOperatorState } from "../registry/operator"
 import {
   parseHostedRegistryServeEnvConfig,
   parseRegistryEscrowEnvConfig,
+  parseRegistryEscrowS3EnvConfig,
   parseRegistryLoggingEnvConfig,
   parseRegistryServeConfig,
   runRegistryServerProcess,
@@ -113,6 +114,7 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
       const accessRecords = accessRecordsFromOption(options.accessRecords)
       const accessRecordsLoader = accessRecordsLoaderFromOption(options.accessRecords)
       const localEscrow = parseRegistryEscrowEnvConfig(process.env)
+      const localEscrowS3 = parseRegistryEscrowS3EnvConfig(process.env)
       const localLogging = parseRegistryLoggingEnvConfig(process.env)
       await runRegistryServerProcess(
         parseRegistryServeConfig({
@@ -136,6 +138,7 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
             ? {}
             : { storageBackend: options.storageBackend }),
           ...(localEscrow === undefined ? {} : { escrow: localEscrow }),
+          ...(localEscrowS3 === undefined ? {} : { escrowS3: localEscrowS3 }),
         }),
       )
     })
