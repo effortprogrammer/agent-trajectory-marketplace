@@ -1,19 +1,23 @@
 import { readFileSync } from "node:fs"
+import { basename } from "node:path"
 
 import type { Command } from "commander"
 import { z } from "zod"
 
 import {
   createWantedDatasetInRegistry,
+  downloadEscrowDatasetFromRegistry,
   downloadRegistryListingPackage,
   inspectRegistryListing,
   inspectRegistrySupplyRecord,
   listRegistryListings,
   listRegistrySupply,
   listRegistryWantedDatasets,
+  publishEscrowCandidateToRegistry,
   submitSupplyCandidateToRegistry,
   submitSupplyCommitmentToRegistry,
 } from "../registry/client"
+import { buildEscrowDatasetArchive } from "../registry/escrow-archive"
 import {
   supplyCandidateRequestSchema,
   supplyCommitmentRequestSchema,
@@ -67,6 +71,33 @@ type SupplyFixtureOptions = Readonly<{
 type CommitmentSubmitOptions = SupplyFixtureOptions & Readonly<{ supplyId?: string }>
 
 type CandidateSubmitOptions = SupplyFixtureOptions & Readonly<{ trace?: string }>
+
+type CandidatePublishOptions = Readonly<{
+  apiKey?: string
+  candidate: string
+  json?: boolean
+  notes?: string
+  registry: string
+  trace: readonly string[]
+}>
+
+type BuyerDownloadOptions = Readonly<{
+  apiKey?: string
+  json?: boolean
+  out: string
+  registry: string
+}>
+
+const collectRepeated = (value: string, previous: readonly string[]): string[] => [
+  ...previous,
+  value,
+]
+
+// Trace entry label from its filename: "session.atf.json" → "session".
+const traceLabelFromPath = (tracePath: string): string =>
+  basename(tracePath)
+    .replace(/\.atf\.json$/i, "")
+    .replace(/\.json$/i, "")
 
 // With --trace, the proof sample is derived from the actual dataset rows so
 // the marketplace preview always shows real session content; a hand-written
@@ -251,6 +282,57 @@ export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
       )
     })
 
+  candidateCommand
+    .command("publish")
+    .description(
+      "Publish a candidate's full dataset as an encrypted escrow archive (multipart upload)",
+    )
+    .requiredOption("--registry <url>", "Marketplace registry base URL")
+    .requiredOption(
+      "--candidate <path>",
+      "Candidate JSON (title, description, proof narrative sections)",
+    )
+    .requiredOption(
+      "--trace <path>",
+      "ATF trace to escrow; repeat --trace to include several",
+      collectRepeated,
+      [] as string[],
+    )
+    .option("--notes <text>", "Optional manifest notes recorded with the archive")
+    .option("--api-key <key>", "Seller registry API key; prefer TRAJECTORY_REGISTRY_API_KEY")
+    .option("--json", "Print the stored supply record as JSON")
+    .action(async (options: CandidatePublishOptions) => {
+      if (options.trace.length === 0) {
+        throw new Error("escrow publish requires at least one --trace")
+      }
+      const candidate = supplyCandidateRequestSchema.parse(readFixtureJson(options.candidate))
+      const traces = options.trace.map((tracePath) => ({
+        label: traceLabelFromPath(tracePath),
+        atf: readFileSync(tracePath, "utf8"),
+      }))
+      const { zip, manifest } = buildEscrowDatasetArchive({
+        traces,
+        ...(options.notes === undefined ? {} : { notes: options.notes }),
+      })
+      const apiKey = marketplaceSellerApiKey(options)
+      if (apiKey === undefined) {
+        throw new Error(
+          "escrow publish requires a seller API key (--api-key or TRAJECTORY_REGISTRY_API_KEY)",
+        )
+      }
+      const published = await publishEscrowCandidateToRegistry({
+        apiKey,
+        candidate,
+        zip,
+        registryUrl: options.registry,
+      })
+      printJson({
+        supply: published.supply,
+        archiveByteCount: zip.length,
+        artifactCount: manifest.artifacts.length,
+      })
+    })
+
   const commitmentCommand = supplySellerCommand
     .command("commitment")
     .description("Committed dataset promotions (binding terms)")
@@ -310,6 +392,29 @@ export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
         apiKey === undefined
           ? await inspectRegistryListing({ listingId, registryUrl: options.registry })
           : await inspectRegistryListing({ apiKey, listingId, registryUrl: options.registry }),
+      )
+    })
+
+  const buyerCommand = marketplaceCommand
+    .command("buyer")
+    .description("Buyer dataset retrieval for fulfilled escrow transactions")
+
+  buyerCommand
+    .command("download <transactionId>")
+    .description("Download the entitled escrow dataset zip for a released fulfillment")
+    .requiredOption("--registry <url>", "Marketplace registry base URL")
+    .requiredOption("--out <path>", "Output path for the dataset zip")
+    .option("--api-key <key>", "Buyer registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
+    .option("--json", "Print the download result as JSON")
+    .action(async (transactionId: string, options: BuyerDownloadOptions) => {
+      const apiKey = marketplaceBuyerApiKey(options)
+      printJson(
+        await downloadEscrowDatasetFromRegistry({
+          ...(apiKey === undefined ? {} : { apiKey }),
+          transactionId,
+          outPath: options.out,
+          registryUrl: options.registry,
+        }),
       )
     })
 
