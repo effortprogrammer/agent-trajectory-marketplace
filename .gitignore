@@ -8,3 +8,6 @@ coverage/
 
 website/.vitepress/dist
 website/.vitepress/cache
+
+# Local Grafana stack registry logs
+docs/grafana/logs/*.ndjson*
