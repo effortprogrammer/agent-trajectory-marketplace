@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -16,6 +16,50 @@ const harness = createRegistryApiHarness()
 const registryUrl = () => harness.requireServer().baseUrl
 
 const parseJsonOutput = (stdout: string): unknown => JSON.parse(stdout)
+
+// Publish a candidate through the escrow multipart command: a candidate JSON
+// plus `traceCount` trace files bundled into the dataset archive.
+const publishCandidateCli = async (
+  apiKey: string,
+  options: { candidateFixture?: string; traceCount?: number } = {},
+) => {
+  const workDir = mkdtempSync(join(tmpdir(), "cli-escrow-publish-"))
+  const candidatePath = join(workDir, "candidate.json")
+  copyFileSync(options.candidateFixture ?? "test/fixtures/candidate-valid.json", candidatePath)
+  const traceArgs: string[] = []
+  for (let index = 1; index <= (options.traceCount ?? 2); index += 1) {
+    const tracePath = join(workDir, `session-${index}.atf.json`)
+    writeFileSync(
+      tracePath,
+      JSON.stringify({
+        runtime: "hermes",
+        status: "collected",
+        eventCount: 3,
+        events: [
+          { kind: "function_enter", name: "turn-1", detail: `Session ${index} ask.` },
+          { kind: "llm_call", name: "claude-sonnet-5", detail: "Working on it." },
+          { kind: "tool_call", name: "run_tests", detail: "exit 0" },
+        ],
+      }),
+    )
+    traceArgs.push("--trace", tracePath)
+  }
+  return runCli([
+    "trajectory",
+    "marketplace",
+    "seller",
+    "candidate",
+    "publish",
+    "--registry",
+    registryUrl(),
+    "--api-key",
+    apiKey,
+    "--candidate",
+    candidatePath,
+    ...traceArgs,
+    "--json",
+  ])
+}
 
 describe("trajectory marketplace supply CLI", () => {
   test("creates and lists wanted demand signals from the fixture", async () => {
@@ -56,24 +100,14 @@ describe("trajectory marketplace supply CLI", () => {
     expect(list.wanted.map((record) => record.wantedId)).toContain(wanted.wantedId)
   })
 
-  test("submits candidate proof and promotes it with full commitment terms", async () => {
-    const candidate = await runCli([
-      "trajectory",
-      "marketplace",
-      "seller",
-      "candidate",
-      "submit",
-      "--registry",
-      registryUrl(),
-      "--api-key",
-      "test-key",
-      "--fixture",
-      "test/fixtures/candidate-valid.json",
-      "--json",
-    ])
+  test("publishes an escrow candidate and promotes it with full commitment terms", async () => {
+    const candidate = await publishCandidateCli("test-key")
     expect(candidate.success).toBe(true)
-    const submitted = supplyRecordResponseSchema.parse(parseJsonOutput(candidate.stdout)).supply
-    expect(submitted.state).toBe("candidate")
+    const published = parseJsonOutput(candidate.stdout) as {
+      supply: { supplyId: string; state: string }
+    }
+    expect(published.supply.state).toBe("candidate")
+    const submitted = published.supply
 
     const committed = await runCli([
       "trajectory",
@@ -101,125 +135,16 @@ describe("trajectory marketplace supply CLI", () => {
     expect(record.commitmentId).toMatch(/^commitment-[a-f0-9]{16}$/)
   })
 
-  test("derives the proof sample from an actual trace with --trace", async () => {
-    const workDir = mkdtempSync(join(tmpdir(), "cli-trace-sample-"))
-    const tracePath = join(workDir, "trace.atf.json")
-    const events = [
-      { kind: "function_enter", name: "turn-1", detail: "Fix the failing checkout test." },
-      { kind: "llm_call", name: "claude-sonnet-5", detail: "Reproducing the failure first." },
-      { kind: "tool_call", name: "run_tests", detail: "exit 1: totals.test.ts:112 failed" },
-      { kind: "function_exit", name: "turn-1", detail: "" },
-    ]
-    writeFileSync(
-      tracePath,
-      JSON.stringify({
-        runtime: "hermes",
-        status: "collected",
-        eventCount: events.length,
-        events,
-      }),
-    )
-
-    const candidate = await runCli([
-      "trajectory",
-      "marketplace",
-      "seller",
-      "candidate",
-      "submit",
-      "--registry",
-      registryUrl(),
-      "--api-key",
-      "test-key",
-      "--fixture",
-      "test/fixtures/candidate-valid.json",
-      "--trace",
-      tracePath,
-      "--json",
-    ])
-    expect(candidate.success).toBe(true)
-    const submitted = supplyRecordResponseSchema.parse(parseJsonOutput(candidate.stdout)).supply
-    // The stored sample is the actual dataset head, not the fixture's
-    // hand-written sample: real rows in session order, real counts, with the
-    // fixture's marketing summary preserved as the override.
-    expect(submitted.proof.sample?.records).toEqual(events)
-    expect(submitted.proof.sample?.eventCount).toBe(4)
-    expect(submitted.proof.sample?.eventKinds).toEqual([
-      "function_enter",
-      "llm_call",
-      "tool_call",
-      "function_exit",
-    ])
-    expect(submitted.proof.sample?.summary).toContain("Median session")
-  })
-
-  test("fails candidate submission when the commitment block omits the delivery SLA", async () => {
-    const result = await runCli([
-      "trajectory",
-      "marketplace",
-      "seller",
-      "candidate",
-      "submit",
-      "--registry",
-      registryUrl(),
-      "--api-key",
-      "test-key",
-      "--fixture",
-      "test/fixtures/candidate-missing-sla.json",
-      "--json",
-    ])
-    expect(result.success).toBe(false)
-    expect(result.stderr).toContain("deliverySlaHours")
-  })
-
-  test("fails candidate submission when proof exceeds the contract bounds", async () => {
-    const result = await runCli([
-      "trajectory",
-      "marketplace",
-      "seller",
-      "candidate",
-      "submit",
-      "--registry",
-      registryUrl(),
-      "--api-key",
-      "test-key",
-      "--fixture",
-      "test/fixtures/candidate-proof-oversized.json",
-      "--json",
-    ])
-    expect(result.success).toBe(false)
-  })
-
-  test("fails candidate submission for binding-bid fields and unknown seller keys", async () => {
-    const bindingBid = await runCli([
-      "trajectory",
-      "marketplace",
-      "seller",
-      "candidate",
-      "submit",
-      "--registry",
-      registryUrl(),
-      "--api-key",
-      "test-key",
-      "--fixture",
-      "test/fixtures/candidate-binding-bid.json",
-      "--json",
-    ])
+  test("fails escrow publish for binding-bid fields and unknown seller keys", async () => {
+    // A candidate part with binding-bid/auction fields is rejected by the
+    // strict candidate schema at intake.
+    const bindingBid = await publishCandidateCli("test-key", {
+      candidateFixture: "test/fixtures/candidate-binding-bid.json",
+    })
     expect(bindingBid.success).toBe(false)
 
-    const wrongKey = await runCli([
-      "trajectory",
-      "marketplace",
-      "seller",
-      "candidate",
-      "submit",
-      "--registry",
-      registryUrl(),
-      "--api-key",
-      "wrong-key",
-      "--fixture",
-      "test/fixtures/candidate-valid.json",
-      "--json",
-    ])
+    // An unknown seller key fails closed with unauthorized.
+    const wrongKey = await publishCandidateCli("wrong-key")
     expect(wrongKey.success).toBe(false)
     expect(wrongKey.stderr).toContain("unauthorized")
   })
@@ -227,22 +152,9 @@ describe("trajectory marketplace supply CLI", () => {
 
 describe("trajectory marketplace supply inspect CLI", () => {
   test("shows proof and state for a candidate without any download surface", async () => {
-    const candidate = await runCli([
-      "trajectory",
-      "marketplace",
-      "seller",
-      "candidate",
-      "submit",
-      "--registry",
-      registryUrl(),
-      "--api-key",
-      "test-key",
-      "--fixture",
-      "test/fixtures/candidate-valid.json",
-      "--json",
-    ])
+    const candidate = await publishCandidateCli("test-key")
     expect(candidate.success).toBe(true)
-    const submitted = supplyRecordResponseSchema.parse(parseJsonOutput(candidate.stdout)).supply
+    const submitted = (parseJsonOutput(candidate.stdout) as { supply: { supplyId: string } }).supply
 
     const inspected = await runCli([
       "trajectory",

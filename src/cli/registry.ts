@@ -113,7 +113,8 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
       }
       const accessRecords = accessRecordsFromOption(options.accessRecords)
       const accessRecordsLoader = accessRecordsLoaderFromOption(options.accessRecords)
-      const localEscrow = parseRegistryEscrowEnvConfig(process.env)
+      // Local serve: an absent master key falls back to the local/test default.
+      const localEscrow = parseRegistryEscrowEnvConfig(process.env, false)
       const localEscrowS3 = parseRegistryEscrowS3EnvConfig(process.env)
       const localLogging = parseRegistryLoggingEnvConfig(process.env)
       await runRegistryServerProcess(
