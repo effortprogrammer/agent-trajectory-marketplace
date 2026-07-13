@@ -119,12 +119,12 @@ const requiredIds = `
   my-data-access-tab my-data-downloads-tab my-data-access-content my-data-downloads-content
   buyer-onboarding-form buyer-onboarding-contact buyer-onboarding-use detail-panel-content
   catalog-view record-view record-back record-breadcrumb-title
-  listing-grid nav-marketplace nav-my-data nav-operator nav-requests nav-seller-publish
+  listing-grid nav-docs nav-marketplace nav-my-data nav-operator nav-requests nav-seller-publish
   open-requests-view refresh-listings registry-state operator-actions-content
   requests-actions-content requests-view-content listing-search seller-actions-content seller-onboarding-form
-  seller-onboarding-contact seller-onboarding-id seller-onboarding-use signal-access
+  seller-onboarding-content seller-onboarding-contact seller-onboarding-id seller-onboarding-use signal-access
   signal-events signal-files signal-listings summary-strip view-marketplace
-  view-my-data view-operator view-requests view-seller
+  view-my-data view-onboarding view-operator view-requests view-seller
 `
   .trim()
   .split(/\s+/)
