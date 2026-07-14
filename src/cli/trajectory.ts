@@ -17,6 +17,7 @@ import {
   runCollectWatchLoop,
 } from "../trajectory/collect-watch"
 import { bundleTrace, inspectTrace } from "../trajectory/evidence"
+import { setupPrivacyEngine } from "../trajectory/privacy/engine-setup"
 import type { CollectPrivacyOptions } from "../trajectory/privacy/pipeline"
 import { filterExistingTrace } from "../trajectory/privacy/retrofit"
 import { initPrototypeWorkspace, runPrototypeDemo } from "../trajectory/prototype"
@@ -66,12 +67,21 @@ type CollectWatchOptions = CollectPrivacyFlagOptions &
 type CollectServiceInstallOptions = CollectPrivacyFlagOptions &
   Readonly<{
     dryRun?: boolean
+    // Commander sets this false for --no-engine, true otherwise.
+    engine: boolean
     intervalSeconds: string
     out: string
     runtime?: readonly string[]
     settleSeconds: string
     source?: string
   }>
+
+type PrivacyEngineSetupOptions = Readonly<{
+  engineDir?: string
+  json?: boolean
+  port: string
+  repo?: string
+}>
 
 type PrivacyFilterCommandOptions = Readonly<{
   export: string
@@ -306,8 +316,12 @@ export const registerTrajectoryCommand = (program: Command) => {
         "Seconds a session must stay unchanged before it is converted",
         "60",
       )
-      .option("--dry-run", "Render the launchd plist without touching launchctl"),
-  ).action((options: CollectServiceInstallOptions) => {
+      .option("--dry-run", "Render the launchd plist without touching launchctl")
+      .option(
+        "--no-engine",
+        "Skip bootstrapping the resident MLX inference engine alongside the collector",
+      ),
+  ).action(async (options: CollectServiceInstallOptions) => {
     const runtimes = resolveCollectWatchRuntimes(options.runtime)
     if (options.source !== undefined && runtimes.length !== 1) {
       throw new Error("invalid_request: --source requires exactly one --runtime")
@@ -315,20 +329,25 @@ export const registerTrajectoryCommand = (program: Command) => {
     // One flag→config translation for every surface: the same parse the
     // in-process commands use, mapped onto the service config keys.
     const privacy = collectPrivacyOptions(options)
-    printJson(
-      installCollectWatchService({
-        config: {
-          outDir: options.out,
-          runtimes,
-          ...(options.source === undefined ? {} : { sourceDir: options.source }),
-          intervalSeconds: Number(options.intervalSeconds),
-          settleSeconds: Number(options.settleSeconds),
-          privacyFilter: privacy.enabled ?? true,
-          ...(privacy.threshold === undefined ? {} : { privacyThreshold: privacy.threshold }),
-        },
-        ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
-      }),
-    )
+    const collector = installCollectWatchService({
+      config: {
+        outDir: options.out,
+        runtimes,
+        ...(options.source === undefined ? {} : { sourceDir: options.source }),
+        intervalSeconds: Number(options.intervalSeconds),
+        settleSeconds: Number(options.settleSeconds),
+        privacyFilter: privacy.enabled ?? true,
+        ...(privacy.threshold === undefined ? {} : { privacyThreshold: privacy.threshold }),
+      },
+      ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+    })
+    // First-time setup bootstraps the GPU engine too (best effort — a skip
+    // never blocks the collector, which falls back to the CPU runner).
+    const privacyEngine =
+      options.engine === false || options.dryRun === true
+        ? { status: "skipped" as const, detail: "engine bootstrap disabled", url: "" }
+        : await setupPrivacyEngine()
+    printJson({ ...collector, privacyEngine })
   })
 
   collectServiceCommand
@@ -369,6 +388,29 @@ export const registerTrajectoryCommand = (program: Command) => {
             ? {}
             : { threshold: Number(options.privacyThreshold) },
         ),
+      )
+    })
+
+  const privacyEngineCommand = privacyCommand
+    .command("engine")
+    .description("Manage the resident local inference engine")
+
+  privacyEngineCommand
+    .command("setup")
+    .description(
+      "Bootstrap the MLX inference engine as a login service (clone, sync, launchd install)",
+    )
+    .option("--engine-dir <path>", "Engine repo checkout directory")
+    .option("--repo <url>", "Engine git repository URL")
+    .option("--port <port>", "Engine port", "8787")
+    .option("--json", "Print the setup result as JSON")
+    .action(async (options: PrivacyEngineSetupOptions) => {
+      printJson(
+        await setupPrivacyEngine({
+          ...(options.engineDir === undefined ? {} : { engineDir: options.engineDir }),
+          ...(options.repo === undefined ? {} : { repoUrl: options.repo }),
+          port: Number(options.port),
+        }),
       )
     })
 
