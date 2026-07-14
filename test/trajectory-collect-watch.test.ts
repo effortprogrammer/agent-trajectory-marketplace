@@ -79,11 +79,7 @@ describe("collect watch sweep", () => {
   test("exports new sessions once and skips them until they change", async () => {
     const { sourceDir, sessionPath, outDir } = writeWatchFixture()
 
-    const first = await runCollectSweep(
-      sweepConfig({ sourceDir, outDir }),
-      new Date(),
-      testPrivacyOptions,
-    )
+    const first = await runCollectSweep(sweepConfig({ sourceDir, outDir }), testPrivacyOptions)
     expect(first).toMatchObject({ exported: 1, failed: 0, unchanged: 0, pendingSettle: 0 })
     const exportPath = first.exportedSessions[0]?.exportPath
     expect(exportPath).toBeDefined()
@@ -98,11 +94,7 @@ describe("collect watch sweep", () => {
     expect(trace.eventCount).toBe(5)
     expect(existsSync(join(outDir, collectWatchStateFileName))).toBe(true)
 
-    const second = await runCollectSweep(
-      sweepConfig({ sourceDir, outDir }),
-      new Date(),
-      testPrivacyOptions,
-    )
+    const second = await runCollectSweep(sweepConfig({ sourceDir, outDir }), testPrivacyOptions)
     expect(second).toMatchObject({ exported: 0, unchanged: 1 })
 
     // A grown session (live session that kept going) is converted again.
@@ -116,11 +108,7 @@ describe("collect watch sweep", () => {
       new Date("2026-07-07T01:00:00.000Z"),
       new Date("2026-07-07T01:00:00.000Z"),
     )
-    const third = await runCollectSweep(
-      sweepConfig({ sourceDir, outDir }),
-      new Date(),
-      testPrivacyOptions,
-    )
+    const third = await runCollectSweep(sweepConfig({ sourceDir, outDir }), testPrivacyOptions)
     expect(third).toMatchObject({ exported: 1, unchanged: 0 })
     const regrown = parseJson(readFileSync(exportPath, "utf8")) as {
       events: readonly { detail: string }[]
@@ -135,7 +123,6 @@ describe("collect watch sweep", () => {
 
     const summary = await runCollectSweep(
       { ...sweepConfig({ sourceDir, outDir }), settleSeconds: 3_600 },
-      new Date(),
       testPrivacyOptions,
     )
     expect(summary).toMatchObject({ exported: 0, pendingSettle: 1 })
@@ -152,27 +139,18 @@ describe("collect watch sweep", () => {
       new Date("2026-07-07T00:00:00.000Z"),
     )
 
-    const first = await runCollectSweep(
-      sweepConfig({ sourceDir, outDir }),
-      new Date(),
-      testPrivacyOptions,
-    )
+    const first = await runCollectSweep(sweepConfig({ sourceDir, outDir }), testPrivacyOptions)
     expect(first).toMatchObject({ exported: 1, failed: 1 })
     expect(first.failedSessions[0]).toMatchObject({
       sessionId: "broken-session",
       errorCode: "invalid_session",
     })
 
-    const second = await runCollectSweep(
-      sweepConfig({ sourceDir, outDir }),
-      new Date(),
-      testPrivacyOptions,
-    )
+    const second = await runCollectSweep(sweepConfig({ sourceDir, outDir }), testPrivacyOptions)
     expect(second).toMatchObject({ exported: 0, failed: 0, unchanged: 2 })
 
     const missing = await runCollectSweep(
       { ...sweepConfig({ sourceDir: join(sourceDir, "does-not-exist"), outDir }) },
-      new Date(),
       testPrivacyOptions,
     )
     expect(missing.missingSources).toEqual(["claude-code"])
@@ -181,21 +159,17 @@ describe("collect watch sweep", () => {
   test("re-exports unchanged sessions when the privacy config changes", async () => {
     const { sourceDir, outDir } = writeWatchFixture()
 
-    const first = await runCollectSweep(
-      sweepConfig({ sourceDir, outDir }),
-      new Date(),
-      testPrivacyOptions,
-    )
+    const first = await runCollectSweep(sweepConfig({ sourceDir, outDir }), testPrivacyOptions)
     expect(first).toMatchObject({ exported: 1 })
 
     // Same session bytes, different threshold → stale entry → re-export.
-    const second = await runCollectSweep(sweepConfig({ sourceDir, outDir }), new Date(), {
+    const second = await runCollectSweep(sweepConfig({ sourceDir, outDir }), {
       ...testPrivacyOptions,
       threshold: 0.9,
     })
     expect(second).toMatchObject({ exported: 1, unchanged: 0 })
 
-    const third = await runCollectSweep(sweepConfig({ sourceDir, outDir }), new Date(), {
+    const third = await runCollectSweep(sweepConfig({ sourceDir, outDir }), {
       ...testPrivacyOptions,
       threshold: 0.9,
     })
@@ -210,7 +184,7 @@ describe("collect watch sweep", () => {
       },
     }
 
-    const first = await runCollectSweep(sweepConfig({ sourceDir, outDir }), new Date(), unavailable)
+    const first = await runCollectSweep(sweepConfig({ sourceDir, outDir }), unavailable)
     expect(first).toMatchObject({ exported: 0, failed: 1 })
     expect(first.failedSessions[0]).toMatchObject({ errorCode: "privacy_filter_unavailable" })
     // Fail-closed: nothing was written.
@@ -218,7 +192,7 @@ describe("collect watch sweep", () => {
 
     // The session was not recorded as processed, so a healthy filter picks it
     // up on the next sweep without the session changing.
-    const second = await runCollectSweep(sweepConfig({ sourceDir, outDir }), new Date(), {
+    const second = await runCollectSweep(sweepConfig({ sourceDir, outDir }), {
       filter: noopPrivacyFilter,
     })
     expect(second).toMatchObject({ exported: 1 })
@@ -227,11 +201,7 @@ describe("collect watch sweep", () => {
   test("a disabled-filter sweep does not clobber stamped exports", async () => {
     const { sourceDir, outDir } = writeWatchFixture()
 
-    const first = await runCollectSweep(
-      sweepConfig({ sourceDir, outDir }),
-      new Date(),
-      testPrivacyOptions,
-    )
+    const first = await runCollectSweep(sweepConfig({ sourceDir, outDir }), testPrivacyOptions)
     expect(first).toMatchObject({ exported: 1 })
     const exportPath = first.exportedSessions[0]?.exportPath
     if (exportPath === undefined) {
@@ -241,7 +211,7 @@ describe("collect watch sweep", () => {
 
     // Debug sweep with the filter off: the unchanged session is skipped, not
     // re-exported unfiltered over the stamped file.
-    const second = await runCollectSweep(sweepConfig({ sourceDir, outDir }), new Date(), {
+    const second = await runCollectSweep(sweepConfig({ sourceDir, outDir }), {
       enabled: false,
     })
     expect(second).toMatchObject({ exported: 0, unchanged: 1 })
@@ -260,7 +230,7 @@ describe("collect watch sweep", () => {
       new Date("2026-07-07T00:00:00.000Z"),
     )
 
-    const summary = await runCollectSweep(sweepConfig({ sourceDir, outDir }), new Date(), {
+    const summary = await runCollectSweep(sweepConfig({ sourceDir, outDir }), {
       filter: {
         detect: () => Promise.reject(new PrivacyFilterUnavailableError("model missing")),
       },
@@ -269,7 +239,7 @@ describe("collect watch sweep", () => {
     expect(summary).toMatchObject({ exported: 0, failed: 1, privacyFilterUnavailable: true })
 
     // A healthy filter picks up both sessions on the next sweep.
-    const recovered = await runCollectSweep(sweepConfig({ sourceDir, outDir }), new Date(), {
+    const recovered = await runCollectSweep(sweepConfig({ sourceDir, outDir }), {
       filter: noopPrivacyFilter,
     })
     expect(recovered).toMatchObject({ exported: 2 })
@@ -277,11 +247,7 @@ describe("collect watch sweep", () => {
 
   test("stamps exported traces with the privacy pass proof", async () => {
     const { sourceDir, outDir } = writeWatchFixture()
-    const summary = await runCollectSweep(
-      sweepConfig({ sourceDir, outDir }),
-      new Date(),
-      testPrivacyOptions,
-    )
+    const summary = await runCollectSweep(sweepConfig({ sourceDir, outDir }), testPrivacyOptions)
     const exportPath = summary.exportedSessions[0]?.exportPath
     if (exportPath === undefined) {
       throw new Error("missing export path")

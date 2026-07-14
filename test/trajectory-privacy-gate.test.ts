@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { validateEscrowArchive } from "../src/registry/escrow-intake"
@@ -8,7 +7,7 @@ import { filterExistingTrace } from "../src/trajectory/privacy/retrofit"
 import { createSellerPackage } from "../src/trajectory/seller-package"
 import { buildEscrowDatasetArchive } from "./escrow-zip-fixtures"
 import { noopPrivacyFilter, stampPrivacyForTest } from "./privacy-fixtures"
-import { cleanupSellerWorkspaces, createWorkspacePath } from "./trajectory-seller-fixtures"
+import { cleanupSellerWorkspaces, writeTraceFixture } from "./trajectory-seller-fixtures"
 
 // The fail-closed privacy gate: collected traces without the ML privacy-pass
 // stamp must be rejected at every surface — inspect, seller package, and
@@ -27,26 +26,18 @@ const unstampedCollectedTrace = {
   events: collectedEvents,
 }
 
-const writeTrace = (trace: unknown) => {
-  const workspace = createWorkspacePath()
-  mkdirSync(workspace, { recursive: true })
-  const tracePath = join(workspace, "trace.atf.json")
-  writeFileSync(tracePath, `${JSON.stringify(trace)}\n`, "utf8")
-  return { workspace, tracePath }
-}
-
 afterEach(cleanupSellerWorkspaces)
 
 describe("privacy stamp gate", () => {
   test("inspect marks unstamped collected traces below marketplace-ready", () => {
-    const { tracePath } = writeTrace(unstampedCollectedTrace)
+    const { tracePath } = writeTraceFixture(unstampedCollectedTrace)
     const inspection = inspectTraceFile(tracePath)
     expect(inspection.checks.privacyFiltered).toBe(false)
     expect(inspection.marketplaceReady).toBe(false)
   })
 
   test("inspect accepts stamped collected traces and surfaces the stamp", () => {
-    const { tracePath } = writeTrace(stampPrivacyForTest(unstampedCollectedTrace))
+    const { tracePath } = writeTraceFixture(stampPrivacyForTest(unstampedCollectedTrace))
     const inspection = inspectTraceFile(tracePath)
     expect(inspection.checks.privacyFiltered).toBe(true)
     expect(inspection.marketplaceReady).toBe(true)
@@ -54,7 +45,7 @@ describe("privacy stamp gate", () => {
   })
 
   test("instrumented prototype traces stay exempt from the stamp requirement", () => {
-    const { tracePath } = writeTrace({
+    const { tracePath } = writeTraceFixture({
       runtime: "python",
       status: "instrumented",
       eventCount: 5,
@@ -86,7 +77,7 @@ describe("privacy stamp gate", () => {
   })
 
   test("the retrofit filter stamps an existing unstamped trace into readiness", async () => {
-    const { workspace, tracePath } = writeTrace(unstampedCollectedTrace)
+    const { workspace, tracePath } = writeTraceFixture(unstampedCollectedTrace)
     const exportPath = join(workspace, "stamped.atf.json")
     const result = await filterExistingTrace(
       { tracePath, exportPath },
@@ -99,7 +90,7 @@ describe("privacy stamp gate", () => {
   })
 
   test("seller package creation refuses unstamped collected traces", () => {
-    const { workspace, tracePath } = writeTrace(unstampedCollectedTrace)
+    const { workspace, tracePath } = writeTraceFixture(unstampedCollectedTrace)
     expect(() =>
       createSellerPackage({
         tracePath,

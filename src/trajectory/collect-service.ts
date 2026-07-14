@@ -6,6 +6,7 @@ import { join, resolve } from "node:path"
 import { z } from "zod"
 
 import { TrajectoryAdapterError } from "./adapters/contract"
+import { privacyThresholdSchema } from "./privacy/contract"
 
 export const collectServiceLabel = "com.agent-trajectory-marketplace.collect-watch"
 
@@ -18,7 +19,7 @@ const collectServiceConfigSchema = z.object({
   // Default true: the resident collector runs the ML privacy pass. false
   // renders --no-privacy-filter into the launchd argv.
   privacyFilter: z.boolean().default(true),
-  privacyThreshold: z.number().min(0).max(1).optional(),
+  privacyThreshold: privacyThresholdSchema.optional(),
 })
 
 // z.input keeps privacyFilter optional for callers; the schema default (true)

@@ -39,53 +39,66 @@ export const packageInspectSchema = z.object({
   filesVerified: z.array(z.string()),
 })
 
-export const sellerSchema = z.object({
-  sellerId: z.string(),
-  rights: z.literal("self_generated_agent_log"),
-})
+export const sellerSchema = z
+  .object({
+    sellerId: z.string(),
+    rights: z.literal("self_generated_agent_log"),
+  })
+  .passthrough()
 
-export const datasetSchema = z.object({
-  schemaVersion: z.literal(1),
-  kind: z.literal("agent-log-dataset"),
-  datasetId: z.string(),
-  title: z.string(),
-  runtime: z.string(),
-  status: z.string(),
-  eventCount: z.number(),
-  eventKinds: z.array(z.string()),
-  traceSha256: z.string(),
-  purpose: z.string(),
-})
+export const datasetSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    kind: z.literal("agent-log-dataset"),
+    datasetId: z.string(),
+    title: z.string(),
+    runtime: z.string(),
+    status: z.string(),
+    eventCount: z.number(),
+    eventKinds: z.array(z.string()),
+    traceSha256: z.string(),
+    purpose: z.string(),
+  })
+  .passthrough()
 
-export const manifestSchema = z.object({
-  schemaVersion: z.literal(1),
-  kind: z.literal("trajectory-seller-package"),
-  packageId: z.string(),
-  createdAt: z.string(),
-  files: z.array(z.object({ path: z.string(), sha256: z.string() })),
-  checks: z.object({
-    listingReady: z.boolean(),
-    marketplaceReady: z.boolean(),
-    privacyFiltered: z.boolean(),
-    redactionClean: z.boolean(),
-  }),
-  marketplace: z
-    .object({
-      price: z.object({ mode: z.string(), display: z.string() }),
-      license: z.object({ name: z.string(), url: z.string().optional() }),
-      usageTerms: z.object({
-        allowed: z.array(z.string()),
-        prohibited: z.array(z.string()),
-      }),
-      sellerProfile: z.object({
-        displayName: z.string(),
-        supportUrl: z.string().optional(),
-      }),
-      sample: z.object({ summary: z.string(), maxPreviewEvents: z.number() }),
-      accessPolicy: z.string(),
-    })
-    .optional(),
-})
+// Deliberately loose (mutation tests overwrite fields with invalid values),
+// but passthrough at every level: a parse→rewrite round trip must never strip
+// fields the src contract adds later — that drift is what once dropped
+// checks.privacyFiltered and broke the strict server-side re-parse.
+export const manifestSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    kind: z.literal("trajectory-seller-package"),
+    packageId: z.string(),
+    createdAt: z.string(),
+    files: z.array(z.object({ path: z.string(), sha256: z.string() }).passthrough()),
+    checks: z
+      .object({
+        listingReady: z.boolean(),
+        marketplaceReady: z.boolean(),
+        privacyFiltered: z.boolean(),
+        redactionClean: z.boolean(),
+      })
+      .passthrough(),
+    marketplace: z
+      .object({
+        price: z.object({ mode: z.string(), display: z.string() }),
+        license: z.object({ name: z.string(), url: z.string().optional() }),
+        usageTerms: z.object({
+          allowed: z.array(z.string()),
+          prohibited: z.array(z.string()),
+        }),
+        sellerProfile: z.object({
+          displayName: z.string(),
+          supportUrl: z.string().optional(),
+        }),
+        sample: z.object({ summary: z.string(), maxPreviewEvents: z.number() }),
+        accessPolicy: z.string(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough()
 
 export const traceSchema = z.object({
   runtime: z.string(),
@@ -195,6 +208,16 @@ export const packageArgs = (tracePath: string, outDir: string) =>
     "--title",
     "Hermes demo self-log",
   ] as const
+
+// One place that writes a trace fixture to disk (same filename and trailing
+// newline the collector produces), shared by gate and inspection tests.
+export const writeTraceFixture = (trace: unknown) => {
+  const workspace = createWorkspacePath()
+  mkdirSync(workspace, { recursive: true })
+  const tracePath = join(workspace, "trace.atf.json")
+  writeFileSync(tracePath, `${JSON.stringify(trace)}\n`, "utf8")
+  return { workspace, tracePath }
+}
 
 export const rewriteManifestHashes = (packageDir: string) => {
   const manifestPath = join(packageDir, "manifest.json")

@@ -38,7 +38,7 @@ const normalizeCategory = (label: string): PiiCategory | undefined => {
   return categoryAliases[stripped]
 }
 
-export type ModelToken = Readonly<{
+type ModelToken = Readonly<{
   entity: string
   score: number
   start?: number | null
@@ -89,10 +89,7 @@ export const tokensToSpans = (tokens: readonly ModelToken[]): readonly PrivacySp
 
 // Token pieces carry their leading whitespace ("... Jane"); shrink each span
 // to its visible content so masking does not eat separators.
-export const trimSpansToContent = (
-  text: string,
-  spans: readonly PrivacySpan[],
-): readonly PrivacySpan[] =>
+const trimSpansToContent = (text: string, spans: readonly PrivacySpan[]): readonly PrivacySpan[] =>
   spans
     .map((span) => {
       let start = span.start

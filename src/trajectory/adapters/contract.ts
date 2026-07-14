@@ -2,6 +2,7 @@ import { z } from "zod"
 
 import { redactCredentialSpans } from "../credential-redaction"
 import { privacyStampSchema } from "../privacy/contract"
+import { mapStringLeaves } from "../string-leaves"
 
 // Harness adapters convert coding-harness session logs that already exist on
 // the seller's machine into ATF trace documents. Traces produced this way use
@@ -180,27 +181,18 @@ export const boundedRedactedString = (value: string): { text: string; truncated:
   return { text: `${buffer.subarray(0, end).toString("utf8")}…[truncated]`, truncated: true }
 }
 
-// Recursively sanitizes an arbitrary payload value (tool input/output are any
-// JSON): redacts credential spans in every string leaf and caps string sizes.
-// Reports whether anything was truncated so the caller can set the marker.
-const sanitizePayloadValue = (value: unknown, state: { truncated: boolean }): unknown => {
-  if (typeof value === "string") {
-    const bounded = boundedRedactedString(value)
+// Sanitizes every string leaf of an arbitrary payload value (tool
+// input/output are any JSON): credential-span redaction plus the byte cap,
+// via the shared string-leaf walker. Reports whether anything was truncated
+// so the caller can set the marker.
+const sanitizePayloadValue = (value: unknown, state: { truncated: boolean }): unknown =>
+  mapStringLeaves(value, (leaf) => {
+    const bounded = boundedRedactedString(leaf)
     if (bounded.truncated) {
       state.truncated = true
     }
     return bounded.text
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizePayloadValue(item, state))
-  }
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, sanitizePayloadValue(item, state)]),
-    )
-  }
-  return value
-}
+  })
 
 // Sanitizes a full event payload: credential-redacts and size-bounds every
 // string, stamps `truncated` when any leaf was cut, and drops the whole

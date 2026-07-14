@@ -10,12 +10,11 @@ import {
 } from "./adapters/contract"
 import { getHarnessAdapter, listHarnessAdapters } from "./adapters/registry"
 import { resolveWritableProjectPath } from "./path-safety"
-import { applyPrivacyPass } from "./privacy/apply"
 import {
+  applyCollectPrivacy,
   type CollectPrivacyOptions,
   type CollectPrivacySummary,
   resolveCollectPrivacy,
-  unfilteredPrivacyWarning,
 } from "./privacy/pipeline"
 
 const listSessionsInputSchema = z.object({
@@ -140,20 +139,11 @@ export const exportCollectedSession = async (
     session: parsed.session,
     ...(parsed.sourceDir === undefined ? {} : { sourceDir: parsed.sourceDir }),
   })
-  let trace = adapter.convertSession(sessionInput)
-  const privacy = resolveCollectPrivacy(privacyOptions)
-  let privacySummary: CollectPrivacySummary
-  if (privacy.enabled) {
-    const passed = await applyPrivacyPass(trace, privacy.filter, privacy.config)
-    trace = passed.trace
-    privacySummary = {
-      filtered: true,
-      maskedSpanCount: passed.maskedSpanCount,
-      configHash: privacy.configHash,
-    }
-  } else {
-    privacySummary = { filtered: false, warning: unfilteredPrivacyWarning }
-  }
+  const converted = adapter.convertSession(sessionInput)
+  const { trace, summary: privacySummary } = await applyCollectPrivacy(
+    converted,
+    resolveCollectPrivacy(privacyOptions),
+  )
   const exportPath = resolveWritableProjectPath({
     inputPath: parsed.exportPath,
     code: "invalid_export_path",

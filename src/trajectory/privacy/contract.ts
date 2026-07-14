@@ -38,10 +38,15 @@ export const defaultMaskCategories: readonly PiiCategory[] = [
 export const defaultPrivacyModelId = "openai/privacy-filter"
 export const defaultPrivacyThreshold = 0.5
 
+// The valid confidence range is privacy-pass policy; consumers that carry a
+// threshold (e.g. the launchd service config) reuse this instead of
+// re-declaring the bounds.
+export const privacyThresholdSchema = z.number().min(0).max(1)
+
 export const privacyPassConfigSchema = z
   .object({
     modelId: z.string().min(1).default(defaultPrivacyModelId),
-    threshold: z.number().min(0).max(1).default(defaultPrivacyThreshold),
+    threshold: privacyThresholdSchema.default(defaultPrivacyThreshold),
     maskCategories: z
       .array(piiCategorySchema)
       .min(1)

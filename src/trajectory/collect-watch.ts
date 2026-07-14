@@ -6,9 +6,12 @@ import { z } from "zod"
 import { TrajectoryAdapterError } from "./adapters/contract"
 import { getHarnessAdapter, listHarnessAdapters } from "./adapters/registry"
 import { resolveWritableProjectPath } from "./path-safety"
-import { applyPrivacyPass } from "./privacy/apply"
 import { PrivacyFilterUnavailableError } from "./privacy/contract"
-import { type CollectPrivacyOptions, resolveCollectPrivacy } from "./privacy/pipeline"
+import {
+  applyCollectPrivacy,
+  type CollectPrivacyOptions,
+  resolveCollectPrivacy,
+} from "./privacy/pipeline"
 
 export const collectWatchStateFileName = "collect-watch-state.json"
 
@@ -121,8 +124,8 @@ export const resolveCollectWatchRuntimes = (runtimes: readonly string[] | undefi
 // collector must survive missing log directories and torn live sessions.
 export const runCollectSweep = async (
   config: CollectSweepConfig,
-  now: Date = new Date(),
   privacyOptions?: CollectPrivacyOptions,
+  now: Date = new Date(),
 ): Promise<CollectSweepSummary> => {
   const parsed = collectSweepConfigSchema.parse(config)
   const privacy = resolveCollectPrivacy(privacyOptions)
@@ -191,13 +194,11 @@ export const runCollectSweep = async (
       }
 
       try {
-        let trace = adapter.convertSession({
+        const converted = adapter.convertSession({
           sessionPath: ref.sessionPath,
           sessionId: ref.sessionId,
         })
-        if (privacy.enabled) {
-          trace = (await applyPrivacyPass(trace, privacy.filter, privacy.config, now)).trace
-        }
+        const { trace } = await applyCollectPrivacy(converted, privacy, now)
         const runtimeDir = join(outDir, runtime)
         mkdirSync(runtimeDir, { recursive: true })
         const exportPath = join(runtimeDir, `${ref.sessionId}.atf.json`)
@@ -303,7 +304,7 @@ export const runCollectWatchLoop = async (options: CollectWatchOptions): Promise
   const shouldContinue = options.shouldContinue ?? (() => true)
   while (shouldContinue()) {
     try {
-      options.onSweep(await runCollectSweep(options.config, new Date(), options.privacy))
+      options.onSweep(await runCollectSweep(options.config, options.privacy))
     } catch (caught: unknown) {
       options.onSweepError(caught instanceof Error ? caught : new Error(String(caught)))
     }

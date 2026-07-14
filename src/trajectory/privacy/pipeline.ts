@@ -1,3 +1,5 @@
+import type { HarnessTraceDocument } from "../adapters/contract"
+import { applyPrivacyPass } from "./apply"
 import {
   type PiiCategory,
   type PrivacyFilter,
@@ -61,5 +63,27 @@ export type CollectPrivacySummary = Readonly<{
   warning?: string
 }>
 
-export const unfilteredPrivacyWarning =
+const unfilteredPrivacyWarning =
   "privacy filter disabled: unfiltered collected traces are not marketplace-ready"
+
+// The one collect-side application of the pass: both the one-shot export and
+// the resident sweep run through this, so disabled-mode semantics, the stamp
+// clock, and the summary shape cannot drift between them.
+export const applyCollectPrivacy = async (
+  trace: HarnessTraceDocument,
+  privacy: ResolvedCollectPrivacy,
+  now?: Date,
+): Promise<{ trace: HarnessTraceDocument; summary: CollectPrivacySummary }> => {
+  if (!privacy.enabled) {
+    return { trace, summary: { filtered: false, warning: unfilteredPrivacyWarning } }
+  }
+  const passed = await applyPrivacyPass(trace, privacy.filter, privacy.config, now)
+  return {
+    trace: passed.trace,
+    summary: {
+      filtered: true,
+      maskedSpanCount: passed.maskedSpanCount,
+      configHash: privacy.configHash,
+    },
+  }
+}

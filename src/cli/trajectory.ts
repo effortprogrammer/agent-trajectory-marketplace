@@ -257,7 +257,7 @@ export const registerTrajectoryCommand = (program: Command) => {
     }
     const privacy = collectPrivacyOptions(options)
     if (options.once === true) {
-      printJson(await runCollectSweep(config, new Date(), privacy))
+      printJson(await runCollectSweep(config, privacy))
       return
     }
     const intervalSeconds = Number(options.intervalSeconds)
@@ -312,6 +312,9 @@ export const registerTrajectoryCommand = (program: Command) => {
     if (options.source !== undefined && runtimes.length !== 1) {
       throw new Error("invalid_request: --source requires exactly one --runtime")
     }
+    // One flag→config translation for every surface: the same parse the
+    // in-process commands use, mapped onto the service config keys.
+    const privacy = collectPrivacyOptions(options)
     printJson(
       installCollectWatchService({
         config: {
@@ -320,10 +323,8 @@ export const registerTrajectoryCommand = (program: Command) => {
           ...(options.source === undefined ? {} : { sourceDir: options.source }),
           intervalSeconds: Number(options.intervalSeconds),
           settleSeconds: Number(options.settleSeconds),
-          privacyFilter: options.privacyFilter,
-          ...(options.privacyThreshold === undefined
-            ? {}
-            : { privacyThreshold: Number(options.privacyThreshold) }),
+          privacyFilter: privacy.enabled ?? true,
+          ...(privacy.threshold === undefined ? {} : { privacyThreshold: privacy.threshold }),
         },
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
       }),

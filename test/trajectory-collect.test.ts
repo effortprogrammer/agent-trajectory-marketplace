@@ -15,6 +15,7 @@ import {
   packageArgs,
   parseJson,
   runCli,
+  writeTraceFixture,
 } from "./trajectory-seller-fixtures"
 
 const sessionId = "11111111-2222-3333-4444-555555555555"
@@ -417,7 +418,7 @@ describe("codex adapter", () => {
     expect(trace.events[8]?.detail).toBe("[redacted]")
 
     // Raw adapter output has no stamp; stamp it as the collect pipeline would.
-    const inspection = inspectTraceFile(writeTraceForInspection(stampPrivacyForTest(trace)))
+    const inspection = inspectTraceFile(writeTraceFixture(stampPrivacyForTest(trace)).tracePath)
     expect(inspection.marketplaceReady).toBe(true)
     expect(inspection.checks.collected).toBe(true)
   })
@@ -444,14 +445,6 @@ describe("codex adapter", () => {
     expect(result.eventCount).toBe(11)
   })
 })
-
-const writeTraceForInspection = (trace: unknown) => {
-  const workspace = createWorkspacePath()
-  mkdirSync(workspace, { recursive: true })
-  const tracePath = join(workspace, "trace.atf.json")
-  writeFileSync(tracePath, `${JSON.stringify(trace)}\n`, "utf8")
-  return tracePath
-}
 
 describe("collect export", () => {
   test("resolves a session id against the source dir and exports a marketplace-ready trace", async () => {

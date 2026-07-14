@@ -1,5 +1,6 @@
 import type { HarnessTraceDocument, HarnessTraceEvent } from "../adapters/contract"
 import { boundedRedactedString, redactHarnessDetail } from "../adapters/contract"
+import { mapStringLeaves } from "../string-leaves"
 import {
   type PrivacyFilter,
   type PrivacyPassConfig,
@@ -17,24 +18,6 @@ export type PrivacyPassResult = Readonly<{
   trace: HarnessTraceDocument
   maskedSpanCount: number
 }>
-
-// Both the collect walk and the rebuild walk must visit string leaves in the
-// same order; this is the single traversal they share. Returns the rebuilt
-// value with each string leaf replaced by visit(leaf).
-const mapStringLeaves = (value: unknown, visit: (text: string) => string): unknown => {
-  if (typeof value === "string") {
-    return visit(value)
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => mapStringLeaves(item, visit))
-  }
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, mapStringLeaves(item, visit)]),
-    )
-  }
-  return value
-}
 
 // Masks the applicable spans of one text. Overlapping spans are merged into
 // their union first — every detected character is masked, never a partial

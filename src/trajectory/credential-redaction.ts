@@ -12,6 +12,8 @@
 // words survive. Used both to redact at collection (adapter) and to reject at
 // intake (escrow) as the fail-closed backstop.
 
+import { someStringLeaf } from "./string-leaves"
+
 export const redactedMarker = "[redacted]"
 
 // Each pattern matches a concrete credential shape. Order/independence does
@@ -52,19 +54,9 @@ export const containsCredentialPattern = (text: string): boolean =>
     return pattern.test(text)
   })
 
-// Recursively scans an arbitrary value (a high-fidelity event payload is any
-// JSON) for a credential-shaped span in any string leaf. The escrow intake
-// backstop over full-fidelity payloads, which the blunt detail-lane dictionary
-// scan would either miss (it only reads detail) or over-reject.
-export const containsCredentialInValue = (value: unknown): boolean => {
-  if (typeof value === "string") {
-    return containsCredentialPattern(value)
-  }
-  if (Array.isArray(value)) {
-    return value.some(containsCredentialInValue)
-  }
-  if (value !== null && typeof value === "object") {
-    return Object.values(value).some(containsCredentialInValue)
-  }
-  return false
-}
+// Scans an arbitrary value (a high-fidelity event payload is any JSON) for a
+// credential-shaped span in any string leaf. The escrow intake backstop over
+// full-fidelity payloads, which the blunt detail-lane dictionary scan would
+// either miss (it only reads detail) or over-reject.
+export const containsCredentialInValue = (value: unknown): boolean =>
+  someStringLeaf(value, containsCredentialPattern)

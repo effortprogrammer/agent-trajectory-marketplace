@@ -105,7 +105,7 @@ describe("applyPrivacyPass", () => {
   })
 
   test("re-caps the detail lane when markers grow past the cap", async () => {
-    const detail = "x".repeat(238) + " ab"
+    const detail = `${"x".repeat(238)} ab`
     const trace = collectedTrace([{ kind: "llm_call", name: "turn", detail }])
     const filter = fakeFilter(new Map([[detail, [spanOf(239, 241, "person_name")]]]))
     const result = await applyPrivacyPass(trace, filter, resolvePrivacyPassConfig())
