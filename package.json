@@ -52,6 +52,7 @@
     "docs:preview": "vitepress preview website"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "commander": "^14.0.3",
     "nodemailer": "^9.0.3",
     "zod": "^3.25.0"
@@ -63,5 +64,9 @@
     "playwright": "^1.61.1",
     "typescript": "^6.0.2",
     "vitepress": "^1.6.4"
-  }
+  },
+  "trustedDependencies": [
+    "onnxruntime-node",
+    "protobufjs"
+  ]
 }

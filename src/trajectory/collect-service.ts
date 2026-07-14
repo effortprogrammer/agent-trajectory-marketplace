@@ -15,9 +15,15 @@ const collectServiceConfigSchema = z.object({
   sourceDir: z.string().min(1).optional(),
   intervalSeconds: z.number().int().positive(),
   settleSeconds: z.number().int().nonnegative(),
+  // Default true: the resident collector runs the ML privacy pass. false
+  // renders --no-privacy-filter into the launchd argv.
+  privacyFilter: z.boolean().default(true),
+  privacyThreshold: z.number().min(0).max(1).optional(),
 })
 
-export type CollectServiceConfig = z.infer<typeof collectServiceConfigSchema>
+// z.input keeps privacyFilter optional for callers; the schema default (true)
+// applies when the plist is rendered.
+export type CollectServiceConfig = z.input<typeof collectServiceConfigSchema>
 
 export type CollectServicePaths = Readonly<{
   label: string
@@ -76,6 +82,10 @@ export const renderCollectWatchPlist = (input: {
     String(config.intervalSeconds),
     "--settle-seconds",
     String(config.settleSeconds),
+    ...(config.privacyFilter ? [] : ["--no-privacy-filter"]),
+    ...(config.privacyThreshold === undefined
+      ? []
+      : ["--privacy-threshold", String(config.privacyThreshold)]),
   ]
   const argumentLines = collectArguments
     .map((argument) => `      <string>${xmlEscape(argument)}</string>`)

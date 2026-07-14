@@ -11,6 +11,7 @@ import {
   marketplaceMetadataSchema,
   packageFilePaths,
   previewFileSchema,
+  privacyReportFileSchema,
   redactionReportFileSchema,
   SellerPackageError,
   SellerPackageErrorCode,
@@ -75,6 +76,7 @@ export const createSellerPackage = (input: {
   const tracePath = writablePackageFilePath(packageDir, "trace.atf.json")
   const previewPath = writablePackageFilePath(packageDir, "preview.json")
   const redactionReportPath = writablePackageFilePath(packageDir, "redaction-report.json")
+  const privacyReportPath = writablePackageFilePath(packageDir, "privacy-report.json")
   const manifestPath = writablePackageFilePath(packageDir, packageManifestFilePath)
   const cleanupOnFailure = !existsSync(packageDir)
 
@@ -122,6 +124,12 @@ export const createSellerPackage = (input: {
       redactionClean: inspect.checks.redactionClean,
       redactedFindings: inspect.redactedFindings,
     })
+    writeJsonFile(privacyReportPath, {
+      schemaVersion: 1,
+      kind: "privacy-report",
+      privacyFiltered: inspect.checks.privacyFiltered,
+      ...(inspect.privacy === undefined ? {} : { stamp: inspect.privacy }),
+    })
     writeJsonFile(manifestPath, {
       schemaVersion: 1,
       kind: "trajectory-seller-package",
@@ -131,6 +139,7 @@ export const createSellerPackage = (input: {
       checks: {
         listingReady: inspect.marketplaceReady,
         marketplaceReady: inspect.marketplaceReady,
+        privacyFiltered: inspect.checks.privacyFiltered,
         redactionClean: inspect.checks.redactionClean,
       },
       ...(metadata === undefined ? {} : { marketplace: metadata }),
@@ -183,6 +192,11 @@ export const inspectSellerPackageDirectory = (packageDir: string) => {
     redactionReportFileSchema,
     SellerPackageErrorCode.InvalidRedactionReportJson,
   )
+  const privacyReport = readJsonFile(
+    requirePackageFile(packageDir, "privacy-report.json"),
+    privacyReportFileSchema,
+    SellerPackageErrorCode.InvalidPrivacyReportJson,
+  )
 
   assertManifestFileList(manifest, packageFilePaths)
   for (const filePath of packageFilePaths) {
@@ -196,6 +210,7 @@ export const inspectSellerPackageDirectory = (packageDir: string) => {
     dataset,
     manifest,
     preview,
+    privacyReport,
     redactionReport,
     traceInspect,
     traceSha256,

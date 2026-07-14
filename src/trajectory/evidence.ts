@@ -13,6 +13,7 @@ import { join } from "node:path"
 import { z } from "zod"
 
 import { resolveReadableProjectPath, resolveWritableProjectPath } from "./path-safety"
+import { type PrivacyStamp, privacyStampSatisfied, privacyStampSchema } from "./privacy/contract"
 
 // The Python prototype instruments code directly, so its traces must show the
 // full vocabulary including verification labels. Harness-adapter traces
@@ -44,6 +45,9 @@ const traceSchema = z.object({
   status: z.string().min(1),
   eventCount: z.number().int().nonnegative(),
   events: z.array(traceEventSchema),
+  // Proof the ML privacy pass ran at collection. Required for collected
+  // traces to be marketplace-ready; instrumented prototype traces are exempt.
+  privacy: privacyStampSchema.optional(),
 })
 
 const inspectInputSchema = z.object({
@@ -72,10 +76,12 @@ export type InspectTraceResult = Readonly<{
   eventKinds: readonly string[]
   requiredKinds: readonly string[]
   redactedFindings: readonly RedactedFinding[]
+  privacy?: PrivacyStamp
   checks: Readonly<{
     collected: boolean
     eventCountMatches: boolean
     instrumented: boolean
+    privacyFiltered: boolean
     redactionClean: boolean
     requiredKindsPresent: boolean
   }>
@@ -229,13 +235,19 @@ export const inspectTraceFile = (tracePath: string): InspectTraceResult => {
     collected: trace.status === "collected",
     eventCountMatches: true,
     instrumented: trace.status === "instrumented",
+    // The shared gate predicate (also enforced at escrow intake): stamp
+    // present, or the status is explicitly exempt (prototype demo traces).
+    privacyFiltered: privacyStampSatisfied(trace.status, trace.privacy),
     redactionClean: true,
     requiredKindsPresent: requiredKinds.length === requiredEventKinds.length,
   }
 
   return {
     valid: true,
-    marketplaceReady: (checks.instrumented || checks.collected) && checks.requiredKindsPresent,
+    marketplaceReady:
+      (checks.instrumented || checks.collected) &&
+      checks.requiredKindsPresent &&
+      checks.privacyFiltered,
     runtime: trace.runtime,
     status: trace.status,
     eventCount: trace.eventCount,
@@ -243,6 +255,7 @@ export const inspectTraceFile = (tracePath: string): InspectTraceResult => {
     eventKinds,
     requiredKinds,
     redactedFindings: collectRedactedFindings(trace.events),
+    ...(trace.privacy === undefined ? {} : { privacy: trace.privacy }),
     checks,
   }
 }

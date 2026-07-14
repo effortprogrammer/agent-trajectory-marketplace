@@ -7,6 +7,7 @@ import { hermesAdapter } from "../src/trajectory/adapters/hermes"
 import { openclawAdapter } from "../src/trajectory/adapters/openclaw"
 import { exportCollectedSession } from "../src/trajectory/collect"
 import { inspectTraceFile } from "../src/trajectory/evidence"
+import { testPrivacyOptions } from "./privacy-fixtures"
 import { cleanupSellerWorkspaces, createWorkspacePath } from "./trajectory-seller-fixtures"
 
 const hermesSessionId = "20260707_120000_abc123"
@@ -247,15 +248,13 @@ describe("hermes adapter", () => {
     expect(sessions[1]?.sessionId).toBe("20260101_000000_old111")
   })
 
-  test("exports through the shared collect pipeline by session id", () => {
+  test("exports through the shared collect pipeline by session id", async () => {
     const { workspace, sourceDir } = writeHermesFixture()
     const exportPath = join(workspace, "artifacts", "hermes.atf.json")
-    const result = exportCollectedSession({
-      runtime: "hermes",
-      session: hermesSessionId,
-      sourceDir,
-      exportPath,
-    })
+    const result = await exportCollectedSession(
+      { runtime: "hermes", session: hermesSessionId, sourceDir, exportPath },
+      testPrivacyOptions,
+    )
     expect(result).toMatchObject({ runtime: "hermes", status: "collected", eventCount: 9 })
     const inspection = inspectTraceFile(exportPath)
     expect(inspection.marketplaceReady).toBe(true)
@@ -311,15 +310,13 @@ describe("openclaw adapter", () => {
     )
   })
 
-  test("exported openclaw traces are marketplace-ready", () => {
+  test("exported openclaw traces are marketplace-ready", async () => {
     const { workspace, sourceDir } = writeOpenclawFixture()
     const exportPath = join(workspace, "artifacts", "openclaw.atf.json")
-    const result = exportCollectedSession({
-      runtime: "openclaw",
-      session: openclawSessionId,
-      sourceDir,
-      exportPath,
-    })
+    const result = await exportCollectedSession(
+      { runtime: "openclaw", session: openclawSessionId, sourceDir, exportPath },
+      testPrivacyOptions,
+    )
     expect(result).toMatchObject({ runtime: "openclaw", status: "collected", eventCount: 9 })
     expect(inspectTraceFile(exportPath).marketplaceReady).toBe(true)
   })

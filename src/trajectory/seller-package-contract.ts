@@ -1,11 +1,14 @@
 import { z } from "zod"
 
+import { privacyStampSchema } from "./privacy/contract"
+
 export const packageFilePaths = [
   "seller.json",
   "dataset.json",
   "trace.atf.json",
   "preview.json",
   "redaction-report.json",
+  "privacy-report.json",
 ] as const
 
 export const sellerPackageInputSchema = z
@@ -143,6 +146,16 @@ export const redactionReportFileSchema = z
   })
   .strict()
 
+export const privacyReportFileSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    kind: z.literal("privacy-report"),
+    privacyFiltered: z.boolean(),
+    // Present when the trace carries a stamp (always, for collected traces).
+    stamp: privacyStampSchema.optional(),
+  })
+  .strict()
+
 export const manifestFileSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -154,6 +167,7 @@ export const manifestFileSchema = z
       .object({
         listingReady: z.boolean(),
         marketplaceReady: z.boolean(),
+        privacyFiltered: z.boolean(),
         redactionClean: z.boolean(),
       })
       .strict(),
@@ -172,6 +186,7 @@ export const SellerPackageErrorCode = {
   InvalidPackageFile: "invalid_package_file",
   InvalidPackagePath: "invalid_package_path",
   InvalidPreviewJson: "invalid_preview_json",
+  InvalidPrivacyReportJson: "invalid_privacy_report_json",
   InvalidRedactionReportJson: "invalid_redaction_report_json",
   InvalidSellerJson: "invalid_seller_json",
   MissingPackageFile: "missing_package_file",

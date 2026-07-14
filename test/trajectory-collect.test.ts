@@ -8,6 +8,7 @@ import { harnessDetailMaxLength, redactHarnessDetail } from "../src/trajectory/a
 import { getHarnessAdapter, listHarnessAdapters } from "../src/trajectory/adapters/registry"
 import { exportCollectedSession } from "../src/trajectory/collect"
 import { inspectTraceFile } from "../src/trajectory/evidence"
+import { stampPrivacyForTest, testPrivacyOptions } from "./privacy-fixtures"
 import {
   cleanupSellerWorkspaces,
   createWorkspacePath,
@@ -415,12 +416,13 @@ describe("codex adapter", () => {
     expect(trace.events[6]?.detail).toBe("error")
     expect(trace.events[8]?.detail).toBe("[redacted]")
 
-    const inspection = inspectTraceFile(writeTraceForInspection(trace))
+    // Raw adapter output has no stamp; stamp it as the collect pipeline would.
+    const inspection = inspectTraceFile(writeTraceForInspection(stampPrivacyForTest(trace)))
     expect(inspection.marketplaceReady).toBe(true)
     expect(inspection.checks.collected).toBe(true)
   })
 
-  test("rejects rollouts without session metadata and lists nested sessions", () => {
+  test("rejects rollouts without session metadata and lists nested sessions", async () => {
     const { workspace, sourceDir, sessionPath } = writeCodexFixtureSession()
     const bogusPath = join(sourceDir, "2026", "07", "01", "no-meta.jsonl")
     writeFileSync(bogusPath, `${JSON.stringify({ type: "event_msg", payload: {} })}\n`, "utf8")
@@ -434,12 +436,10 @@ describe("codex adapter", () => {
     expect(sessions[0]?.projectDir).toBe(join("2026", "07", "01"))
 
     const exportPath = join(workspace, "artifacts", "codex.atf.json")
-    const result = exportCollectedSession({
-      runtime: "codex",
-      session: codexSessionId,
-      sourceDir,
-      exportPath,
-    })
+    const result = await exportCollectedSession(
+      { runtime: "codex", session: codexSessionId, sourceDir, exportPath },
+      testPrivacyOptions,
+    )
     expect(result.runtime).toBe("codex")
     expect(result.eventCount).toBe(11)
   })
@@ -454,16 +454,14 @@ const writeTraceForInspection = (trace: unknown) => {
 }
 
 describe("collect export", () => {
-  test("resolves a session id against the source dir and exports a marketplace-ready trace", () => {
+  test("resolves a session id against the source dir and exports a marketplace-ready trace", async () => {
     const { workspace, sourceDir } = writeFixtureSession()
     const exportPath = join(workspace, "artifacts", "collected.atf.json")
 
-    const result = exportCollectedSession({
-      runtime: "claude-code",
-      session: sessionId,
-      sourceDir,
-      exportPath,
-    })
+    const result = await exportCollectedSession(
+      { runtime: "claude-code", session: sessionId, sourceDir, exportPath },
+      testPrivacyOptions,
+    )
     expect(result).toMatchObject({
       runtime: "claude-code",
       status: "collected",
@@ -485,24 +483,30 @@ describe("collect export", () => {
     expect(inspection.checks.redactionClean).toBe(true)
   })
 
-  test("rejects unknown session ids and export paths outside the project", () => {
+  test("rejects unknown session ids and export paths outside the project", async () => {
     const { sourceDir } = writeFixtureSession()
-    expect(() =>
-      exportCollectedSession({
-        runtime: "claude-code",
-        session: "does-not-exist",
-        sourceDir,
-        exportPath: join(createWorkspacePath(), "out.atf.json"),
-      }),
-    ).toThrow("missing_session")
-    expect(() =>
-      exportCollectedSession({
-        runtime: "claude-code",
-        session: sessionId,
-        sourceDir,
-        exportPath: "/tmp/outside-project.atf.json",
-      }),
-    ).toThrow("invalid_export_path")
+    expect(
+      exportCollectedSession(
+        {
+          runtime: "claude-code",
+          session: "does-not-exist",
+          sourceDir,
+          exportPath: join(createWorkspacePath(), "out.atf.json"),
+        },
+        testPrivacyOptions,
+      ),
+    ).rejects.toThrow("missing_session")
+    expect(
+      exportCollectedSession(
+        {
+          runtime: "claude-code",
+          session: sessionId,
+          sourceDir,
+          exportPath: "/tmp/outside-project.atf.json",
+        },
+        testPrivacyOptions,
+      ),
+    ).rejects.toThrow("invalid_export_path")
   })
 
   test("collected traces without tool calls stay below marketplace-ready", () => {
@@ -548,19 +552,13 @@ describe("collect CLI", () => {
     expect(sessions.success).toBe(true)
     expect(sessions.stdout).toContain(sessionId)
 
-    const exported = await runCli([
-      "trajectory",
-      "collect",
-      "export",
-      "claude-code",
-      "--session",
-      sessionId,
-      "--source",
-      sourceDir,
-      "--export",
-      exportPath,
-    ])
-    expect(exported.success).toBe(true)
+    // Export runs in-process with the fake filter so the E2E stays
+    // model-free while still producing a privacy-stamped trace.
+    const exported = await exportCollectedSession(
+      { runtime: "claude-code", session: sessionId, sourceDir, exportPath },
+      testPrivacyOptions,
+    )
+    expect(exported.privacy.filtered).toBe(true)
 
     const packaged = await runCli(packageArgs(exportPath, join(workspace, "seller-package")))
     expect(packaged.success).toBe(true)

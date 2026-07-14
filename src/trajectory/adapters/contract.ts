@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { redactCredentialSpans } from "../credential-redaction"
+import { privacyStampSchema } from "../privacy/contract"
 
 // Harness adapters convert coding-harness session logs that already exist on
 // the seller's machine into ATF trace documents. Traces produced this way use
@@ -72,6 +73,9 @@ export const harnessTraceDocumentSchema = z
     formatVersion: z.literal(2).optional(),
     eventCount: z.number().int().nonnegative(),
     events: z.array(harnessTraceEventSchema),
+    // Stamped by the ML privacy pass after conversion. Collected traces
+    // without it are not marketplace-ready and are rejected at escrow intake.
+    privacy: privacyStampSchema.optional(),
   })
   .strict()
 export type HarnessTraceDocument = z.infer<typeof harnessTraceDocumentSchema>
@@ -159,8 +163,10 @@ export const redactHarnessDetail = (detail: string): string => {
 
 // Sanitizes a payload string leaf: credential-pattern redaction (precise, so
 // full observations survive) plus a per-string byte cap. Returns the string
-// and whether it was truncated.
-const boundedRedactedString = (value: string): { text: string; truncated: boolean } => {
+// and whether it was truncated. Exported so the privacy pass can re-bound
+// strings after PII markers are spliced in (a marker can outgrow the span it
+// replaced).
+export const boundedRedactedString = (value: string): { text: string; truncated: boolean } => {
   const redacted = redactCredentialSpans(value)
   if (Buffer.byteLength(redacted, "utf8") <= harnessPayloadPolicy.maxStringBytes) {
     return { text: redacted, truncated: false }

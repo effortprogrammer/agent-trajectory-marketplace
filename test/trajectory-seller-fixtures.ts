@@ -66,6 +66,7 @@ export const manifestSchema = z.object({
   checks: z.object({
     listingReady: z.boolean(),
     marketplaceReady: z.boolean(),
+    privacyFiltered: z.boolean(),
     redactionClean: z.boolean(),
   }),
   marketplace: z

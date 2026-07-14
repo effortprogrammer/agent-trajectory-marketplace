@@ -28,10 +28,16 @@ type RedactionReportFile = Readonly<{
   redactedFindings: readonly RedactedFinding[]
 }>
 
+type PrivacyReportFile = Readonly<{
+  privacyFiltered: boolean
+  stamp?: Readonly<{ modelId: string; filteredAt: string }> | undefined
+}>
+
 type PackageClaimsInput = Readonly<{
   dataset: DatasetFile
   manifest: ManifestFile
   preview: PreviewFile
+  privacyReport: PrivacyReportFile
   redactionReport: RedactionReportFile
   traceInspect: InspectTraceResult
   traceSha256: string
@@ -103,6 +109,22 @@ const assertRedactionReportMatchesTrace = (
   }
 }
 
+const assertPrivacyReportMatchesTrace = (
+  privacyReport: PrivacyReportFile,
+  traceInspect: InspectTraceResult,
+) => {
+  if (
+    privacyReport.privacyFiltered !== traceInspect.checks.privacyFiltered ||
+    privacyReport.stamp?.modelId !== traceInspect.privacy?.modelId ||
+    privacyReport.stamp?.filteredAt !== traceInspect.privacy?.filteredAt
+  ) {
+    throw new SellerPackageError(
+      SellerPackageErrorCode.InvalidPrivacyReportJson,
+      "invalid_privacy_report_json: trace privacy stamp mismatch",
+    )
+  }
+}
+
 const assertManifestMatchesTrace = (
   manifest: ManifestFile,
   traceInspect: InspectTraceResult,
@@ -112,6 +134,7 @@ const assertManifestMatchesTrace = (
     manifest.packageId !== packageIdForTrace(traceSha256) ||
     manifest.checks.listingReady !== traceInspect.marketplaceReady ||
     manifest.checks.marketplaceReady !== traceInspect.marketplaceReady ||
+    manifest.checks.privacyFiltered !== traceInspect.checks.privacyFiltered ||
     manifest.checks.redactionClean !== traceInspect.checks.redactionClean
   ) {
     throw new SellerPackageError(
@@ -125,6 +148,7 @@ export const assertPackageClaimsMatch = ({
   dataset,
   manifest,
   preview,
+  privacyReport,
   redactionReport,
   traceInspect,
   traceSha256,
@@ -132,5 +156,6 @@ export const assertPackageClaimsMatch = ({
   assertDatasetMatchesTrace(dataset, traceInspect, traceSha256)
   assertPreviewMatchesTrace(preview, traceInspect)
   assertRedactionReportMatchesTrace(redactionReport, traceInspect)
+  assertPrivacyReportMatchesTrace(privacyReport, traceInspect)
   assertManifestMatchesTrace(manifest, traceInspect, traceSha256)
 }

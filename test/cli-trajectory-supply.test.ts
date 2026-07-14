@@ -8,6 +8,7 @@ import {
   wantedDatasetListResponseSchema,
   wantedDatasetResponseSchema,
 } from "../src/registry/supply-contract"
+import { stampPrivacyForTest } from "./privacy-fixtures"
 import { createRegistryApiHarness } from "./registry-api-fixtures"
 import { runCli } from "./trajectory-seller-fixtures"
 
@@ -31,16 +32,18 @@ const publishCandidateCli = async (
     const tracePath = join(workDir, `session-${index}.atf.json`)
     writeFileSync(
       tracePath,
-      JSON.stringify({
-        runtime: "hermes",
-        status: "collected",
-        eventCount: 3,
-        events: [
-          { kind: "function_enter", name: "turn-1", detail: `Session ${index} ask.` },
-          { kind: "llm_call", name: "claude-sonnet-5", detail: "Working on it." },
-          { kind: "tool_call", name: "run_tests", detail: "exit 0" },
-        ],
-      }),
+      JSON.stringify(
+        stampPrivacyForTest({
+          runtime: "hermes",
+          status: "collected",
+          eventCount: 3,
+          events: [
+            { kind: "function_enter", name: "turn-1", detail: `Session ${index} ask.` },
+            { kind: "llm_call", name: "claude-sonnet-5", detail: "Working on it." },
+            { kind: "tool_call", name: "run_tests", detail: "exit 0" },
+          ],
+        }),
+      ),
     )
     traceArgs.push("--trace", tracePath)
   }

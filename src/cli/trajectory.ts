@@ -17,6 +17,8 @@ import {
   runCollectWatchLoop,
 } from "../trajectory/collect-watch"
 import { bundleTrace, inspectTrace } from "../trajectory/evidence"
+import type { CollectPrivacyOptions } from "../trajectory/privacy/pipeline"
+import { filterExistingTrace } from "../trajectory/privacy/retrofit"
 import { initPrototypeWorkspace, runPrototypeDemo } from "../trajectory/prototype"
 import { createSellerPackage, inspectSellerPackage } from "../trajectory/seller-package"
 import { registerAuthCommand } from "./auth"
@@ -38,28 +40,44 @@ type CollectSessionsOptions = Readonly<{
   source?: string
 }>
 
-type CollectExportOptions = Readonly<{
+type CollectPrivacyFlagOptions = Readonly<{
+  // Commander sets this false for --no-privacy-filter, true otherwise.
+  privacyFilter: boolean
+  privacyThreshold?: string
+}>
+
+type CollectExportOptions = CollectPrivacyFlagOptions &
+  Readonly<{
+    export: string
+    session: string
+    source?: string
+  }>
+
+type CollectWatchOptions = CollectPrivacyFlagOptions &
+  Readonly<{
+    intervalSeconds: string
+    once?: boolean
+    out: string
+    runtime?: readonly string[]
+    settleSeconds: string
+    source?: string
+  }>
+
+type CollectServiceInstallOptions = CollectPrivacyFlagOptions &
+  Readonly<{
+    dryRun?: boolean
+    intervalSeconds: string
+    out: string
+    runtime?: readonly string[]
+    settleSeconds: string
+    source?: string
+  }>
+
+type PrivacyFilterCommandOptions = Readonly<{
   export: string
-  session: string
-  source?: string
-}>
-
-type CollectWatchOptions = Readonly<{
-  intervalSeconds: string
-  once?: boolean
-  out: string
-  runtime?: readonly string[]
-  settleSeconds: string
-  source?: string
-}>
-
-type CollectServiceInstallOptions = Readonly<{
-  dryRun?: boolean
-  intervalSeconds: string
-  out: string
-  runtime?: readonly string[]
-  settleSeconds: string
-  source?: string
+  json?: boolean
+  privacyThreshold?: string
+  trace: string
 }>
 
 type InspectOptions = Readonly<{
@@ -96,6 +114,26 @@ type SellerPublishOptions = Readonly<{
 const printJson = (value: unknown) => {
   console.log(JSON.stringify(value, null, 2))
 }
+
+const collectPrivacyOptions = (options: CollectPrivacyFlagOptions): CollectPrivacyOptions => ({
+  enabled: options.privacyFilter,
+  ...(options.privacyThreshold === undefined
+    ? {}
+    : { threshold: Number(options.privacyThreshold) }),
+})
+
+// Shared by collect export / watch / service install so the resident
+// collector and the one-shot export advertise the same privacy controls.
+const withCollectPrivacyFlags = (command: Command): Command =>
+  command
+    .option(
+      "--no-privacy-filter",
+      "Skip the ML privacy pass; unfiltered traces are not marketplace-ready",
+    )
+    .option(
+      "--privacy-threshold <threshold>",
+      "Minimum span confidence (0-1) before a detected PII span is masked",
+    )
 
 const sellerPublishApiKey = (options: SellerPublishOptions) => {
   const { TRAJECTORY_REGISTRY_API_KEY: envApiKey } = process.env
@@ -171,113 +209,126 @@ export const registerTrajectoryCommand = (program: Command) => {
       )
     })
 
-  collectCommand
-    .command("export <runtime>")
-    .description("Convert one harness session log into an ATF trace")
-    .requiredOption("--session <idOrPath>", "Session id or path to a session log file")
-    .requiredOption("--export <path>", "Output path for the exported ATF JSON trace")
-    .option("--source <dir>", "Harness log directory; defaults to the adapter's known location")
-    .action((runtime: string, options: CollectExportOptions) => {
-      printJson(
-        exportCollectedSession({
+  withCollectPrivacyFlags(
+    collectCommand
+      .command("export <runtime>")
+      .description("Convert one harness session log into a privacy-filtered ATF trace")
+      .requiredOption("--session <idOrPath>", "Session id or path to a session log file")
+      .requiredOption("--export <path>", "Output path for the exported ATF JSON trace")
+      .option("--source <dir>", "Harness log directory; defaults to the adapter's known location"),
+  ).action(async (runtime: string, options: CollectExportOptions) => {
+    printJson(
+      await exportCollectedSession(
+        {
           runtime,
           session: options.session,
           exportPath: options.export,
           ...(options.source === undefined ? {} : { sourceDir: options.source }),
-        }),
-      )
-    })
-
-  collectCommand
-    .command("watch")
-    .description("Run a resident collector that continuously converts harness sessions to ATF")
-    .requiredOption("--out <dir>", "Directory for exported ATF traces and the collector state")
-    .option("--runtime <runtimes...>", "Runtimes to watch; defaults to every registered adapter")
-    .option("--source <dir>", "Harness log directory override; requires exactly one --runtime")
-    .option("--interval-seconds <seconds>", "Seconds between collector sweeps", "30")
-    .option(
-      "--settle-seconds <seconds>",
-      "Seconds a session must stay unchanged before it is converted",
-      "60",
+        },
+        collectPrivacyOptions(options),
+      ),
     )
-    .option("--once", "Run a single sweep and exit instead of staying resident")
-    .action(async (options: CollectWatchOptions) => {
-      const runtimes = resolveCollectWatchRuntimes(options.runtime)
-      if (options.source !== undefined && runtimes.length !== 1) {
-        throw new Error("invalid_request: --source requires exactly one --runtime")
-      }
-      const config = {
-        outDir: options.out,
-        runtimes,
-        ...(options.source === undefined ? {} : { sourceDir: options.source }),
-        settleSeconds: Number(options.settleSeconds),
-      }
-      if (options.once === true) {
-        printJson(runCollectSweep(config))
-        return
-      }
-      const intervalSeconds = Number(options.intervalSeconds)
-      printJson({
-        mode: "collect-watch",
-        outDir: options.out,
-        runtimes,
-        intervalSeconds,
-        settleSeconds: config.settleSeconds,
-      })
-      let running = true
-      const stop = () => {
-        running = false
-      }
-      process.on("SIGINT", stop)
-      process.on("SIGTERM", stop)
-      await runCollectWatchLoop({
-        config,
-        intervalSeconds,
-        onSweep: (summary) => {
-          console.log(JSON.stringify(summary))
-        },
-        onSweepError: (error) => {
-          console.error(JSON.stringify({ error: error.message }))
-        },
-        shouldContinue: () => running,
-      })
+  })
+
+  withCollectPrivacyFlags(
+    collectCommand
+      .command("watch")
+      .description("Run a resident collector that continuously converts harness sessions to ATF")
+      .requiredOption("--out <dir>", "Directory for exported ATF traces and the collector state")
+      .option("--runtime <runtimes...>", "Runtimes to watch; defaults to every registered adapter")
+      .option("--source <dir>", "Harness log directory override; requires exactly one --runtime")
+      .option("--interval-seconds <seconds>", "Seconds between collector sweeps", "30")
+      .option(
+        "--settle-seconds <seconds>",
+        "Seconds a session must stay unchanged before it is converted",
+        "60",
+      )
+      .option("--once", "Run a single sweep and exit instead of staying resident"),
+  ).action(async (options: CollectWatchOptions) => {
+    const runtimes = resolveCollectWatchRuntimes(options.runtime)
+    if (options.source !== undefined && runtimes.length !== 1) {
+      throw new Error("invalid_request: --source requires exactly one --runtime")
+    }
+    const config = {
+      outDir: options.out,
+      runtimes,
+      ...(options.source === undefined ? {} : { sourceDir: options.source }),
+      settleSeconds: Number(options.settleSeconds),
+    }
+    const privacy = collectPrivacyOptions(options)
+    if (options.once === true) {
+      printJson(await runCollectSweep(config, new Date(), privacy))
+      return
+    }
+    const intervalSeconds = Number(options.intervalSeconds)
+    printJson({
+      mode: "collect-watch",
+      outDir: options.out,
+      runtimes,
+      intervalSeconds,
+      settleSeconds: config.settleSeconds,
+      privacyFilter: options.privacyFilter,
     })
+    let running = true
+    const stop = () => {
+      running = false
+    }
+    process.on("SIGINT", stop)
+    process.on("SIGTERM", stop)
+    await runCollectWatchLoop({
+      config,
+      privacy,
+      intervalSeconds,
+      onSweep: (summary) => {
+        console.log(JSON.stringify(summary))
+      },
+      onSweepError: (error) => {
+        console.error(JSON.stringify({ error: error.message }))
+      },
+      shouldContinue: () => running,
+    })
+  })
 
   const collectServiceCommand = collectCommand
     .command("service")
     .description("Manage the resident collector as a macOS launchd LaunchAgent")
 
-  collectServiceCommand
-    .command("install")
-    .description("Install and start the collector LaunchAgent (RunAtLoad + KeepAlive)")
-    .requiredOption("--out <dir>", "Directory for exported ATF traces and the collector state")
-    .option("--runtime <runtimes...>", "Runtimes to watch; defaults to every registered adapter")
-    .option("--source <dir>", "Harness log directory override; requires exactly one --runtime")
-    .option("--interval-seconds <seconds>", "Seconds between collector sweeps", "30")
-    .option(
-      "--settle-seconds <seconds>",
-      "Seconds a session must stay unchanged before it is converted",
-      "60",
-    )
-    .option("--dry-run", "Render the launchd plist without touching launchctl")
-    .action((options: CollectServiceInstallOptions) => {
-      const runtimes = resolveCollectWatchRuntimes(options.runtime)
-      if (options.source !== undefined && runtimes.length !== 1) {
-        throw new Error("invalid_request: --source requires exactly one --runtime")
-      }
-      printJson(
-        installCollectWatchService({
-          config: {
-            outDir: options.out,
-            runtimes,
-            ...(options.source === undefined ? {} : { sourceDir: options.source }),
-            intervalSeconds: Number(options.intervalSeconds),
-            settleSeconds: Number(options.settleSeconds),
-          },
-          ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
-        }),
+  withCollectPrivacyFlags(
+    collectServiceCommand
+      .command("install")
+      .description("Install and start the collector LaunchAgent (RunAtLoad + KeepAlive)")
+      .requiredOption("--out <dir>", "Directory for exported ATF traces and the collector state")
+      .option("--runtime <runtimes...>", "Runtimes to watch; defaults to every registered adapter")
+      .option("--source <dir>", "Harness log directory override; requires exactly one --runtime")
+      .option("--interval-seconds <seconds>", "Seconds between collector sweeps", "30")
+      .option(
+        "--settle-seconds <seconds>",
+        "Seconds a session must stay unchanged before it is converted",
+        "60",
       )
-    })
+      .option("--dry-run", "Render the launchd plist without touching launchctl"),
+  ).action((options: CollectServiceInstallOptions) => {
+    const runtimes = resolveCollectWatchRuntimes(options.runtime)
+    if (options.source !== undefined && runtimes.length !== 1) {
+      throw new Error("invalid_request: --source requires exactly one --runtime")
+    }
+    printJson(
+      installCollectWatchService({
+        config: {
+          outDir: options.out,
+          runtimes,
+          ...(options.source === undefined ? {} : { sourceDir: options.source }),
+          intervalSeconds: Number(options.intervalSeconds),
+          settleSeconds: Number(options.settleSeconds),
+          privacyFilter: options.privacyFilter,
+          ...(options.privacyThreshold === undefined
+            ? {}
+            : { privacyThreshold: Number(options.privacyThreshold) }),
+        },
+        ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+      }),
+    )
+  })
 
   collectServiceCommand
     .command("uninstall")
@@ -291,6 +342,33 @@ export const registerTrajectoryCommand = (program: Command) => {
     .description("Show whether the collector LaunchAgent is installed and running")
     .action(() => {
       printJson(collectWatchServiceStatus())
+    })
+
+  const privacyCommand = trajectoryCommand
+    .command("privacy")
+    .description("Run the ML privacy filter outside the collect pipeline")
+
+  privacyCommand
+    .command("filter")
+    .description(
+      "Run the privacy pass over an existing ATF trace and write a stamped copy (retrofit for pre-stamp exports)",
+    )
+    .requiredOption("--trace <path>", "Existing ATF JSON trace to filter")
+    .requiredOption("--export <path>", "Output path for the filtered, stamped trace")
+    .option(
+      "--privacy-threshold <threshold>",
+      "Minimum span confidence (0-1) before a detected PII span is masked",
+    )
+    .option("--json", "Print the filter result as JSON")
+    .action(async (options: PrivacyFilterCommandOptions) => {
+      printJson(
+        await filterExistingTrace(
+          { tracePath: options.trace, exportPath: options.export },
+          options.privacyThreshold === undefined
+            ? {}
+            : { threshold: Number(options.privacyThreshold) },
+        ),
+      )
     })
 
   trajectoryCommand

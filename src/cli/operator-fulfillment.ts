@@ -707,8 +707,13 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
             options.supplyId,
           )
           // Re-runs the exact publish-intake validation; a human-authored
-          // "match" is never accepted here.
-          const intake = validateEscrowArchive({ archive: plaintext })
+          // "match" is never accepted here. The privacy stamp is reported
+          // rather than required: archives escrowed before the stamp existed
+          // were valid when lodged and must stay auditable, not crash.
+          const intake = validateEscrowArchive({
+            archive: plaintext,
+            privacyStampPolicy: "report",
+          })
           const lodged = new Set(
             (database.getSupplyRecord(options.supplyId)?.proof.hashes ?? []).map(
               (proofHash) => proofHash.sha256,
@@ -723,6 +728,7 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
             artifactCount: intake.proofHashes.length,
             totalEventCount: intake.totalEventCount,
             mismatches,
+            privacyStampMissing: intake.privacyStampMissing,
           })
           if (mismatches.length > 0) {
             process.exitCode = 1

@@ -6,6 +6,9 @@ import { z } from "zod"
 import { TrajectoryAdapterError } from "./adapters/contract"
 import { getHarnessAdapter, listHarnessAdapters } from "./adapters/registry"
 import { resolveWritableProjectPath } from "./path-safety"
+import { applyPrivacyPass } from "./privacy/apply"
+import { PrivacyFilterUnavailableError } from "./privacy/contract"
+import { type CollectPrivacyOptions, resolveCollectPrivacy } from "./privacy/pipeline"
 
 export const collectWatchStateFileName = "collect-watch-state.json"
 
@@ -18,6 +21,10 @@ const watchSessionEntrySchema = z
     eventCount: z.number().int().nonnegative().optional(),
     errorCode: z.string().optional(),
     updatedAt: z.string().min(1),
+    // Digest of the privacy-filter config the export ran under. A model,
+    // threshold, or category change makes existing entries stale so the
+    // session re-exports with the new policy.
+    privacyConfigHash: z.string().optional(),
   })
   .strict()
 
@@ -63,6 +70,9 @@ export type CollectSweepSummary = Readonly<{
   missingSources: readonly string[]
   exportedSessions: readonly CollectSweepExportedSession[]
   failedSessions: readonly CollectSweepFailedSession[]
+  // True when the sweep stopped early because the privacy filter could not
+  // load or run; unprocessed sessions retry on the next sweep.
+  privacyFilterUnavailable?: boolean
 }>
 
 const throwInvalidOutDir = (code: "invalid_export_path", path: string): never => {
@@ -106,14 +116,17 @@ export const resolveCollectWatchRuntimes = (runtimes: readonly string[] | undefi
 }
 
 // One collector pass: enumerate every runtime's sessions, convert what is new
-// or changed and has settled, and persist the dedup state. Never throws for
-// per-runtime or per-session failures — a resident collector must survive
-// missing log directories and torn live sessions.
-export const runCollectSweep = (
+// or changed and has settled, run the privacy pass, and persist the dedup
+// state. Never throws for per-runtime or per-session failures — a resident
+// collector must survive missing log directories and torn live sessions.
+export const runCollectSweep = async (
   config: CollectSweepConfig,
   now: Date = new Date(),
-): CollectSweepSummary => {
+  privacyOptions?: CollectPrivacyOptions,
+): Promise<CollectSweepSummary> => {
   const parsed = collectSweepConfigSchema.parse(config)
+  const privacy = resolveCollectPrivacy(privacyOptions)
+  const expectedPrivacyHash = privacy.enabled ? privacy.configHash : undefined
   const outDir = resolveWritableProjectPath({
     inputPath: parsed.outDir,
     code: "invalid_export_path",
@@ -130,11 +143,15 @@ export const runCollectSweep = (
   let failed = 0
   let pendingSettle = 0
   let unchanged = 0
+  let privacyFilterUnavailable = false
   const missingSources: string[] = []
   const exportedSessions: CollectSweepExportedSession[] = []
   const failedSessions: CollectSweepFailedSession[] = []
 
   for (const runtime of parsed.runtimes) {
+    if (privacyFilterUnavailable) {
+      break
+    }
     const adapter = getHarnessAdapter(runtime)
     const sourceDir = parsed.sourceDir ?? adapter.defaultSourceDir()
     if (sourceDir === undefined) {
@@ -154,10 +171,15 @@ export const runCollectSweep = (
       // hermes state.db) expose many sessions behind one sessionPath.
       const stateKey = `${runtime}:${ref.sessionPath}:${ref.sessionId}`
       const previous = sessions[stateKey]
+      // A privacy-policy change only invalidates entries while the filter is
+      // enabled. With --no-privacy-filter, a hash mismatch alone must NOT
+      // force a re-export: that would overwrite stamped, masked exports with
+      // unfiltered ones.
       if (
         previous !== undefined &&
         previous.modifiedAt === ref.modifiedAt &&
-        previous.sizeBytes === ref.sizeBytes
+        previous.sizeBytes === ref.sizeBytes &&
+        (!privacy.enabled || previous.privacyConfigHash === expectedPrivacyHash)
       ) {
         unchanged += 1
         continue
@@ -169,10 +191,13 @@ export const runCollectSweep = (
       }
 
       try {
-        const trace = adapter.convertSession({
+        let trace = adapter.convertSession({
           sessionPath: ref.sessionPath,
           sessionId: ref.sessionId,
         })
+        if (privacy.enabled) {
+          trace = (await applyPrivacyPass(trace, privacy.filter, privacy.config, now)).trace
+        }
         const runtimeDir = join(outDir, runtime)
         mkdirSync(runtimeDir, { recursive: true })
         const exportPath = join(runtimeDir, `${ref.sessionId}.atf.json`)
@@ -184,6 +209,7 @@ export const runCollectSweep = (
           exportPath,
           eventCount: trace.eventCount,
           updatedAt: now.toISOString(),
+          ...(expectedPrivacyHash === undefined ? {} : { privacyConfigHash: expectedPrivacyHash }),
         }
         exported += 1
         exportedSessions.push({
@@ -194,6 +220,24 @@ export const runCollectSweep = (
           eventCount: trace.eventCount,
         })
       } catch (caught: unknown) {
+        // Model load/inference infrastructure failure is transient: report it
+        // but leave the session's state entry untouched so the next sweep
+        // retries instead of permanently skipping unexported (fail-closed)
+        // sessions.
+        if (caught instanceof PrivacyFilterUnavailableError) {
+          failed += 1
+          failedSessions.push({
+            runtime,
+            sessionId: ref.sessionId,
+            sessionPath: ref.sessionPath,
+            errorCode: "privacy_filter_unavailable",
+          })
+          // The model will not recover mid-sweep; converting the remaining
+          // sessions would only fail the same way. Stop the sweep here — the
+          // untouched sessions retry on the next one.
+          privacyFilterUnavailable = true
+          break
+        }
         const errorCode = adapterErrorCode(caught)
         sessions[stateKey] = {
           modifiedAt: ref.modifiedAt,
@@ -201,6 +245,9 @@ export const runCollectSweep = (
           outcome: "failed",
           errorCode,
           updatedAt: now.toISOString(),
+          // Recorded on failures too, so a failed session stays skipped under
+          // the same policy instead of re-failing every sweep.
+          ...(expectedPrivacyHash === undefined ? {} : { privacyConfigHash: expectedPrivacyHash }),
         }
         failed += 1
         failedSessions.push({
@@ -223,11 +270,13 @@ export const runCollectSweep = (
     missingSources,
     exportedSessions,
     failedSessions,
+    ...(privacyFilterUnavailable ? { privacyFilterUnavailable: true } : {}),
   }
 }
 
 export type CollectWatchOptions = Readonly<{
   config: CollectSweepConfig
+  privacy?: CollectPrivacyOptions
   intervalSeconds: number
   onSweep: (summary: CollectSweepSummary) => void
   onSweepError: (error: Error) => void
@@ -254,7 +303,7 @@ export const runCollectWatchLoop = async (options: CollectWatchOptions): Promise
   const shouldContinue = options.shouldContinue ?? (() => true)
   while (shouldContinue()) {
     try {
-      options.onSweep(runCollectSweep(options.config))
+      options.onSweep(await runCollectSweep(options.config, new Date(), options.privacy))
     } catch (caught: unknown) {
       options.onSweepError(caught instanceof Error ? caught : new Error(String(caught)))
     }

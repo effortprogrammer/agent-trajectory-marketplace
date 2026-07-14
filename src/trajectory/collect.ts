@@ -10,6 +10,13 @@ import {
 } from "./adapters/contract"
 import { getHarnessAdapter, listHarnessAdapters } from "./adapters/registry"
 import { resolveWritableProjectPath } from "./path-safety"
+import { applyPrivacyPass } from "./privacy/apply"
+import {
+  type CollectPrivacyOptions,
+  type CollectPrivacySummary,
+  resolveCollectPrivacy,
+  unfilteredPrivacyWarning,
+} from "./privacy/pipeline"
 
 const listSessionsInputSchema = z.object({
   runtime: z.string().min(1),
@@ -45,6 +52,7 @@ export type CollectExportResult = Readonly<{
   exportPath: string
   eventCount: number
   eventKinds: readonly string[]
+  privacy: CollectPrivacySummary
 }>
 
 const throwExportPathError = (code: "invalid_export_path", path: string): never => {
@@ -116,12 +124,15 @@ const resolveSessionInput = (input: {
   return { sessionPath: match.sessionPath, sessionId: match.sessionId }
 }
 
-export const exportCollectedSession = (input: {
-  readonly runtime: string
-  readonly session: string
-  readonly sourceDir?: string
-  readonly exportPath: string
-}): CollectExportResult => {
+export const exportCollectedSession = async (
+  input: {
+    readonly runtime: string
+    readonly session: string
+    readonly sourceDir?: string
+    readonly exportPath: string
+  },
+  privacyOptions?: CollectPrivacyOptions,
+): Promise<CollectExportResult> => {
   const parsed = exportInputSchema.parse(input)
   const adapter = getHarnessAdapter(parsed.runtime)
   const sessionInput = resolveSessionInput({
@@ -129,7 +140,20 @@ export const exportCollectedSession = (input: {
     session: parsed.session,
     ...(parsed.sourceDir === undefined ? {} : { sourceDir: parsed.sourceDir }),
   })
-  const trace = adapter.convertSession(sessionInput)
+  let trace = adapter.convertSession(sessionInput)
+  const privacy = resolveCollectPrivacy(privacyOptions)
+  let privacySummary: CollectPrivacySummary
+  if (privacy.enabled) {
+    const passed = await applyPrivacyPass(trace, privacy.filter, privacy.config)
+    trace = passed.trace
+    privacySummary = {
+      filtered: true,
+      maskedSpanCount: passed.maskedSpanCount,
+      configHash: privacy.configHash,
+    }
+  } else {
+    privacySummary = { filtered: false, warning: unfilteredPrivacyWarning }
+  }
   const exportPath = resolveWritableProjectPath({
     inputPath: parsed.exportPath,
     code: "invalid_export_path",
@@ -144,5 +168,6 @@ export const exportCollectedSession = (input: {
     exportPath,
     eventCount: trace.eventCount,
     eventKinds: [...new Set(trace.events.map((event) => event.kind))].sort(),
+    privacy: privacySummary,
   }
 }

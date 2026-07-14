@@ -2,6 +2,8 @@ import { Buffer } from "node:buffer"
 import { createHash } from "node:crypto"
 import { deflateRawSync } from "node:zlib"
 
+import { stampPrivacyForTest } from "./privacy-fixtures"
+
 // Hand-rolled zip writer for escrow intake tests. Building archives byte by
 // byte is the point: every hardening rejection needs a deliberately
 // malformed variant (lying sizes, encrypted flags, symlink attributes,
@@ -127,12 +129,13 @@ export type EscrowArchiveOverrides = Readonly<{
   ) => { path: string; label: string; sha256: string; byteCount: number }
 }>
 
-export const demoTraceDocument = (events: readonly Record<string, string>[]) => ({
-  runtime: "hermes",
-  status: "collected",
-  eventCount: events.length,
-  events,
-})
+export const demoTraceDocument = (events: readonly Record<string, string>[]) =>
+  stampPrivacyForTest({
+    runtime: "hermes",
+    status: "collected",
+    eventCount: events.length,
+    events,
+  })
 
 export const buildEscrowDatasetArchive = (
   traces: readonly EscrowTraceSpec[],
