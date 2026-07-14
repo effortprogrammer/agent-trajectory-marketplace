@@ -12,6 +12,29 @@ import { type PrivacyFilter, PrivacyFilterUnavailableError, piiCategories } from
 
 export const privacyEngineUrlEnv = "TRAJECTORY_PRIVACY_ENGINE_URL"
 
+// Where the resident launchd engine listens (privacy-filter-engine repo,
+// `uv run engine-service install`). Collect auto-detects it here when the
+// env var is unset.
+export const defaultPrivacyEngineUrl = "http://127.0.0.1:8787"
+
+// Fast local liveness probe; false on any failure. Cheap enough to run once
+// per trace, so an engine started or stopped mid-run is picked up on the
+// next privacy pass.
+export const probePrivacyEngine = async (baseUrl: string, timeoutMs = 400): Promise<boolean> => {
+  try {
+    const response = await fetch(new URL("/health", baseUrl), {
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    if (!response.ok) {
+      return false
+    }
+    const body = (await response.json()) as { ok?: boolean }
+    return body.ok === true
+  } catch {
+    return false
+  }
+}
+
 // The engine reports offsets in UTF-16 code units (JS string indices).
 const detectResponseSchema = z
   .object({

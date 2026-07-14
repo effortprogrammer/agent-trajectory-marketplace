@@ -7,18 +7,51 @@ import {
   privacyConfigHash,
   resolvePrivacyPassConfig,
 } from "./contract"
-import { createEnginePrivacyFilter, privacyEngineUrlEnv } from "./engine-client"
+import {
+  createEnginePrivacyFilter,
+  defaultPrivacyEngineUrl,
+  privacyEngineUrlEnv,
+  probePrivacyEngine,
+} from "./engine-client"
 import { createTransformersPrivacyFilter } from "./transformers-runner"
 
-// Backend order: an explicitly injected filter (tests) wins, then the local
-// MPS engine when TRAJECTORY_PRIVACY_ENGINE_URL is set, then the in-process
-// Transformers.js CPU runner.
+// Auto mode (env unset): prefer the resident local MLX engine whenever its
+// health probe answers, else run the in-process CPU runner. The probe runs
+// once per detect() call — one local GET per trace — so the choice tracks
+// the engine's actual liveness instead of a stale startup snapshot.
+export const createAutoPrivacyFilter = (
+  engineUrl: string,
+  makeLocalFilter: () => PrivacyFilter,
+): PrivacyFilter => {
+  const engine = createEnginePrivacyFilter(engineUrl)
+  let local: PrivacyFilter | undefined
+  return {
+    detect: async (texts) => {
+      if (await probePrivacyEngine(engineUrl)) {
+        return engine.detect(texts)
+      }
+      local ??= makeLocalFilter()
+      return local.detect(texts)
+    },
+  }
+}
+
+// Backend order: an explicitly injected filter (tests) wins; an explicit
+// TRAJECTORY_PRIVACY_ENGINE_URL pins the engine fail-closed (value "off"
+// pins the CPU runner); otherwise auto-detect the resident local engine
+// with CPU fallback, so a machine with the launchd engine installed uses it
+// by default and one without it still collects.
 const defaultPrivacyFilter = (modelId: string): PrivacyFilter => {
-  const engineUrl = process.env[privacyEngineUrlEnv]
-  if (engineUrl !== undefined && engineUrl.trim().length > 0) {
+  const engineUrl = process.env[privacyEngineUrlEnv]?.trim()
+  if (engineUrl === "off") {
+    return createTransformersPrivacyFilter(modelId)
+  }
+  if (engineUrl !== undefined && engineUrl.length > 0) {
     return createEnginePrivacyFilter(engineUrl)
   }
-  return createTransformersPrivacyFilter(modelId)
+  return createAutoPrivacyFilter(defaultPrivacyEngineUrl, () =>
+    createTransformersPrivacyFilter(modelId),
+  )
 }
 
 // Collect-facing privacy wiring: the CLI and the sweep pass loose options in,
