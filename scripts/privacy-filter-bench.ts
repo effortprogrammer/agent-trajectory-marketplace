@@ -9,6 +9,7 @@
 
 import { getHarnessAdapter } from "../src/trajectory/adapters/registry"
 import type { PrivacySpan } from "../src/trajectory/privacy/contract"
+import { createEnginePrivacyFilter } from "../src/trajectory/privacy/engine-client"
 import { createTransformersPrivacyFilter } from "../src/trajectory/privacy/transformers-runner"
 import { mapStringLeaves } from "../src/trajectory/string-leaves"
 
@@ -59,12 +60,16 @@ const batchSize = Number(argValue("--batch-size") ?? 16)
 const batchTokens = Number(argValue("--batch-tokens") ?? 8192)
 console.log(`batch: ${batchSize} rows / ${batchTokens} tokens`)
 const dtype = (argValue("--dtype") ?? "fp32") as never
-console.log(`dtype: ${dtype}`)
-const filter = createTransformersPrivacyFilter("openai/privacy-filter", {
-  maxBatchSize: batchSize,
-  maxBatchTokens: batchTokens,
-  dtype,
-})
+const engineUrl = argValue("--engine")
+console.log(engineUrl === undefined ? `dtype: ${dtype}` : `engine: ${engineUrl}`)
+const filter =
+  engineUrl === undefined
+    ? createTransformersPrivacyFilter("openai/privacy-filter", {
+        maxBatchSize: batchSize,
+        maxBatchTokens: batchTokens,
+        dtype,
+      })
+    : createEnginePrivacyFilter(engineUrl)
 // Warm the model so load time is excluded from the measurement.
 await filter.detect(["warmup"])
 

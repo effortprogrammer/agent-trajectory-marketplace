@@ -7,7 +7,19 @@ import {
   privacyConfigHash,
   resolvePrivacyPassConfig,
 } from "./contract"
+import { createEnginePrivacyFilter, privacyEngineUrlEnv } from "./engine-client"
 import { createTransformersPrivacyFilter } from "./transformers-runner"
+
+// Backend order: an explicitly injected filter (tests) wins, then the local
+// MPS engine when TRAJECTORY_PRIVACY_ENGINE_URL is set, then the in-process
+// Transformers.js CPU runner.
+const defaultPrivacyFilter = (modelId: string): PrivacyFilter => {
+  const engineUrl = process.env[privacyEngineUrlEnv]
+  if (engineUrl !== undefined && engineUrl.trim().length > 0) {
+    return createEnginePrivacyFilter(engineUrl)
+  }
+  return createTransformersPrivacyFilter(modelId)
+}
 
 // Collect-facing privacy wiring: the CLI and the sweep pass loose options in,
 // this resolves them once into either a disabled marker or a ready-to-run
@@ -50,7 +62,7 @@ export const resolveCollectPrivacy = (
     enabled: true,
     config,
     configHash: privacyConfigHash(config),
-    filter: options.filter ?? createTransformersPrivacyFilter(config.modelId),
+    filter: options.filter ?? defaultPrivacyFilter(config.modelId),
   }
 }
 
