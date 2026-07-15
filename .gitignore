@@ -11,3 +11,9 @@ website/.vitepress/cache
 
 # Local Grafana stack registry logs
 docs/grafana/logs/*.ndjson*
+
+# Local dev registry data (bun src/cli … registry serve)
+.local-registry/
+
+# Cloudflare wrangler local state
+landing/.wrangler/
