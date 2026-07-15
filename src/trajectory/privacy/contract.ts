@@ -36,7 +36,14 @@ export const defaultMaskCategories: readonly PiiCategory[] = [
 ]
 
 export const defaultPrivacyModelId = "openai/privacy-filter"
-export const defaultPrivacyThreshold = 0.5
+// 0.85, not 0.5: measured on real coding-trajectory sessions, the model's
+// low-confidence (~0.7) firings are almost all out-of-distribution false
+// positives — shell flags split into subwords ("git --oneline" → a
+// person_name on "on"), tool-use ids read as account numbers, JSON "name"
+// values primed as people. Raising the bar drops those while real PII
+// (names, emails, credentials) fires at ~1.0 and survives; leaked secrets
+// are additionally caught by the credential-regex lane regardless.
+export const defaultPrivacyThreshold = 0.85
 
 // The valid confidence range is privacy-pass policy; consumers that carry a
 // threshold (e.g. the launchd service config) reuse this instead of

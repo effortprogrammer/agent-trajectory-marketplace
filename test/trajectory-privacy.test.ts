@@ -60,7 +60,7 @@ describe("applyPrivacyPass", () => {
     expect(result.trace.privacy).toEqual({
       schemaVersion: 1,
       modelId: "openai/privacy-filter",
-      threshold: 0.5,
+      threshold: 0.85,
       maskedCategories: [
         "account_number",
         "address",
@@ -130,7 +130,7 @@ describe("applyPrivacyPass", () => {
     const detail = "reach me: 0123456789"
     const trace = collectedTrace([{ kind: "llm_call", name: "turn", detail }])
     const filter = fakeFilter(
-      new Map([[detail, [spanOf(10, 16, "email", 0.6), spanOf(12, 20, "phone_number", 0.95)]]]),
+      new Map([[detail, [spanOf(10, 16, "email", 0.9), spanOf(12, 20, "phone_number", 0.95)]]]),
     )
     const result = await applyPrivacyPass(trace, filter, resolvePrivacyPassConfig())
     expect(result.trace.events[0]?.detail).toBe(`reach me: ${privacyMarker("phone_number")}`)
