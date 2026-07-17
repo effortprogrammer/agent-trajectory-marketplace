@@ -1,10 +1,16 @@
+import { Database } from "bun:sqlite"
 import { describe, expect, test } from "bun:test"
 import { copyFileSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { Command, CommanderError } from "commander"
+import { z } from "zod"
 
+import { registerMarketplaceCommand } from "../src/cli/marketplace"
 import {
+  supplyListResponseSchema,
   supplyRecordResponseSchema,
+  supplyRecordSchema,
   wantedDatasetListResponseSchema,
   wantedDatasetResponseSchema,
 } from "../src/registry/supply-contract"
@@ -18,8 +24,82 @@ const registryUrl = () => harness.requireServer().baseUrl
 
 const parseJsonOutput = (stdout: string): unknown => JSON.parse(stdout)
 
-// Publish a candidate through the escrow multipart command: a candidate JSON
-// plus `traceCount` trace files bundled into the dataset archive.
+const escrowPublishOutputSchema = z
+  .object({
+    supply: supplyRecordSchema,
+    archiveByteCount: z.number().int().positive(),
+    artifactCount: z.number().int().positive(),
+  })
+  .strict()
+
+const privateVersionSentinel = "PRIVATE_NORMALIZER_VERSION_SENTINEL"
+const fullShaVersionCarrier = "f".repeat(64)
+
+const withRegistrySqlite = (run: (sqlite: Database) => void): void => {
+  const sqlite = new Database(harness.requireServer().config.dbPath, { strict: true })
+  sqlite.run("PRAGMA busy_timeout = 5000")
+  try {
+    run(sqlite)
+  } finally {
+    sqlite.close()
+  }
+}
+
+const poisonEvidenceVersionProfiles = (supplyId: string): void => {
+  withRegistrySqlite((sqlite) => {
+    sqlite
+      .query<unknown, [string, string, string, string, string, string, string, string, string]>(
+        `UPDATE marketplace_supply_evidence SET
+          normalizer_version = ?,
+          metric_set_version = ?,
+          public_evidence_json = json_set(
+            public_evidence_json,
+            '$.normalizerVersion', ?,
+            '$.metricSetVersion', ?
+          ),
+          internal_evidence_json = json_set(
+            internal_evidence_json,
+            '$.normalizerVersion', ?,
+            '$.metricSetVersion', ?,
+            '$.metrics.normalizerVersion', ?,
+            '$.metrics.metricSetVersion', ?
+          )
+        WHERE supply_id = ?`,
+      )
+      .run(
+        privateVersionSentinel,
+        fullShaVersionCarrier,
+        privateVersionSentinel,
+        fullShaVersionCarrier,
+        privateVersionSentinel,
+        fullShaVersionCarrier,
+        privateVersionSentinel,
+        fullShaVersionCarrier,
+        supplyId,
+      )
+  })
+}
+
+const forgePublicCountAndCommitment = (supplyId: string): void => {
+  withRegistrySqlite((sqlite) => {
+    sqlite
+      .query<unknown, [string]>(
+        `UPDATE marketplace_supply_evidence
+        SET public_evidence_json = json_set(
+          public_evidence_json,
+          '$.metrics[0].values[0].value',
+          999999,
+          '$.derivationHash',
+          'sha256:1111111111111111'
+        )
+        WHERE supply_id = ?`,
+      )
+      .run(supplyId)
+  })
+}
+
+// Publish a candidate through the framed escrow command: a candidate JSON plus
+// `traceCount` trace files bundled into the dataset archive.
 const publishCandidateCli = async (
   apiKey: string,
   options: { candidateFixture?: string; traceCount?: number } = {},
@@ -65,6 +145,38 @@ const publishCandidateCli = async (
 }
 
 describe("trajectory marketplace supply CLI", () => {
+  test("omits the retired JSON-only candidate submit command from help", async () => {
+    // Given: the real candidate command help surface.
+    // When: the user asks which candidate publication commands are available.
+    const help = await runCli(["trajectory", "marketplace", "seller", "candidate", "--help"])
+
+    // Then: only the framed publish path is advertised.
+    expect(help.success).toBe(true)
+    expect(help.stdout).toContain("publish")
+    expect(help.stdout).not.toContain("submit")
+  })
+
+  test("returns a typed unknown-command error for retired JSON-only candidate submit", async () => {
+    // Given: the Commander tree used by the marketplace CLI.
+    const command = new Command()
+      .name("trajectory")
+      .exitOverride()
+      .configureOutput({ writeErr: () => {}, writeOut: () => {} })
+    registerMarketplaceCommand(command)
+
+    // When: a caller invokes the removed JSON-only command.
+    const result = command.parseAsync(["marketplace", "seller", "candidate", "submit"], {
+      from: "user",
+    })
+
+    // Then: Commander classifies the retired path as an unknown command.
+    await expect(result).rejects.toBeInstanceOf(CommanderError)
+    await expect(result).rejects.toMatchObject({
+      code: "commander.unknownCommand",
+      exitCode: 1,
+    })
+  })
+
   test("creates and lists wanted demand signals from the fixture", async () => {
     const created = await runCli([
       "trajectory",
@@ -193,6 +305,134 @@ describe("trajectory marketplace supply inspect CLI", () => {
     ])
     expect(listed.success).toBe(true)
     expect(listed.stdout).toContain(submitted.supplyId)
+  })
+
+  test("prints buyer-safe evidence for anonymous list and inspect", async () => {
+    // Given: an evidence-backed supply record published through the real escrow CLI.
+    const candidate = await publishCandidateCli("test-key")
+    expect(candidate.success).toBe(true)
+    const submitted = escrowPublishOutputSchema.parse(parseJsonOutput(candidate.stdout)).supply
+
+    // When: the marketplace CLI browses anonymously through list and inspect.
+    const listed = await runCli([
+      "trajectory",
+      "marketplace",
+      "supply",
+      "list",
+      "--registry",
+      registryUrl(),
+      "--json",
+    ])
+    const inspected = await runCli([
+      "trajectory",
+      "marketplace",
+      "supply",
+      "inspect",
+      submitted.supplyId,
+      "--registry",
+      registryUrl(),
+      "--json",
+    ])
+
+    // Then: both strict client parsers print the same safe DTO without internal fields.
+    expect(listed.success).toBe(true)
+    expect(inspected.success).toBe(true)
+    const listBody = supplyListResponseSchema.parse(parseJsonOutput(listed.stdout))
+    const listedRecord = listBody.supply.find((record) => record.supplyId === submitted.supplyId)
+    const inspectedRecord = supplyRecordResponseSchema.parse(
+      parseJsonOutput(inspected.stdout),
+    ).supply
+    expect(listedRecord).toBeDefined()
+    if (listedRecord === undefined) throw new Error("expected listed supply record")
+    expect(listedRecord.evidence).toEqual(inspectedRecord.evidence)
+    expect(inspectedRecord.evidence?.metrics.eventCount).toEqual({
+      status: "available",
+      count: 6,
+    })
+    expect(inspectedRecord.evidence?.commitment).toMatch(/^sha256:[a-f0-9]{16}$/)
+    for (const forbidden of [
+      "artifactPath",
+      "computedAt",
+      "derivationHash",
+      "metricId",
+      "sourceSetCommitment",
+    ]) {
+      expect(JSON.stringify(inspectedRecord.evidence)).not.toContain(forbidden)
+    }
+  })
+
+  test("fails closed for poisoned evidence version carriers without printing them", async () => {
+    // Given: an evidence-backed record whose persisted version fields carry private/full-SHA text.
+    const candidate = await publishCandidateCli("test-key")
+    expect(candidate.success).toBe(true)
+    const submitted = escrowPublishOutputSchema.parse(parseJsonOutput(candidate.stdout)).supply
+    poisonEvidenceVersionProfiles(submitted.supplyId)
+
+    // When: anonymous CLI list and inspect traverse the real API/client parser path.
+    const listed = await runCli([
+      "trajectory",
+      "marketplace",
+      "supply",
+      "list",
+      "--registry",
+      registryUrl(),
+      "--json",
+    ])
+    const inspected = await runCli([
+      "trajectory",
+      "marketplace",
+      "supply",
+      "inspect",
+      submitted.supplyId,
+      "--registry",
+      registryUrl(),
+      "--json",
+    ])
+
+    // Then: both commands fail with bounded stderr and no carrier-bearing stdout.
+    for (const result of [listed, inspected]) {
+      expect(result.success).toBe(false)
+      expect(result.stdout).toBe("")
+      expect(result.stderr).toContain("internal_error: unknown registry failure")
+      expect(result.stderr).not.toContain(privateVersionSentinel)
+      expect(result.stderr).not.toContain(fullShaVersionCarrier)
+    }
+  })
+
+  test("fails closed for forged evidence counts and commitments", async () => {
+    // Given: schema-valid public count and commitment values disagree with authoritative rows.
+    const candidate = await publishCandidateCli("test-key")
+    expect(candidate.success).toBe(true)
+    const submitted = escrowPublishOutputSchema.parse(parseJsonOutput(candidate.stdout)).supply
+    forgePublicCountAndCommitment(submitted.supplyId)
+
+    // When: anonymous CLI list and inspect traverse the real API/client parser path.
+    const listed = await runCli([
+      "trajectory",
+      "marketplace",
+      "supply",
+      "list",
+      "--registry",
+      registryUrl(),
+      "--json",
+    ])
+    const inspected = await runCli([
+      "trajectory",
+      "marketplace",
+      "supply",
+      "inspect",
+      submitted.supplyId,
+      "--registry",
+      registryUrl(),
+      "--json",
+    ])
+
+    // Then: neither command prints stale or forged JSON.
+    for (const result of [listed, inspected]) {
+      expect(result.success).toBe(false)
+      expect(result.stdout).toBe("")
+      expect(result.stderr).toContain("internal_error: unknown registry failure")
+    }
   })
 
   test("keeps the legacy marketplace inspect surface retired", async () => {

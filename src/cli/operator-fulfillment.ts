@@ -3,13 +3,19 @@ import { readFileSync } from "node:fs"
 
 import type { Command } from "commander"
 
-import { createRegistryDatabase, type RegistryDatabase } from "../registry/database"
+import {
+  createRegistryDatabase,
+  type RegistryDatabase,
+  RegistryStorageError,
+} from "../registry/database"
+import { validateStoredSupplyEvidence } from "../registry/database-supply-evidence-validation"
 import {
   decryptEscrowArchive,
+  EscrowCryptoError,
   escrowMasterKeyFromHex,
   rewrapEscrowDek,
 } from "../registry/escrow-crypto"
-import { validateEscrowArchive } from "../registry/escrow-intake"
+import { EscrowIntakeError, validateEscrowArchive } from "../registry/escrow-intake"
 import { grantOperatorEntitlement, mutateRegistryOperatorState } from "../registry/operator"
 import { createRegistryStorage, type RegistryStorage } from "../registry/storage"
 import {
@@ -37,7 +43,9 @@ type FulfillmentTransactionOptions = FulfillmentDbOptions &
     transactionId: string
   }>
 
-const withDatabase = <T>(dbPath: string, action: (database: RegistryDatabase) => T): T => {
+type OperatorRegistryDatabase = ReturnType<typeof createRegistryDatabase>
+
+const withDatabase = <T>(dbPath: string, action: (database: OperatorRegistryDatabase) => T): T => {
   const database = createRegistryDatabase({ dbPath })
   try {
     return action(database)
@@ -50,7 +58,7 @@ const withDatabase = <T>(dbPath: string, action: (database: RegistryDatabase) =>
 // database only after the async work settles.
 const withDatabaseAsync = async <T>(
   dbPath: string,
-  action: (database: RegistryDatabase) => Promise<T>,
+  action: (database: OperatorRegistryDatabase) => Promise<T>,
 ): Promise<T> => {
   const database = createRegistryDatabase({ dbPath })
   try {
@@ -93,6 +101,13 @@ const escrowRetentionDays = (): number => {
 
 type EscrowStorageOptions = Readonly<{ storage: string; storageBackend?: string }>
 
+type EscrowRevalidationUnavailableReason =
+  | "escrow_missing"
+  | "escrow_deleted"
+  | "escrow_object_missing"
+  | "escrow_object_corrupt"
+  | "escrow_archive_invalid"
+
 const escrowStorageFor = (
   database: RegistryDatabase,
   options: EscrowStorageOptions,
@@ -102,6 +117,19 @@ const escrowStorageFor = (
     database,
     storageRoot: options.storage,
   })
+
+const escrowRevalidationUnavailableReason = (
+  caught: unknown,
+): EscrowRevalidationUnavailableReason | undefined => {
+  if (caught instanceof RegistryStorageError) {
+    if (caught.code === "escrow_deleted") return "escrow_object_missing"
+    if (caught.code === "package_hash_mismatch") return "escrow_object_corrupt"
+    return undefined
+  }
+  if (caught instanceof EscrowCryptoError) return "escrow_object_corrupt"
+  if (caught instanceof EscrowIntakeError) return "escrow_archive_invalid"
+  return undefined
+}
 
 // Cross-check a delivery manifest against the committed proof profile: when
 // the seller committed to mustMatchProofHashes, every proof hash must appear
@@ -674,61 +702,147 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
   escrowCommand
     .command("revalidate")
     .description(
-      "Decrypt one escrow object and re-run the intake validation for audits and disputes",
+      "Decrypt one escrow object, re-run intake validation, and optionally persist v8 evidence",
     )
     .requiredOption("--db <path>", "Registry SQLite database path")
     .requiredOption("--storage <path>", "Registry storage root")
     .requiredOption("--supply-id <id>", "Supply record id")
     .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
+    .option(
+      "--persist-evidence",
+      "Upsert content-free v8 evidence and metrics after canonical identity checks pass",
+    )
     .option("--json", "Print the revalidation outcome as JSON")
     .action(
       async (
-        options: Readonly<{ db: string; supplyId: string; json?: boolean }> & EscrowStorageOptions,
+        options: Readonly<{
+          db: string
+          supplyId: string
+          persistEvidence?: boolean
+          json?: boolean
+        }> &
+          EscrowStorageOptions,
       ) => {
         const masterKey = escrowMasterKeyFromEnv()
         await withDatabaseAsync(options.db, async (database) => {
+          const persistEvidence = options.persistEvidence === true
+          const unavailable = (reason: EscrowRevalidationUnavailableReason): void => {
+            printJson({
+              supplyId: options.supplyId,
+              result: "unavailable",
+              reason,
+              persistEvidence,
+              evidencePersisted: false,
+              retainedEvidence: database.getSupplyEvidence(options.supplyId) !== undefined,
+            })
+            process.exitCode = 1
+          }
           const escrow = database.getSupplyEscrow(options.supplyId)
-          if (escrow === undefined || escrow.deletedAt !== undefined) {
-            throw new Error(`supply_not_found: no live escrow for ${options.supplyId}`)
+          if (escrow === undefined) {
+            unavailable("escrow_missing")
+            return
+          }
+          if (escrow.deletedAt !== undefined) {
+            unavailable("escrow_deleted")
+            return
           }
           const storage = escrowStorageFor(database, options)
-          const ciphertext = await storage.readEscrowObject({
-            supplyId: options.supplyId,
-            expectedSha256: escrow.ciphertextSha256,
-          })
-          const plaintext = decryptEscrowArchive(
-            masterKey,
-            {
-              ciphertext: Buffer.from(ciphertext),
-              wrappedDek: escrow.wrappedDek,
-              nonce: escrow.nonce,
-              tag: escrow.tag,
-            },
-            options.supplyId,
-          )
-          // Re-runs the exact publish-intake validation; a human-authored
-          // "match" is never accepted here. The privacy stamp is reported
-          // rather than required: archives escrowed before the stamp existed
-          // were valid when lodged and must stay auditable, not crash.
-          const intake = validateEscrowArchive({
-            archive: plaintext,
-            privacyStampPolicy: "report",
-          })
-          const lodged = new Set(
-            (database.getSupplyRecord(options.supplyId)?.proof.hashes ?? []).map(
-              (proofHash) => proofHash.sha256,
-            ),
-          )
-          const mismatches = intake.proofHashes
-            .filter((recomputed) => !lodged.has(recomputed.sha256))
-            .map((recomputed) => `recomputed hash for ${recomputed.label} is not in proof.hashes`)
+          let intake: ReturnType<typeof validateEscrowArchive>
+          try {
+            const ciphertext = await storage.readEscrowObject({
+              supplyId: options.supplyId,
+              expectedSha256: escrow.ciphertextSha256,
+            })
+            const plaintext = decryptEscrowArchive(
+              masterKey,
+              {
+                ciphertext: Buffer.from(ciphertext),
+                wrappedDek: escrow.wrappedDek,
+                nonce: escrow.nonce,
+                tag: escrow.tag,
+              },
+              options.supplyId,
+            )
+            // Re-runs the exact publish-intake validation; archive content is
+            // parsed and normalized as inert data and is never executed.
+            intake = validateEscrowArchive({
+              archive: plaintext,
+              privacyStampPolicy: "report",
+            })
+          } catch (caught: unknown) {
+            const reason = escrowRevalidationUnavailableReason(caught)
+            if (reason === undefined) throw caught
+            unavailable(reason)
+            return
+          }
+          const proof = database.getSupplyProof(options.supplyId)
+          const lodgedProofHashes = [...(proof?.hashes ?? [])]
+            .map(({ label, sha256 }) => `${label}\u0000${sha256}`)
+            .sort()
+          const recomputedProofHashes = [...intake.proofHashes]
+            .map(({ label, sha256 }) => `${label}\u0000${sha256}`)
+            .sort()
+          const existingEvidence = database.getSupplyEvidence(options.supplyId)
+          const sourceArchiveIdentity =
+            existingEvidence === undefined
+              ? "unrecorded"
+              : existingEvidence.sourceArchiveSha256 === intake.archiveSha256
+                ? "match"
+                : "mismatch"
+          const mismatches: string[] = []
+          if (JSON.stringify(lodgedProofHashes) !== JSON.stringify(recomputedProofHashes)) {
+            mismatches.push("proof_hash_set_mismatch")
+          }
+          if (escrow.artifactCount !== intake.proofHashes.length) {
+            mismatches.push("escrow_artifact_count_mismatch")
+          }
+          if (sourceArchiveIdentity === "mismatch") {
+            mismatches.push("source_archive_identity_mismatch")
+          }
+          const result = mismatches.length === 0 ? "match" : "mismatch"
+          let evidencePersisted = false
+          let idempotent = false
+          let reportedSourceArchiveIdentity = sourceArchiveIdentity
+          if (result === "match" && persistEvidence) {
+            let storedEvidenceValid = false
+            if (existingEvidence !== undefined) {
+              try {
+                validateStoredSupplyEvidence(
+                  existingEvidence,
+                  database.listSupplyMetricValues(options.supplyId),
+                )
+                storedEvidenceValid = true
+              } catch (caught: unknown) {
+                if (!(caught instanceof RegistryStorageError)) throw caught
+              }
+            }
+            idempotent =
+              storedEvidenceValid &&
+              existingEvidence?.sourceArchiveSha256 === intake.archiveSha256 &&
+              existingEvidence.derivationHash === intake.evidence.record.derivationHash
+            if (!idempotent) {
+              database.upsertSupplyEvidence({
+                supplyId: options.supplyId,
+                sourceArchiveSha256: intake.archiveSha256,
+                record: intake.evidence.record,
+                buyerProjection: intake.evidence.buyerProjection,
+              })
+              evidencePersisted = true
+              if (existingEvidence === undefined) reportedSourceArchiveIdentity = "recorded"
+            }
+          }
           printJson({
             supplyId: options.supplyId,
-            result: mismatches.length === 0 ? "match" : "mismatch",
+            result,
+            sourceArchiveIdentity: reportedSourceArchiveIdentity,
             artifactCount: intake.proofHashes.length,
             totalEventCount: intake.totalEventCount,
             mismatches,
-            privacyStampMissing: intake.privacyStampMissing,
+            privacyStampMissingCount: intake.privacyStampMissing.length,
+            persistEvidence,
+            evidencePersisted,
+            idempotent,
+            evidenceAvailability: intake.evidence.record.availability,
           })
           if (mismatches.length > 0) {
             process.exitCode = 1

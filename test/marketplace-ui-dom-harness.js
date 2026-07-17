@@ -133,7 +133,7 @@ export const wantedRecord = {
   wantedId: "wanted-1111111111111111",
   state: "wanted",
   title: "Multi-repo refactor sessions wanted",
-  description: "Demand signal for verified refactor trajectories with test outcomes.",
+  description: "Demand signal for refactor trajectories with source-attested test outcomes.",
   domain: "software-engineering",
   harness: "claude-code",
   desiredEventCount: 40000,
@@ -166,13 +166,55 @@ const proofBody = () => ({
   ],
 })
 
+export const evidenceBody = (overrides = {}) => ({
+  availability: "partial",
+  normalizerVersion: "atf-observation-v1",
+  metricSetVersion: "trajectory-metrics-v1",
+  summary: {
+    artifactCount: 480,
+    observationCount: 29760,
+    atfVersionCounts: { v1: 0, v2: 480 },
+  },
+  metrics: {
+    eventCount: { status: "available", count: 29760 },
+    eventKindDistribution: {
+      status: "available",
+      distribution: [
+        { eventClass: "step", count: 12480 },
+        { eventClass: "llm", count: 4560 },
+        { eventClass: "tool_call", count: 5280 },
+        { eventClass: "tool_result", count: 5160 },
+        { eventClass: "verification", count: 2280 },
+      ],
+    },
+    toolCallCount: { status: "available", count: 5280 },
+    matchedToolResultCount: { status: "available", count: 5160 },
+    unmatchedToolResultCount: { status: "available", count: 120 },
+    toolErrorCount: { status: "partial", count: 42 },
+    maximumFunctionDepth: { status: "unavailable" },
+    verificationLabelCount: { status: "available", count: 2280 },
+    verificationPassedCount: { status: "partial", count: 2160 },
+    verificationFailedCount: { status: "partial", count: 120 },
+  },
+  claims: {
+    integrity: { authority: "marketplace_authoritative", status: "satisfied" },
+    provenance: { authority: "marketplace_authoritative", status: "satisfied" },
+    verificationLabel: { authority: "source_attested", status: "attested" },
+    verificationPassed: { authority: "adapter_or_seller_attested", status: "partial" },
+  },
+  redaction: { authority: "marketplace_authoritative", status: "satisfied" },
+  commitment: "sha256:0123456789abcdef",
+  ...overrides,
+})
+
 export const candidateRecord = {
   supplyId: "supply-2222222222222222",
   state: "candidate",
   sellerLabel: "agent-local",
-  title: "480 verified refactor trajectories",
+  title: "480 refactor trajectories",
   description: "Proven-but-unbound supply claim with bounded proof.",
   proof: proofBody(),
+  evidence: evidenceBody(),
   indicativeTerms: {
     priceDisplay: "Indicative: request quote",
     licenseName: "Closed Alpha Evaluation",
@@ -200,6 +242,7 @@ export const committedRecord = {
   title: "Committed refactor trajectory bundle",
   description: "Committed supply with binding reserve, SLA, and consequences.",
   proof: proofBody(),
+  evidence: evidenceBody(),
   interestCount: 3,
   commitmentId: "commitment-3333333333333333",
   terms: commitmentTerms(),
@@ -214,6 +257,7 @@ export const disputedRecord = {
   sellerLabel: "agent-local",
   title: "Disputed delivery bundle",
   proof: proofBody(),
+  evidence: evidenceBody(),
   interestCount: 0,
   commitmentId: "commitment-4444444444444444",
   terms: commitmentTerms(),

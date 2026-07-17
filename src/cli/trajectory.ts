@@ -20,6 +20,7 @@ import { bundleTrace, inspectTrace } from "../trajectory/evidence"
 import { setupPrivacyEngine } from "../trajectory/privacy/engine-setup"
 import type { CollectPrivacyOptions } from "../trajectory/privacy/pipeline"
 import { filterExistingTrace } from "../trajectory/privacy/retrofit"
+import { exportTrajectoryProjection } from "../trajectory/projections"
 import { initPrototypeWorkspace, runPrototypeDemo } from "../trajectory/prototype"
 import { createSellerPackage, inspectSellerPackage } from "../trajectory/seller-package"
 import { registerAuthCommand } from "./auth"
@@ -96,6 +97,11 @@ type InspectOptions = Readonly<{
 }>
 
 type BundleOptions = Readonly<{
+  out: string
+  trace: string
+}>
+
+type ProjectionExportOptions = Readonly<{
   out: string
   trace: string
 }>
@@ -432,6 +438,25 @@ export const registerTrajectoryCommand = (program: Command) => {
     .action((options: BundleOptions) => {
       printJson(
         bundleTrace({
+          tracePath: options.trace,
+          outDir: options.out,
+        }),
+      )
+    })
+
+  const projectionCommand = trajectoryCommand
+    .command("projection")
+    .description("Export deterministic local interoperability projections")
+
+  projectionCommand
+    .command("export <profile>")
+    .description("Export a local canonical ATF file to a pinned projection profile")
+    .requiredOption("--trace <path>", "Local canonical ATF JSON input file")
+    .requiredOption("--out <path>", "Local output directory for projection and loss manifest")
+    .action((profile: string, options: ProjectionExportOptions) => {
+      printJson(
+        exportTrajectoryProjection({
+          profile,
           tracePath: options.trace,
           outDir: options.out,
         }),

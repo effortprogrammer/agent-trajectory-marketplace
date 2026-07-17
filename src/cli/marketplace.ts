@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs"
 import { basename } from "node:path"
 
 import type { Command } from "commander"
-import { z } from "zod"
 
 import {
   createWantedDatasetInRegistry,
@@ -14,19 +13,15 @@ import {
   listRegistrySupply,
   listRegistryWantedDatasets,
   publishEscrowCandidateToRegistry,
-  submitSupplyCandidateToRegistry,
   submitSupplyCommitmentToRegistry,
 } from "../registry/client"
 import { buildEscrowDatasetArchive } from "../registry/escrow-archive"
 import {
   supplyCandidateRequestSchema,
   supplyCommitmentRequestSchema,
-  supplyCommitmentTermsSchema,
   supplyIdSchema,
-  supplyTimestampSchema,
   wantedDatasetRequestSchema,
 } from "../registry/supply-contract"
-import { buildSupplyProofSampleFromTrace } from "../registry/supply-sample"
 import { readStoredRegistrySession } from "./auth-store"
 
 type MarketplaceListOptions = Readonly<{
@@ -70,8 +65,6 @@ type SupplyFixtureOptions = Readonly<{
 
 type CommitmentSubmitOptions = SupplyFixtureOptions & Readonly<{ supplyId?: string }>
 
-type CandidateSubmitOptions = SupplyFixtureOptions & Readonly<{ trace?: string }>
-
 type CandidatePublishOptions = Readonly<{
   apiKey?: string
   candidate: string
@@ -99,26 +92,6 @@ const traceLabelFromPath = (tracePath: string): string =>
     .replace(/\.atf\.json$/i, "")
     .replace(/\.json$/i, "")
 
-// With --trace, the proof sample is derived from the actual dataset rows so
-// the marketplace preview always shows real session content; a hand-written
-// fixture summary survives as marketing copy, everything else is computed.
-type CandidateFixtureShape = Readonly<{
-  proof?: Readonly<{ sample?: Readonly<{ summary?: unknown }> }>
-}>
-
-const withDerivedProofSample = (fixture: unknown, tracePath: string | undefined): unknown => {
-  if (tracePath === undefined) {
-    return fixture
-  }
-  const candidate = fixture as CandidateFixtureShape & Record<string, unknown>
-  const summary = candidate.proof?.sample?.summary
-  const sample = buildSupplyProofSampleFromTrace({
-    tracePath,
-    ...(typeof summary === "string" ? { summary } : {}),
-  })
-  return { ...candidate, proof: { ...(candidate.proof ?? {}), sample } }
-}
-
 const marketplaceSellerApiKey = (options: { apiKey?: string; registry: string }) => {
   const { TRAJECTORY_REGISTRY_API_KEY: envApiKey } = process.env
   const apiKey =
@@ -129,32 +102,12 @@ const marketplaceSellerApiKey = (options: { apiKey?: string; registry: string })
 const readFixtureJson = (fixturePath: string): unknown =>
   JSON.parse(readFileSync(fixturePath, "utf8"))
 
-// A candidate fixture may carry an optional commitment block so a seller can
-// submit proof and immediately promote it. The block is validated up front:
-// missing reserve/SLA/proof-profile/consequence fields fail before anything
-// is sent to the registry.
-const candidateSubmitFixtureSchema = z
-  .object({
-    commitment: z
-      .object({
-        terms: supplyCommitmentTermsSchema,
-        auctionDeadline: supplyTimestampSchema.optional(),
-      })
-      .strict()
-      .optional(),
-  })
-  .passthrough()
-  .transform(({ commitment, ...candidate }) => ({
-    candidate: supplyCandidateRequestSchema.parse(candidate),
-    commitment,
-  }))
-
 const commitmentSubmitFixtureSchema = supplyCommitmentRequestSchema
 
 export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
   const marketplaceCommand = trajectoryCommand
     .command("marketplace")
-    .description("Browse seller-custodied supply and legacy registry listings")
+    .description("Browse escrowed supply and legacy registry listings")
 
   const wantedCommand = marketplaceCommand
     .command("wanted")
@@ -197,7 +150,9 @@ export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
 
   const supplyCommand = marketplaceCommand
     .command("supply")
-    .description("Browse seller-custodied supply records (metadata, proof, and state only)")
+    .description(
+      "Browse anonymous escrowed supply metadata, legacy bounded redacted proof preview, aggregate-only evidence, and state",
+    )
 
   supplyCommand
     .command("list")
@@ -218,7 +173,7 @@ export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
   supplyCommand
     .command("inspect <supplyRecordId>")
     .description(
-      "Inspect one supply record or wanted post; there is no download surface before fulfillment",
+      "Inspect one anonymous supply proof preview or wanted post; dataset bytes stay gated until fulfillment",
     )
     .requiredOption("--registry <url>", "Marketplace registry base URL")
     .option("--api-key <key>", "Registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
@@ -236,56 +191,16 @@ export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
 
   const supplySellerCommand = marketplaceCommand
     .command("seller")
-    .description("Seller-custodied supply submissions")
+    .description("Publish encrypted candidate datasets and submit binding commitments")
 
   const candidateCommand = supplySellerCommand
     .command("candidate")
-    .description("Candidate dataset proof records (non-binding)")
-
-  candidateCommand
-    .command("submit")
-    .description("Submit one candidate dataset with bounded JSON proof")
-    .requiredOption("--registry <url>", "Marketplace registry base URL")
-    .requiredOption("--fixture <path>", "Candidate JSON fixture (proof, optional commitment block)")
-    .option(
-      "--trace <path>",
-      "Derive proof.sample (records, events, kinds, counts) from this trace.atf.json; a fixture summary is kept as override",
-    )
-    .option("--api-key <key>", "Seller registry API key; prefer TRAJECTORY_REGISTRY_API_KEY")
-    .option("--json", "Print the stored supply record as JSON")
-    .action(async (options: CandidateSubmitOptions) => {
-      const fixture = candidateSubmitFixtureSchema.parse(
-        withDerivedProofSample(readFixtureJson(options.fixture), options.trace),
-      )
-      const apiKey = marketplaceSellerApiKey(options)
-      const submitted = await submitSupplyCandidateToRegistry({
-        ...(apiKey === undefined ? {} : { apiKey }),
-        candidate: fixture.candidate,
-        registryUrl: options.registry,
-      })
-      if (fixture.commitment === undefined) {
-        printJson(submitted)
-        return
-      }
-      printJson(
-        await submitSupplyCommitmentToRegistry({
-          ...(apiKey === undefined ? {} : { apiKey }),
-          commitment: {
-            supplyId: submitted.supply.supplyId,
-            terms: fixture.commitment.terms,
-            ...(fixture.commitment.auctionDeadline === undefined
-              ? {}
-              : { auctionDeadline: fixture.commitment.auctionDeadline }),
-          },
-          registryUrl: options.registry,
-        }),
-      )
-    })
+    .description("Publish canonical seller ATF datasets into encrypted registry escrow")
 
   candidateCommand
     .command("publish")
     .description(
-      "Publish a candidate's full dataset as an encrypted escrow archive (multipart upload)",
+      "Publish canonical seller ATF through always-on encrypted length-prefixed framed escrow; JSON-only candidate publishing is retired and rejected; the marketplace stores ciphertext plus metadata and aggregate-only evidence, never public plaintext",
     )
     .requiredOption("--registry <url>", "Marketplace registry base URL")
     .requiredOption(
@@ -294,7 +209,7 @@ export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
     )
     .requiredOption(
       "--trace <path>",
-      "ATF trace to escrow; repeat --trace to include several",
+      "ATF trace to include in the framed escrow dataset; repeat --trace to include several",
       collectRepeated,
       [] as string[],
     )
