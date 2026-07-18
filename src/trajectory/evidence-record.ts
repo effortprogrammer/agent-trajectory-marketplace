@@ -7,49 +7,34 @@ import {
   deriveTrajectoryMetrics,
   type TrajectoryAnalysisCoverage,
   type TrajectoryMetricLimitationCode,
-  type TrajectoryMetricResult,
   type TrajectoryMetricSet,
   trajectoryAnalysisCoverageSchema,
-  trajectoryMetricIds,
   trajectoryMetricSetVersion,
 } from "./metrics"
 import { trajectoryObservationNormalizerVersion } from "./observation"
 
 export const trajectoryEvidenceSchemaVersion = 1 as const
-export const trajectoryEvidenceRecordVersion = "trajectory-evidence-v1" as const
+export const trajectoryEvidenceRecordVersion = "trajectory-evidence-v2" as const
 export const trajectoryEvidencePolicy = {
-  maxClaims: 5,
+  maxClaims: 3,
   maxLimitations: 16,
   maxSerializedBytes: 32 * 1024,
   hashCommitmentHexChars: 16,
 } as const
 export const trajectoryEvidenceClaimAuthorities = {
   marketplaceAuthoritative: "marketplace_authoritative",
-  sourceAttested: "source_attested",
-  adapterOrSellerAttested: "adapter_or_seller_attested",
 } as const
 
 export type TrajectoryMarketplaceClaimStatus = "satisfied" | "not_satisfied" | "unavailable"
-export type TrajectoryEvidenceClaimId =
-  | "integrity"
-  | "provenance"
-  | "privacy_redaction"
-  | "verification_label"
-  | "verification_passed"
+export type TrajectoryEvidenceClaimId = "integrity" | "provenance" | "privacy_redaction"
 export type TrajectoryEvidenceClaimAuthority =
   (typeof trajectoryEvidenceClaimAuthorities)[keyof typeof trajectoryEvidenceClaimAuthorities]
-export type TrajectoryEvidenceClaimStatus =
-  | TrajectoryMarketplaceClaimStatus
-  | "attested"
-  | "absent"
-  | "partial"
+export type TrajectoryEvidenceClaimStatus = TrajectoryMarketplaceClaimStatus
 export type TrajectoryEvidenceLimitationCode =
   | TrajectoryMetricLimitationCode
   | "integrity_unavailable"
   | "privacy_redaction_unavailable"
   | "provenance_unavailable"
-  | "verification_label_unavailable"
-  | "verification_outcome_unavailable"
 
 export type TrajectoryEvidenceClaim = Readonly<{
   id: TrajectoryEvidenceClaimId
@@ -148,52 +133,6 @@ const authoritativeClaim = (
     status === "unavailable" ? [unavailableCode] : [],
   )
 
-const metricResult = (metrics: TrajectoryMetricSet, metricId: string): TrajectoryMetricResult => {
-  const result = metrics.results.find((candidate) => candidate.metricId === metricId)
-  if (result === undefined) throw new TypeError("missing_trajectory_metric_result")
-  return result
-}
-
-const scalarValue = (result: TrajectoryMetricResult): number | undefined => {
-  if (result.status === "unavailable") return undefined
-  return result.values[0]?.value
-}
-
-// biome-ignore format: Label and outcome authority are derived together to prevent elevation.
-const verificationClaims = (metrics: TrajectoryMetricSet): readonly TrajectoryEvidenceClaim[] => {
-  const labels = metricResult(metrics, trajectoryMetricIds.verificationLabelCount)
-  const labelValue = scalarValue(labels)
-  const labelStatus: TrajectoryEvidenceClaimStatus = labels.status === "unavailable"
-    ? "unavailable"
-    : labels.status === "partial" && labelValue === 0
-      ? "partial"
-      : (labelValue ?? 0) > 0
-        ? "attested"
-        : "absent"
-  const labelClaim = claim(
-    "verification_label",
-    trajectoryEvidenceClaimAuthorities.sourceAttested,
-    labelStatus,
-    labels.status === "unavailable" ? ["verification_label_unavailable"] : [],
-  )
-  const passed = metricResult(metrics, trajectoryMetricIds.verificationPassedCount)
-  const failed = metricResult(metrics, trajectoryMetricIds.verificationFailedCount)
-  const outcomeStatus: TrajectoryEvidenceClaimStatus = labelStatus === "absent"
-    ? "absent"
-    : passed.status === "unavailable" || failed.status === "unavailable"
-      ? "unavailable"
-      : passed.status === "partial" || failed.status === "partial" || labelStatus === "partial"
-        ? "partial"
-        : "attested"
-  const outcomeClaim = claim(
-    "verification_passed",
-    trajectoryEvidenceClaimAuthorities.adapterOrSellerAttested,
-    outcomeStatus,
-    outcomeStatus === "unavailable" ? ["verification_outcome_unavailable"] : [],
-  )
-  return Object.freeze([labelClaim, outcomeClaim])
-}
-
 // biome-ignore format: Both commitment and summary must be present or both remain absent.
 const sourceSummary = (metrics: TrajectoryMetricSet): TrajectoryEvidenceSourceSummary | undefined => {
   if (metrics.sourceSummary === undefined || metrics.sourceSetCommitment === undefined) return undefined
@@ -221,7 +160,6 @@ export const createTrajectoryEvidenceRecord = (input: unknown): TrajectoryEviden
     authoritativeClaim("integrity", parsed.data.authoritativeClaims.integrity, "integrity_unavailable"),
     authoritativeClaim("provenance", parsed.data.authoritativeClaims.provenance, "provenance_unavailable"),
     authoritativeClaim("privacy_redaction", parsed.data.authoritativeClaims.privacyRedaction, "privacy_redaction_unavailable"),
-    ...verificationClaims(metrics),
   ])
   const limitations = freezeLimitations([
     ...metrics.limitations,

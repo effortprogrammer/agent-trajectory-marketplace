@@ -50,12 +50,6 @@ const verificationFixture = (passed?: boolean) =>
     ],
   })
 
-const claimFor = (record: ReturnType<typeof createTrajectoryEvidenceRecord>, claimId: string) => {
-  const claim = record.claims.find((candidate) => candidate.id === claimId)
-  if (claim === undefined) throw new TypeError(`missing claim: ${claimId}`)
-  return claim
-}
-
 const collectKeys = (value: unknown, keys: Set<string>): void => {
   if (Array.isArray(value)) {
     for (const item of value) collectKeys(item, keys)
@@ -79,7 +73,7 @@ const captureError = (action: () => unknown): Error => {
 }
 
 describe("trajectory evidence record", () => {
-  test("does not elevate a verification label", () => {
+  test("does not publish verification claims", () => {
     // Given: a source-labelled verification event with no payload.passed attestation.
     const normalized = verificationFixture()
 
@@ -90,20 +84,14 @@ describe("trajectory evidence record", () => {
       authoritativeClaims,
     })
 
-    // Then: label presence and passed attestation remain separate authority claims.
-    expect(claimFor(record, "verification_label")).toEqual({
-      id: "verification_label",
-      authority: trajectoryEvidenceClaimAuthorities.sourceAttested,
-      status: "attested",
-      limitations: [],
-    })
-    expect(claimFor(record, "verification_passed")).toEqual({
-      id: "verification_passed",
-      authority: trajectoryEvidenceClaimAuthorities.adapterOrSellerAttested,
-      status: "unavailable",
-      limitations: ["verification_outcome_unavailable"],
-    })
-    expect(JSON.stringify(record)).not.toContain('"verified"')
+    // Then: verification events remain raw input only and do not become evidence claims.
+    expect(record.claims.map(({ id }) => id)).toEqual([
+      "integrity",
+      "provenance",
+      "privacy_redaction",
+    ])
+    expect(JSON.stringify(record)).not.toContain("verification_label")
+    expect(JSON.stringify(record)).not.toContain("verification_passed")
     expect(JSON.stringify(record)).not.toContain("PRIVATE_VERIFICATION_LABEL")
   })
 
@@ -142,7 +130,7 @@ describe("trajectory evidence record", () => {
       authoritativeClaims,
     })
 
-    // Then: marketplace, source, and adapter/seller authority tiers remain distinct.
+    // Then: only marketplace-authoritative claims remain public.
     expect(record.claims.map(({ id, authority, status }) => ({ id, authority, status }))).toEqual([
       {
         id: "integrity",
@@ -158,16 +146,6 @@ describe("trajectory evidence record", () => {
         id: "privacy_redaction",
         authority: trajectoryEvidenceClaimAuthorities.marketplaceAuthoritative,
         status: "satisfied",
-      },
-      {
-        id: "verification_label",
-        authority: trajectoryEvidenceClaimAuthorities.sourceAttested,
-        status: "attested",
-      },
-      {
-        id: "verification_passed",
-        authority: trajectoryEvidenceClaimAuthorities.adapterOrSellerAttested,
-        status: "attested",
       },
     ])
   })
@@ -325,23 +303,20 @@ describe("trajectory evidence record", () => {
     expect(error.message).not.toContain("PRIVATE_VERIFICATION_DETAIL")
   })
 
-  test("keeps metric lookup content-free for downstream consumers", () => {
-    // Given: a successful passed-attestation record.
+  test("does not expose verification metrics downstream", () => {
+    // Given: a source verification event.
     const record = createTrajectoryEvidenceRecord({
       observationSet: verificationFixture(true),
       computedAt: "2026-07-16T06:00:00.000Z",
       authoritativeClaims,
     })
 
-    // When: a downstream read model selects the passed-count metric by stable ID.
-    const passed = record.metrics.results.find(
-      (result) => result.metricId === trajectoryMetricIds.verificationPassedCount,
-    )
+    // When: a downstream read model inspects the stable metric IDs.
+    const metricIds = record.metrics.results.map((result) => result.metricId)
 
-    // Then: the read model receives only the attested aggregate count.
-    if (passed === undefined || passed.status === "unavailable") {
-      throw new TypeError("expected passed metric")
-    }
-    expect(passed.values).toEqual([{ dimensions: [], value: 1 }])
+    // Then: the read model receives no verification aggregate metrics.
+    expect(metricIds).not.toContain("trajectory.verification.labels.total")
+    expect(metricIds).not.toContain("trajectory.verification.passed.total")
+    expect(metricIds).not.toContain("trajectory.verification.failed.total")
   })
 })
