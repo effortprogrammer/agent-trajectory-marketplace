@@ -12,9 +12,9 @@ import {
   trajectoryObservationSetSchema,
 } from "./observation"
 
-export const trajectoryMetricSetVersion = "trajectory-metrics-v1" as const
+export const trajectoryMetricSetVersion = "trajectory-metrics-v2" as const
 export const trajectoryMetricPolicy = {
-  maxResults: 10,
+  maxResults: 7,
   maxValuesPerResult: trajectoryObservationEventClasses.length,
   maxDimensionsPerValue: 1,
   maxLimitationsPerResult: 2,
@@ -28,9 +28,6 @@ export const trajectoryMetricIds = {
   unmatchedToolResultCount: "trajectory.tools.results.unmatched",
   toolErrorCount: "trajectory.tools.results.errors",
   maxFunctionDepth: "trajectory.functions.max_depth",
-  verificationLabelCount: "trajectory.verification.labels.total",
-  verificationPassedCount: "trajectory.verification.passed.total",
-  verificationFailedCount: "trajectory.verification.failed.total",
 } as const
 
 export type TrajectoryMetricId = (typeof trajectoryMetricIds)[keyof typeof trajectoryMetricIds]
@@ -41,7 +38,6 @@ export type TrajectoryMetricLimitationCode =
   | "metric_values_truncated"
   | "tool_error_availability_unavailable"
   | "tool_linkage_unavailable"
-  | "verification_outcome_unavailable"
 
 // biome-ignore format: Stable definition rows stay directly comparable across versions.
 const metricSpecs = [
@@ -52,9 +48,6 @@ const metricSpecs = [
   { id: trajectoryMetricIds.unmatchedToolResultCount, unit: "events", operation: "count", maxValues: 1, parameters: [{ name: "event_class", value: "tool_result" }, { name: "link_status", value: "invalid" }] },
   { id: trajectoryMetricIds.toolErrorCount, unit: "events", operation: "count", maxValues: 1, parameters: [{ name: "event_class", value: "tool_result" }, { name: "error_outcome", value: "error" }] },
   { id: trajectoryMetricIds.maxFunctionDepth, unit: "levels", operation: "max", maxValues: 1, parameters: [{ name: "event_class", value: "step" }, { name: "required_fact", value: "function_boundary_direction" }, { name: "reset_by", value: "artifact_source_identity" }, { name: "unbalanced_policy", value: "unavailable_or_known_lower_bound" }] },
-  { id: trajectoryMetricIds.verificationLabelCount, unit: "events", operation: "count", maxValues: 1, parameters: [{ name: "event_class", value: "verification" }] },
-  { id: trajectoryMetricIds.verificationPassedCount, unit: "events", operation: "count", maxValues: 1, parameters: [{ name: "verification_outcome", value: "passed" }] },
-  { id: trajectoryMetricIds.verificationFailedCount, unit: "events", operation: "count", maxValues: 1, parameters: [{ name: "verification_outcome", value: "failed" }] },
 ] as const
 
 const bytewiseCompare = (left: string, right: string): number =>
@@ -217,7 +210,7 @@ export const deriveTrajectoryMetrics = (
   const functionDepth = deriveFunctionDepth(set?.observations ?? [])
   const kindCounts = new Map<TrajectoryObservationEventClass, number>()
   // biome-ignore format: Mutable counters are one bounded derivation accumulator.
-  const counts = { toolCalls: 0, toolResults: 0, matchedResults: 0, unmatchedResults: 0, unavailableLinks: 0, toolErrors: 0, unavailableErrors: 0, labels: 0, passed: 0, failed: 0, unavailableVerification: 0 }
+  const counts = { toolCalls: 0, toolResults: 0, matchedResults: 0, unmatchedResults: 0, unavailableLinks: 0, toolErrors: 0, unavailableErrors: 0 }
   for (const observation of set?.observations ?? []) {
     kindCounts.set(observation.eventClass, (kindCounts.get(observation.eventClass) ?? 0) + 1)
     if (observation.eventClass === "tool_call") counts.toolCalls += 1
@@ -228,12 +221,6 @@ export const deriveTrajectoryMetrics = (
       else counts.unavailableLinks += 1
       if (observation.error.availability === "unavailable") counts.unavailableErrors += 1
       else if (observation.error.availability === "available" && observation.error.outcome === "error") counts.toolErrors += 1
-    }
-    if (observation.eventClass === "verification") {
-      counts.labels += 1
-      if (observation.verification.availability === "unavailable") counts.unavailableVerification += 1
-      else if (observation.verification.availability === "available" && observation.verification.outcome === "passed") counts.passed += 1
-      else if (observation.verification.availability === "available") counts.failed += 1
     }
   }
   const kindValues = [...kindCounts.entries()]
@@ -250,9 +237,6 @@ export const deriveTrajectoryMetrics = (
     incompleteCount(trajectoryMetricIds.unmatchedToolResultCount, counts.unmatchedResults, counts.toolResults, counts.unavailableLinks, "tool_linkage_unavailable"),
     incompleteCount(trajectoryMetricIds.toolErrorCount, counts.toolErrors, counts.toolResults, counts.unavailableErrors, "tool_error_availability_unavailable"),
     functionDepthDraft,
-    { metricId: trajectoryMetricIds.verificationLabelCount, status: "available", values: scalar(counts.labels), limitations: [] },
-    incompleteCount(trajectoryMetricIds.verificationPassedCount, counts.passed, counts.labels, counts.unavailableVerification, "verification_outcome_unavailable"),
-    incompleteCount(trajectoryMetricIds.verificationFailedCount, counts.failed, counts.labels, counts.unavailableVerification, "verification_outcome_unavailable"),
   ]
   const results = Object.freeze(drafts.map((draft) => finalizeDraft(boundDraft(draft, coverage))))
   const limitations = Object.freeze([...new Set(results.flatMap((result) => result.limitations.map(({ code }) => code)))].sort(bytewiseCompare).slice(0, trajectoryMetricPolicy.maxResults))

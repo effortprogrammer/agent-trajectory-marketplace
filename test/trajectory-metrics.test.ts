@@ -126,7 +126,7 @@ describe("trajectory metrics", () => {
     const ids = definitions.map((definition) => definition.id)
 
     // Then: every initial metric has a unique stable contract with explicit semantics.
-    expect(trajectoryMetricSetVersion).toBe("trajectory-metrics-v1")
+    expect(trajectoryMetricSetVersion).toBe("trajectory-metrics-v2")
     expect(ids).toEqual(Object.values(trajectoryMetricIds))
     expect(new Set(ids).size).toBe(ids.length)
     for (const definition of definitions) {
@@ -163,9 +163,15 @@ describe("trajectory metrics", () => {
     expect(scalarValue(first, trajectoryMetricIds.matchedToolResultCount)).toBe(1)
     expect(scalarValue(first, trajectoryMetricIds.unmatchedToolResultCount)).toBe(1)
     expect(scalarValue(first, trajectoryMetricIds.toolErrorCount)).toBe(1)
-    expect(scalarValue(first, trajectoryMetricIds.verificationLabelCount)).toBe(2)
-    expect(scalarValue(first, trajectoryMetricIds.verificationPassedCount)).toBe(1)
-    expect(scalarValue(first, trajectoryMetricIds.verificationFailedCount)).toBe(1)
+    expect(first.results.map((result) => result.metricId)).not.toContain(
+      "trajectory.verification.labels.total",
+    )
+    expect(first.results.map((result) => result.metricId)).not.toContain(
+      "trajectory.verification.passed.total",
+    )
+    expect(first.results.map((result) => result.metricId)).not.toContain(
+      "trajectory.verification.failed.total",
+    )
 
     const distribution = resultFor(first, trajectoryMetricIds.kindDistribution)
     if (distribution.status === "unavailable") throw new TypeError("expected kind distribution")
@@ -308,8 +314,6 @@ describe("trajectory metrics", () => {
       trajectoryMetricIds.matchedToolResultCount,
       trajectoryMetricIds.unmatchedToolResultCount,
       trajectoryMetricIds.toolErrorCount,
-      trajectoryMetricIds.verificationPassedCount,
-      trajectoryMetricIds.verificationFailedCount,
     ]) {
       const result = resultFor(metrics, metricId)
       expect(result.status).toBe("unavailable")
@@ -317,7 +321,9 @@ describe("trajectory metrics", () => {
       expect(JSON.stringify(result)).not.toContain('"value":0')
       expect(JSON.stringify(result)).not.toContain(":false")
     }
-    expect(scalarValue(metrics, trajectoryMetricIds.verificationLabelCount)).toBe(1)
+    expect(metrics.results.map((result) => result.metricId)).not.toContain(
+      "trajectory.verification.labels.total",
+    )
   })
 
   test("marks bounded or incomplete derivations explicitly", () => {
