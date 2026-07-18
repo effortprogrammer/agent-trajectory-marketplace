@@ -117,7 +117,7 @@
         }
       ]
     },
-    "quality": "Every session ends in a verified green test suite; sessions with flaky reruns were dropped. Manual spot-check on a 5% sample.",
+    "quality": "Every session includes a seller-described test-suite note; sessions with flaky reruns were dropped. Manual spot-check on a 5% sample.",
     "safety": "Redaction scanner reports 0 findings across all 480 traces; credential-marker sweep clean.",
     "provenance": "All traces are self-generated agent logs from our own harness runs between 2026-03 and 2026-06. No customer data, no third-party logs.",
     "terms": "Evaluation and internal benchmarking allowed; resale and redistribution prohibited. Full license text delivered at fulfillment.",
