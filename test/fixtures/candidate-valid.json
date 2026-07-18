@@ -1,6 +1,6 @@
 {
-  "title": "480 verified TypeScript refactor trajectories (claude-code)",
-  "description": "Self-generated agent logs from a production refactoring assistant: 480 sessions, each with enter/exit spans, tool-call distribution, and a final verified test result. Fully redaction-scanned.",
+  "title": "480 TypeScript refactor trajectories (claude-code)",
+  "description": "Self-generated agent logs from a production refactoring assistant: 480 sessions, each with enter/exit spans, tool-call distribution, and a final test result. Fully redaction-scanned.",
   "proof": {
     "sample": {
       "summary": "Median session: 62 events, 11 tool calls, 3 verification runs. Event mix: 41% tool_call, 28% llm_call, 19% turn enter/exit, 12% verification.",
