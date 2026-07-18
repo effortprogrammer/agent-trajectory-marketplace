@@ -133,7 +133,7 @@ export const wantedRecord = {
   wantedId: "wanted-1111111111111111",
   state: "wanted",
   title: "Multi-repo refactor sessions wanted",
-  description: "Demand signal for refactor trajectories with source-attested test outcomes.",
+  description: "Demand signal for refactor trajectories with bounded test outcome notes.",
   domain: "software-engineering",
   harness: "claude-code",
   desiredEventCount: 40000,
@@ -146,7 +146,7 @@ export const wantedRecord = {
 
 const proofBody = () => ({
   sample: {
-    summary: "Median session: 62 events, 11 tool calls, 3 verification runs.",
+    summary: "Median session: 62 events, 11 tool calls, 3 test-suite notes.",
     eventCount: 29760,
     eventKinds: ["task", "tool_call", "verification"],
     events: [
@@ -156,7 +156,7 @@ const proofBody = () => ({
       { kind: "verification", name: "test-suite-green" },
     ],
   },
-  quality: "Every session ends in a verified green test suite.",
+  quality: "Every session includes a seller-described test-suite note.",
   safety: "Redaction scanner reports 0 findings.",
   provenance: "Self-generated agent logs from our own harness runs.",
   terms: "Evaluation allowed; resale prohibited.",
@@ -169,7 +169,7 @@ const proofBody = () => ({
 export const evidenceBody = (overrides = {}) => ({
   availability: "partial",
   normalizerVersion: "atf-observation-v1",
-  metricSetVersion: "trajectory-metrics-v1",
+  metricSetVersion: "trajectory-metrics-v2",
   summary: {
     artifactCount: 480,
     observationCount: 29760,
@@ -192,15 +192,10 @@ export const evidenceBody = (overrides = {}) => ({
     unmatchedToolResultCount: { status: "available", count: 120 },
     toolErrorCount: { status: "partial", count: 42 },
     maximumFunctionDepth: { status: "unavailable" },
-    verificationLabelCount: { status: "available", count: 2280 },
-    verificationPassedCount: { status: "partial", count: 2160 },
-    verificationFailedCount: { status: "partial", count: 120 },
   },
   claims: {
     integrity: { authority: "marketplace_authoritative", status: "satisfied" },
     provenance: { authority: "marketplace_authoritative", status: "satisfied" },
-    verificationLabel: { authority: "source_attested", status: "attested" },
-    verificationPassed: { authority: "adapter_or_seller_attested", status: "partial" },
   },
   redaction: { authority: "marketplace_authoritative", status: "satisfied" },
   commitment: "sha256:0123456789abcdef",
