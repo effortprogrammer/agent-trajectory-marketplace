@@ -6,9 +6,12 @@ import { join } from "node:path"
 import { z } from "zod"
 
 import {
+  extractHarnessSourceAttestation,
   type HarnessAdapter,
+  type HarnessEventPayload,
   type HarnessSessionInput,
   type HarnessSessionRef,
+  type HarnessSourceAttestation,
   type HarnessTraceDocument,
   type HarnessTraceEvent,
   harnessCollectedStatus,
@@ -33,9 +36,24 @@ type HermesSessionRow = {
   readonly msg_count: number
 }
 
+// Hermes schema v19 exposes per-session aggregate usage on the `sessions`
+// table. Older or stripped schemas may omit them; the adapter probes PRAGMA
+// and only SELECTs the columns that exist.
+type HermesSessionUsageRow = {
+  readonly model: string | null
+  readonly cwd: string | null
+  readonly input_tokens: number | null
+  readonly output_tokens: number | null
+  readonly cache_read_tokens: number | null
+  readonly cache_write_tokens: number | null
+  readonly reasoning_tokens: number | null
+}
+
 type HermesMessageRow = {
+  readonly id: number
   readonly role: string
   readonly content: string | null
+  readonly timestamp: number | null
   readonly tool_call_id: string | null
   readonly tool_calls: string | null
   readonly tool_name: string | null
@@ -188,9 +206,27 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
   const dbPath = resolveHermesDbPath(session.sessionPath)
   const sqlite = openHermesDatabase(dbPath)
   try {
+    // Probe sessions columns once; older/stripped schemas may not carry the
+    // usage columns and a hard SELECT would throw. The probe-list is the set
+    // of optional columns the usage extraction below reads.
+    const sessionsColumns = sqlite
+      .query<{ readonly name: string }, []>("PRAGMA table_info(sessions)")
+      .all()
+    const optionalColumns = new Set(sessionsColumns.map((row) => row.name))
+    const usageColumnSelects = [
+      "input_tokens",
+      "output_tokens",
+      "cache_read_tokens",
+      "cache_write_tokens",
+      "reasoning_tokens",
+    ]
+      .filter((column) => optionalColumns.has(column))
+      .map((column) => `CAST("${column}" AS REAL) AS ${column}`)
     const sessionRow = sqlite
-      .query<{ readonly model: string | null; readonly cwd: string | null }, [string]>(
-        "SELECT model, cwd FROM sessions WHERE id = ?",
+      .query<HermesSessionUsageRow, [string]>(
+        `SELECT model, cwd${
+          usageColumnSelects.length === 0 ? "" : `, ${usageColumnSelects.join(", ")}`
+        } FROM sessions WHERE id = ?`,
       )
       .get(session.sessionId)
     if (sessionRow === null) {
@@ -201,7 +237,7 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
     }
     const rows = sqlite
       .query<HermesMessageRow, [string]>(
-        `SELECT role, content, tool_call_id, tool_calls, tool_name
+        `SELECT id, role, content, timestamp, tool_call_id, tool_calls, tool_name
         FROM messages
         WHERE session_id = ? AND active = 1
         ORDER BY id ASC`,
@@ -209,15 +245,100 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
       .all(session.sessionId)
 
     const events: HarnessTraceEvent[] = []
-    const emit = (kind: string, name: string, detail: string) => {
-      events.push({ kind, name, detail: redactHarnessDetail(detail) })
+    let hasAttestation = false
+    // Two namespaces: `msg:<rowId>` for row-backed events and `tcall:<nativeId>`
+    // for tool calls, which fan out within one assistant row and would otherwise
+    // collide with the row's own llm_call source id. The session prefix defends
+    // against id collisions across sessions sharing one store.
+    const namespace = `hermes:${session.sessionId}`
+    const toolCallSourceByNativeId = new Map<string, string>()
+    let hasPayload = false
+    const emit = (
+      kind: string,
+      name: string,
+      detail: string,
+      attestation?: HarnessSourceAttestation,
+      payload?: HarnessEventPayload,
+    ): HarnessTraceEvent => {
+      if (payload !== undefined) {
+        hasPayload = true
+      }
+      const extracted = extractHarnessSourceAttestation(attestation)
+      if (extracted === undefined) {
+        const event: HarnessTraceEvent = {
+          kind,
+          name,
+          detail: redactHarnessDetail(detail),
+          ...(payload === undefined ? {} : { payload }),
+        }
+        events.push(event)
+        return event
+      }
+      hasAttestation = true
+      const event: HarnessTraceEvent = {
+        kind,
+        name,
+        detail: redactHarnessDetail(detail),
+        timestamp: extracted.timestamp,
+        sourceEventId: extracted.sourceEventId,
+        ...(extracted.parentSourceEventId === undefined
+          ? {}
+          : { parentSourceEventId: extracted.parentSourceEventId }),
+        ...(payload === undefined ? {} : { payload }),
+      }
+      events.push(event)
+      return event
+    }
+
+    // Omit the whole attestation group when the raw timestamp is missing;
+    // epochToIso would otherwise pin the event to the Unix epoch.
+    const rowAttestation = (
+      row: HermesMessageRow,
+      sourceEventId: string,
+      parentSourceEventId?: string,
+    ): HarnessSourceAttestation | undefined => {
+      if (row.timestamp === null) return undefined
+      return extractHarnessSourceAttestation({
+        timestamp: epochToIso(row.timestamp),
+        sourceEventId,
+        ...(parentSourceEventId === undefined ? {} : { parentSourceEventId }),
+      })
     }
 
     const model = sessionRow.model ?? hermesRuntime
+    // Hermes tracks usage only at session aggregate (per tokscale's parser);
+    // attach the aggregate as session_start.payload.usage so a buyer reads
+    // session totals directly.
+    const aggregateUsage: HarnessEventPayload["usage"] = {
+      model,
+      ...(sessionRow.input_tokens === null || sessionRow.input_tokens === undefined
+        ? {}
+        : { inputTokens: sessionRow.input_tokens }),
+      ...(sessionRow.output_tokens === null || sessionRow.output_tokens === undefined
+        ? {}
+        : { outputTokens: sessionRow.output_tokens }),
+      ...(sessionRow.cache_read_tokens === null || sessionRow.cache_read_tokens === undefined
+        ? {}
+        : { cachedInputTokens: sessionRow.cache_read_tokens }),
+      ...(sessionRow.cache_write_tokens === null || sessionRow.cache_write_tokens === undefined
+        ? {}
+        : { cacheWriteTokens: sessionRow.cache_write_tokens }),
+      ...(sessionRow.reasoning_tokens === null || sessionRow.reasoning_tokens === undefined
+        ? {}
+        : { reasoningOutputTokens: sessionRow.reasoning_tokens }),
+    }
+    const hasAnyUsageField =
+      aggregateUsage.inputTokens !== undefined ||
+      aggregateUsage.outputTokens !== undefined ||
+      aggregateUsage.cachedInputTokens !== undefined ||
+      aggregateUsage.cacheWriteTokens !== undefined ||
+      aggregateUsage.reasoningOutputTokens !== undefined
     emit(
       "session_start",
       session.sessionId,
       `hermes model=${model} cwd=${sessionRow.cwd ?? "unknown"}`,
+      undefined,
+      hasAnyUsageField ? { usage: aggregateUsage } : undefined,
     )
 
     let turnCount = 0
@@ -232,12 +353,22 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
       if (row.role === "user") {
         closeTurn()
         turnCount += 1
-        emit("function_enter", `turn-${turnCount}`, decodeHermesContent(row.content))
+        emit(
+          "function_enter",
+          `turn-${turnCount}`,
+          decodeHermesContent(row.content),
+          rowAttestation(row, `${namespace}:msg:${row.id}`),
+        )
         continue
       }
       if (row.role === "assistant") {
         // Reasoning columns are never exported; only the visible content is.
-        emit("llm_call", model, decodeHermesContent(row.content))
+        const llmEvent = emit(
+          "llm_call",
+          model,
+          decodeHermesContent(row.content),
+          rowAttestation(row, `${namespace}:msg:${row.id}`),
+        )
         if (row.tool_calls !== null) {
           let parsedToolCalls: unknown
           try {
@@ -252,10 +383,25 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
                 continue
               }
               const toolName = parsed.data.function?.name ?? "tool"
-              if (parsed.data.id !== undefined) {
-                toolNamesByCallId.set(parsed.data.id, toolName)
+              const nativeToolCallId = parsed.data.id
+              const toolCallSourceEventId =
+                nativeToolCallId === undefined
+                  ? undefined
+                  : `${namespace}:tcall:${nativeToolCallId}`
+              if (nativeToolCallId !== undefined) {
+                toolNamesByCallId.set(nativeToolCallId, toolName)
               }
-              emit("tool_call", toolName, summarizeArgumentsJson(parsed.data.function?.arguments))
+              const toolEvent = emit(
+                "tool_call",
+                toolName,
+                summarizeArgumentsJson(parsed.data.function?.arguments),
+                toolCallSourceEventId === undefined
+                  ? undefined
+                  : rowAttestation(row, toolCallSourceEventId, llmEvent.sourceEventId),
+              )
+              if (nativeToolCallId !== undefined && toolEvent.sourceEventId !== undefined) {
+                toolCallSourceByNativeId.set(nativeToolCallId, toolEvent.sourceEventId)
+              }
             }
           }
         }
@@ -263,7 +409,14 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
       }
       if (row.role === "tool") {
         const toolName = row.tool_name ?? toolNamesByCallId.get(row.tool_call_id ?? "") ?? "tool"
-        emit("tool_result", toolName, decodeHermesContent(row.content))
+        const parentSourceEventId =
+          row.tool_call_id === null ? undefined : toolCallSourceByNativeId.get(row.tool_call_id)
+        emit(
+          "tool_result",
+          toolName,
+          decodeHermesContent(row.content),
+          rowAttestation(row, `${namespace}:msg:${row.id}`, parentSourceEventId),
+        )
       }
       // system rows (prompt scaffolding) are skipped on purpose.
     }
@@ -272,6 +425,7 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
     return harnessTraceDocumentSchema.parse({
       runtime: hermesRuntime,
       status: harnessCollectedStatus,
+      ...(hasAttestation || hasPayload ? { formatVersion: 2 as const } : {}),
       eventCount: events.length,
       events,
     })

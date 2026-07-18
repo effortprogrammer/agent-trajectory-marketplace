@@ -1,6 +1,9 @@
 import { z } from "zod"
 
 import { observationSetValidationIssues } from "./observation-set-validator"
+import { atfTimestampSchema, maxTimestampChars } from "./observation-timestamp"
+
+export { atfTimestampSchema }
 
 export const trajectoryObservationPolicy = {
   maxArtifacts: 100,
@@ -19,6 +22,8 @@ export const trajectoryObservationPolicy = {
   maxPayloadStringBytes: 16 * 1024,
   maxPayloadSerializedBytes: 64 * 1024,
   maxAssistantBlocks: 1_024,
+  maxSourceEventIdChars: 256,
+  maxTimestampChars,
 } as const
 
 export const trajectoryObservationSchemaVersion = 1 as const

@@ -100,7 +100,14 @@ const payloadMatchesEvent = (event: ParsedV2Event): boolean => {
   ) {
     return false
   }
-  return payload.usage === undefined || event.kind === "llm_call"
+  return (
+    payload.usage === undefined ||
+    event.kind === "llm_call" ||
+    // Hermes exposes usage only at the session aggregate (tokscale parity),
+    // so the adapter attaches it to session_start instead of fanning it out
+    // across llm_call events that did not individually report tokens.
+    event.kind === "session_start"
+  )
 }
 
 const parseSourceJson = (sourceBytes: Uint8Array, artifactIndex: number): unknown => {

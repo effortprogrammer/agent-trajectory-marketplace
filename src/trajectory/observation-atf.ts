@@ -1,5 +1,6 @@
 import { z } from "zod"
 import {
+  atfTimestampSchema,
   observationArchiveSha256Schema,
   observationArtifactPathSchema,
   observationArtifactSha256Schema,
@@ -37,6 +38,14 @@ const payloadSchema = z
         model: z.string().optional(),
         inputTokens: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
         outputTokens: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+        cachedInputTokens: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+        reasoningOutputTokens: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(Number.MAX_SAFE_INTEGER)
+          .optional(),
+        cacheWriteTokens: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
         latencyMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
       })
       .strict()
@@ -60,9 +69,49 @@ const commonEventShape = {
 } as const
 
 const v1EventSchema = z.object(commonEventShape).strict()
+
+const atfSourceEventIdSchema = z
+  .string()
+  .min(1)
+  .max(trajectoryObservationPolicy.maxSourceEventIdChars)
+
 export const v2EventSchema = z
-  .object({ ...commonEventShape, payload: payloadSchema.optional() })
+  .object({
+    ...commonEventShape,
+    timestamp: atfTimestampSchema.optional(),
+    sourceEventId: atfSourceEventIdSchema.optional(),
+    parentSourceEventId: atfSourceEventIdSchema.optional(),
+    payload: payloadSchema.optional(),
+  })
   .strict()
+  .superRefine((value, context) => {
+    const hasTimestamp = value.timestamp !== undefined
+    const hasSourceEventId = value.sourceEventId !== undefined
+    const hasParentSourceEventId = value.parentSourceEventId !== undefined
+    if (hasTimestamp !== hasSourceEventId) {
+      if (!hasTimestamp) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["timestamp"],
+          message: "timestamp_required_with_source_event_id",
+        })
+      }
+      if (!hasSourceEventId) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["sourceEventId"],
+          message: "source_event_id_required_with_timestamp",
+        })
+      }
+    }
+    if (hasParentSourceEventId && !(hasTimestamp && hasSourceEventId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["parentSourceEventId"],
+        message: "parent_source_event_id_requires_source_attestation",
+      })
+    }
+  })
 
 export const v1DocumentSchema = z
   .object({
@@ -79,6 +128,22 @@ export const v2DocumentSchema = z
     events: z.array(v2EventSchema).max(trajectoryObservationPolicy.maxEventsPerArtifact),
   })
   .strict()
+  .superRefine((value, context) => {
+    const seenSourceEventIds = new Map<string, number>()
+    value.events.forEach((event, index) => {
+      if (event.sourceEventId === undefined) return
+      const firstSeenIndex = seenSourceEventIds.get(event.sourceEventId)
+      if (firstSeenIndex === undefined) {
+        seenSourceEventIds.set(event.sourceEventId, index)
+        return
+      }
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["events", index, "sourceEventId"],
+        message: "duplicate_source_event_id",
+      })
+    })
+  })
 
 const artifactInputSchema = z
   .object({

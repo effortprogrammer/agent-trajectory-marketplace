@@ -1,8 +1,19 @@
 import { z } from "zod"
 
 import { redactCredentialSpans } from "../credential-redaction"
+import { atfTimestampSchema } from "../observation-contract"
 import { privacyStampSchema } from "../privacy/contract"
 import { mapStringLeaves } from "../string-leaves"
+
+import { harnessSourceEventIdSchema } from "./source-attestation"
+
+// Re-export the source-attestation schema/type/helper so existing adapter
+// imports from "./contract" keep working after the extraction.
+export {
+  extractHarnessSourceAttestation,
+  type HarnessSourceAttestation,
+  harnessSourceEventIdSchema,
+} from "./source-attestation"
 
 // Harness adapters convert coding-harness session logs that already exist on
 // the seller's machine into ATF trace documents. Traces produced this way use
@@ -31,6 +42,14 @@ const usageSchema = z
     model: z.string().optional(),
     inputTokens: z.number().int().nonnegative().optional(),
     outputTokens: z.number().int().nonnegative().optional(),
+    // Codex rollouts (event_msg token_count.info.last_token_usage) break out
+    // cached input and reasoning output separately. Both are optional so the
+    // claude-code adapter (which only has input/output) keeps its shape.
+    cachedInputTokens: z.number().int().nonnegative().optional(),
+    reasoningOutputTokens: z.number().int().nonnegative().optional(),
+    // Cache write (cache creation in Anthropic terms, cacheWrite in OpenClaw,
+    // cache_write_tokens in Hermes) — distinct from cached input reads.
+    cacheWriteTokens: z.number().int().nonnegative().optional(),
     latencyMs: z.number().int().nonnegative().optional(),
   })
   .strict()
@@ -61,17 +80,52 @@ export const harnessTraceEventSchema = z
     kind: z.string().min(1),
     name: z.string().min(1),
     detail: z.string(),
+    // Source attestation group (ATF formatVersion 2). Adapters that can read
+    // stable event IDs and timestamps fill all three; adapters that cannot
+    // omit them entirely. Partial groups are rejected so a buyer never sees a
+    // timestamp it cannot anchor to a source event.
+    timestamp: atfTimestampSchema.optional(),
+    sourceEventId: harnessSourceEventIdSchema.optional(),
+    parentSourceEventId: harnessSourceEventIdSchema.optional(),
     payload: harnessEventPayloadSchema.optional(),
   })
   .strict()
+  .superRefine((value, context) => {
+    const hasTimestamp = value.timestamp !== undefined
+    const hasSourceEventId = value.sourceEventId !== undefined
+    const hasParentSourceEventId = value.parentSourceEventId !== undefined
+    if (hasTimestamp !== hasSourceEventId) {
+      if (!hasTimestamp) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["timestamp"],
+          message: "timestamp_required_with_source_event_id",
+        })
+      }
+      if (!hasSourceEventId) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["sourceEventId"],
+          message: "source_event_id_required_with_timestamp",
+        })
+      }
+    }
+    if (hasParentSourceEventId && !(hasTimestamp && hasSourceEventId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["parentSourceEventId"],
+        message: "parent_source_event_id_requires_source_attestation",
+      })
+    }
+  })
 export type HarnessTraceEvent = z.infer<typeof harnessTraceEventSchema>
 
 export const harnessTraceDocumentSchema = z
   .object({
     runtime: z.string().min(1),
     status: z.literal(harnessCollectedStatus),
-    // Omitted or 1 = summary-only (no payloads); 2 = fidelity-optional events.
-    formatVersion: z.literal(2).optional(),
+    // Omitted or 1 = summary-only; 2 = fidelity-optional events.
+    formatVersion: z.union([z.literal(1), z.literal(2)]).optional(),
     eventCount: z.number().int().nonnegative(),
     events: z.array(harnessTraceEventSchema),
     // Stamped by the ML privacy pass after conversion. Collected traces
@@ -79,6 +133,47 @@ export const harnessTraceDocumentSchema = z
     privacy: privacyStampSchema.optional(),
   })
   .strict()
+  .superRefine((value, context) => {
+    // Any source-attested event implies the formatVersion 2 high-fidelity
+    // envelope; a v1/summary-only document must not carry attestation.
+    const hasAttestation = value.events.some(
+      (event) =>
+        event.timestamp !== undefined ||
+        event.sourceEventId !== undefined ||
+        event.parentSourceEventId !== undefined,
+    )
+    const hasPayload = value.events.some((event) => event.payload !== undefined)
+    if ((hasAttestation || hasPayload) && value.formatVersion !== 2) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["formatVersion"],
+        message: "format_version_2_required_with_payload_or_source_attestation",
+      })
+    }
+    if (value.eventCount !== value.events.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["eventCount"],
+        message: "event_count_mismatch",
+      })
+    }
+    // Duplicate source IDs break the buyer-side observation normalizer,
+    // which keys observations by source ID.
+    const seenSourceEventIds = new Map<string, number>()
+    value.events.forEach((event, index) => {
+      if (event.sourceEventId === undefined) return
+      const firstSeenIndex = seenSourceEventIds.get(event.sourceEventId)
+      if (firstSeenIndex === undefined) {
+        seenSourceEventIds.set(event.sourceEventId, index)
+        return
+      }
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["events", index, "sourceEventId"],
+        message: "duplicate_source_event_id",
+      })
+    })
+  })
 export type HarnessTraceDocument = z.infer<typeof harnessTraceDocumentSchema>
 
 // Collection-time payload bounds. A single tool dump must not blow the escrow
@@ -173,12 +268,14 @@ export const boundedRedactedString = (value: string): { text: string; truncated:
     return { text: redacted, truncated: false }
   }
   // Truncate on a UTF-8 byte boundary.
-  let end = harnessPayloadPolicy.maxStringBytes
+  const truncationMarker = "…[truncated]"
+  const markerBytes = Buffer.byteLength(truncationMarker, "utf8")
+  let end = harnessPayloadPolicy.maxStringBytes - markerBytes
   const buffer = Buffer.from(redacted, "utf8")
   while (end > 0 && (buffer[end] ?? 0) >> 6 === 0b10) {
     end -= 1
   }
-  return { text: `${buffer.subarray(0, end).toString("utf8")}…[truncated]`, truncated: true }
+  return { text: `${buffer.subarray(0, end).toString("utf8")}${truncationMarker}`, truncated: true }
 }
 
 // Sanitizes every string leaf of an arbitrary payload value (tool
@@ -195,9 +292,8 @@ const sanitizePayloadValue = (value: unknown, state: { truncated: boolean }): un
   })
 
 // Sanitizes a full event payload: credential-redacts and size-bounds every
-// string, stamps `truncated` when any leaf was cut, and drops the whole
-// payload if it still exceeds the serialized cap after per-string bounding
-// (a defensive fallback — should not happen with the per-string cap).
+// string, stamps `truncated` when any leaf was cut, and retains a truncation
+// marker when aggregate structure still exceeds the serialized cap.
 export const sanitizeHarnessPayload = (
   payload: HarnessEventPayload,
 ): HarnessEventPayload | undefined => {
@@ -213,7 +309,7 @@ export const sanitizeHarnessPayload = (
   if (
     Buffer.byteLength(JSON.stringify(parsed.data), "utf8") > harnessPayloadPolicy.maxSerializedBytes
   ) {
-    return undefined
+    return { truncated: true }
   }
   return parsed.data
 }

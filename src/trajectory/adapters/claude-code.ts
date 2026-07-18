@@ -5,10 +5,12 @@ import { basename, join } from "node:path"
 import { z } from "zod"
 
 import {
+  extractHarnessSourceAttestation,
   type HarnessAdapter,
   type HarnessEventPayload,
   type HarnessSessionInput,
   type HarnessSessionRef,
+  type HarnessSourceAttestation,
   type HarnessTraceDocument,
   type HarnessTraceEvent,
   harnessCollectedStatus,
@@ -39,6 +41,11 @@ const transcriptRecordSchema = z
     isMeta: z.boolean().optional(),
     isSidechain: z.boolean().optional(),
     isApiErrorMessage: z.boolean().optional(),
+    // Raw transcript stamp and parentage. Both are typed but only timestamp
+    // feeds source attestation; parentMessageId is never used to infer turn
+    // parents (synthetic turn spans stay unattested by design).
+    timestamp: z.string().optional(),
+    parentMessageId: z.string().optional(),
     cwd: z.string().optional(),
     sessionId: z.string().optional(),
     version: z.string().optional(),
@@ -52,6 +59,8 @@ const transcriptRecordSchema = z
           .object({
             input_tokens: z.number().optional(),
             output_tokens: z.number().optional(),
+            cache_read_input_tokens: z.number().optional(),
+            cache_creation_input_tokens: z.number().optional(),
           })
           .passthrough()
           .optional(),
@@ -63,6 +72,13 @@ const transcriptRecordSchema = z
 
 type TranscriptRecord = z.infer<typeof transcriptRecordSchema>
 type ContentBlock = z.infer<typeof contentBlockSchema>
+type AssistantPayloadBlock = {
+  readonly type: "text" | "tool_use"
+  readonly text?: string | undefined
+  readonly id?: string | undefined
+  readonly name?: string | undefined
+  readonly input?: unknown
+}
 
 const syntheticModel = "<synthetic>"
 
@@ -193,17 +209,53 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
 
   const events: HarnessTraceEvent[] = []
   let hasPayload = false
-  const emit = (kind: string, name: string, detail: string, payload?: HarnessEventPayload) => {
-    const sanitized = payload === undefined ? undefined : sanitizeHarnessPayload(payload)
+  let hasAttestation = false
+  // Most recently emitted llm_call source ID, so a tool_call that shares the
+  // enclosing assistant message can point at it as parent. Reset to undefined
+  // when an llm_call is emitted without attestation, so a subsequent tool_call
+  // never links to a stale prior message.
+  let currentLlmSourceEventId: string | undefined
+  // tool_use_id → emitted tool_call sourceEventId, so the matching tool_result
+  // can name its parent in the result namespace without colliding IDs.
+  const toolCallSourceEventIdByUseId = new Map<string, string>()
+
+  type EmitOptions = {
+    readonly payload?: HarnessEventPayload | undefined
+    readonly attestation?: HarnessSourceAttestation | undefined
+  }
+
+  const emit = (
+    kind: string,
+    name: string,
+    detail: string,
+    options?: EmitOptions,
+  ): HarnessTraceEvent => {
+    const sanitized =
+      options?.payload === undefined ? undefined : sanitizeHarnessPayload(options.payload)
     if (sanitized !== undefined) {
       hasPayload = true
     }
-    events.push({
+    const attestation = options?.attestation
+    if (attestation !== undefined) {
+      hasAttestation = true
+    }
+    const event: HarnessTraceEvent = {
       kind,
       name,
       detail: redactHarnessDetail(detail),
       ...(sanitized === undefined ? {} : { payload: sanitized }),
-    })
+      ...(attestation === undefined
+        ? {}
+        : {
+            timestamp: attestation.timestamp,
+            sourceEventId: attestation.sourceEventId,
+            ...(attestation.parentSourceEventId === undefined
+              ? {}
+              : { parentSourceEventId: attestation.parentSourceEventId }),
+          }),
+    }
+    events.push(event)
+    return event
   }
 
   const first = conversational[0]
@@ -212,10 +264,62 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
     "session_start",
     sessionId,
     `claude-code ${first?.version ?? "unknown"} cwd=${first?.cwd ?? "unknown"} branch=${first?.gitBranch ?? "unknown"}`,
+    {
+      attestation: extractHarnessSourceAttestation({
+        ...(first?.timestamp === undefined ? {} : { timestamp: first.timestamp }),
+        sourceEventId: `claude-code:session:${sessionId}`,
+      }),
+    },
   )
 
   let turnCount = 0
   const seenLlmMessageIds = new Set<string>()
+  const assistantTextByMessageId = new Map<string, string>()
+  const assistantBlocksByMessageId = new Map<string, AssistantPayloadBlock[]>()
+  type ClaudeUsage = {
+    readonly input_tokens?: number | undefined
+    readonly output_tokens?: number | undefined
+    readonly cache_read_input_tokens?: number | undefined
+    readonly cache_creation_input_tokens?: number | undefined
+  }
+  const assistantUsageByMessageId = new Map<string, ClaudeUsage>()
+  for (const record of conversational) {
+    if (record.type !== "assistant") {
+      continue
+    }
+    const messageId = record.message?.id
+    if (messageId === undefined) {
+      continue
+    }
+    const text = contentBlocks(record)
+      .filter((block) => block.type === "text")
+      .map((block) => block.text ?? "")
+      .join("")
+    if (text.length > 0) {
+      assistantTextByMessageId.set(
+        messageId,
+        `${assistantTextByMessageId.get(messageId) ?? ""}${text}`,
+      )
+    }
+    const assistantBlocks = assistantBlocksByMessageId.get(messageId) ?? []
+    for (const block of contentBlocks(record)) {
+      if (block.type === "text") {
+        assistantBlocks.push({ type: "text", text: block.text ?? "" })
+      } else if (block.type === "tool_use") {
+        assistantBlocks.push({
+          type: "tool_use",
+          ...(block.id === undefined ? {} : { id: block.id }),
+          ...(block.name === undefined ? {} : { name: block.name }),
+          input: block.input ?? {},
+        })
+      }
+    }
+    assistantBlocksByMessageId.set(messageId, assistantBlocks)
+    const usage = record.message?.usage
+    if (usage !== undefined) {
+      assistantUsageByMessageId.set(messageId, usage)
+    }
+  }
   const toolNamesByUseId = new Map<string, string>()
   const closeTurn = () => {
     if (turnCount > 0) {
@@ -230,7 +334,9 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
         closeTurn()
         turnCount += 1
         // Payload carries the full prompt; detail stays the capped summary.
-        emit("function_enter", `turn-${turnCount}`, prompt, { role: "user", content: prompt })
+        emit("function_enter", `turn-${turnCount}`, prompt, {
+          payload: { role: "user", content: prompt },
+        })
         continue
       }
       for (const block of contentBlocks(record)) {
@@ -240,11 +346,25 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
         const toolName = toolNamesByUseId.get(block.tool_use_id ?? "") ?? "tool"
         // Observation: the actual tool output, not just ok/error.
         const output = toolResultOutput(block.content)
+        const toolUseId = block.tool_use_id
+        const parentToolSourceId =
+          toolUseId === undefined ? undefined : toolCallSourceEventIdByUseId.get(toolUseId)
         emit("tool_result", toolName, block.is_error === true ? "error" : "ok", {
-          ...(block.tool_use_id === undefined ? {} : { toolUseId: block.tool_use_id }),
-          isError: block.is_error === true,
-          output,
-          byteCount: Buffer.byteLength(output, "utf8"),
+          payload: {
+            ...(toolUseId === undefined ? {} : { toolUseId }),
+            isError: block.is_error === true,
+            output,
+            byteCount: Buffer.byteLength(output, "utf8"),
+          },
+          attestation: extractHarnessSourceAttestation({
+            ...(record.timestamp === undefined ? {} : { timestamp: record.timestamp }),
+            ...(toolUseId === undefined
+              ? {}
+              : { sourceEventId: `claude-code:result:${toolUseId}` }),
+            ...(parentToolSourceId === undefined
+              ? {}
+              : { parentSourceEventId: parentToolSourceId }),
+          }),
         })
       }
       continue
@@ -258,8 +378,7 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
       continue
     }
     // Assistant messages stream one content block per JSONL line but share a
-    // message.id; collect this record's blocks into one structured payload the
-    // first time we see the id.
+    // message.id; the pre-pass above collects visible text across all records.
     const messageId = record.message?.id
     const blocks = contentBlocks(record)
     // Assistant messages stream one block per record sharing message.id, and a
@@ -270,26 +389,39 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
     const hasNonThinkingBlock = blocks.some((block) => block.type !== "thinking")
     if (messageId !== undefined && !seenLlmMessageIds.has(messageId) && hasNonThinkingBlock) {
       seenLlmMessageIds.add(messageId)
-      // Assistant messages stream one block per record; the thinking gate and
-      // tool actions are handled below/here. The payload carries this chunk's
-      // full assistant text (uncapped, vs the 240-char detail) plus usage;
-      // the concrete actions are captured as tool_call events with full input.
-      const assistantText = blocks
-        .filter((block) => block.type === "text")
-        .map((block) => block.text ?? "")
-        .join("")
-        .trim()
-      const usage = record.message?.usage
+      // The payload carries the complete assistant text (uncapped, vs the
+      // 240-char detail) plus usage; tool actions are captured below as
+      // separate tool_call events with full input.
+      const assistantText = (assistantTextByMessageId.get(messageId) ?? "").trim()
+      const assistantBlocks = assistantBlocksByMessageId.get(messageId) ?? []
+      const usage = assistantUsageByMessageId.get(messageId) ?? record.message?.usage
       const payload: HarnessEventPayload = {
         role: "assistant",
-        ...(assistantText.length === 0 ? {} : { content: assistantText }),
+        ...(assistantBlocks.length === 0 ? {} : { content: assistantBlocks }),
         usage: {
           model,
           ...(usage?.input_tokens === undefined ? {} : { inputTokens: usage.input_tokens }),
           ...(usage?.output_tokens === undefined ? {} : { outputTokens: usage.output_tokens }),
+          // Anthropic exposes cache_read_input_tokens (cache hits billed at
+          // discount) and cache_creation_input_tokens (cache writes) separately.
+          // Map both to the cross-adapter schema; cache_read is the cached-input
+          // semantic sibling of Codex cached_input_tokens.
+          ...(usage?.cache_read_input_tokens === undefined
+            ? {}
+            : { cachedInputTokens: usage.cache_read_input_tokens }),
+          ...(usage?.cache_creation_input_tokens === undefined
+            ? {}
+            : { cacheWriteTokens: usage.cache_creation_input_tokens }),
         },
       }
-      emit("llm_call", model, assistantText, payload)
+      const llmEvent = emit("llm_call", model, assistantText, {
+        payload,
+        attestation: extractHarnessSourceAttestation({
+          ...(record.timestamp === undefined ? {} : { timestamp: record.timestamp }),
+          sourceEventId: `claude-code:message:${messageId}`,
+        }),
+      })
+      currentLlmSourceEventId = llmEvent.sourceEventId
     }
     for (const block of blocks) {
       if (block.type === "tool_use") {
@@ -299,10 +431,22 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
         }
         // Action: the full tool input, not a single summarized key. The tool
         // name is already the event name.
-        emit("tool_call", toolName, summarizeToolInput(block.input), {
-          ...(block.id === undefined ? {} : { toolUseId: block.id }),
-          input: block.input ?? {},
+        const toolEvent = emit("tool_call", toolName, summarizeToolInput(block.input), {
+          payload: {
+            ...(block.id === undefined ? {} : { toolUseId: block.id }),
+            input: block.input ?? {},
+          },
+          attestation: extractHarnessSourceAttestation({
+            ...(record.timestamp === undefined ? {} : { timestamp: record.timestamp }),
+            ...(block.id === undefined ? {} : { sourceEventId: `claude-code:tool:${block.id}` }),
+            ...(currentLlmSourceEventId === undefined
+              ? {}
+              : { parentSourceEventId: currentLlmSourceEventId }),
+          }),
         })
+        if (block.id !== undefined && toolEvent.sourceEventId !== undefined) {
+          toolCallSourceEventIdByUseId.set(block.id, toolEvent.sourceEventId)
+        }
       }
     }
   }
@@ -311,7 +455,7 @@ const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessTraceDoc
   return harnessTraceDocumentSchema.parse({
     runtime: claudeCodeRuntime,
     status: harnessCollectedStatus,
-    ...(hasPayload ? { formatVersion: 2 as const } : {}),
+    ...(hasPayload || hasAttestation ? { formatVersion: 2 as const } : {}),
     eventCount: events.length,
     events,
   })

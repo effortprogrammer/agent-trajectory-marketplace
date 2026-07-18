@@ -30,6 +30,20 @@ const openInferenceKindFor: Record<TrajectoryObservationEventClass, string> = {
   other: "UNKNOWN",
 }
 
+type SourceMetadata = Readonly<{
+  startTime: string
+  parentSpanIndex: number | null
+}>
+
+const sourceMetadataFor = (event: ProjectionEvent): SourceMetadata | undefined => {
+  if (event.sourceMetadata === undefined) return undefined
+  return {
+    startTime: event.sourceMetadata.timestamp,
+    parentSpanIndex:
+      event.parentLinkage.status === "resolved" ? event.parentLinkage.parentSpanIndex : null,
+  }
+}
+
 const otelProjection = (events: readonly ProjectionEvent[]) =>
   otelGenAiProjectionSchema.parse({
     schemaVersion: 1,
@@ -38,7 +52,8 @@ const otelProjection = (events: readonly ProjectionEvent[]) =>
     resource: {
       attributes: { "service.name": "agent-trajectory-marketplace.local-projection" },
     },
-    spans: events.map(({ fact, payload }) => {
+    spans: events.map((event) => {
+      const { fact, payload } = event
       const attributes: Record<string, string | number | boolean> = {
         "atf.event.class": fact.eventClass,
       }
@@ -51,12 +66,14 @@ const otelProjection = (events: readonly ProjectionEvent[]) =>
         attributes["gen_ai.usage.output_tokens"] = payload.usage.outputTokens
       }
       if (payload?.isError !== undefined) attributes["atf.result.is_error"] = payload.isError
-      return {
+      const span = {
         name: `atf.${fact.eventClass}`,
         kind: "INTERNAL",
         attributes,
         status: { code: projectionStatusFor(fact) },
       }
+      const metadata = sourceMetadataFor(event)
+      return metadata === undefined ? span : { ...span, ...metadata }
     }),
   })
 
@@ -65,7 +82,8 @@ const openInferenceProjection = (events: readonly ProjectionEvent[]) =>
     schemaVersion: 1,
     kind: "openinference-projection",
     profile: trajectoryProjectionProfiles.openInference,
-    spans: events.map(({ fact, payload }) => {
+    spans: events.map((event) => {
+      const { fact, payload } = event
       const attributes: Record<string, string | number | boolean> = {
         "openinference.span.kind": openInferenceKindFor[fact.eventClass],
       }
@@ -76,11 +94,13 @@ const openInferenceProjection = (events: readonly ProjectionEvent[]) =>
         attributes["llm.token_count.completion"] = payload.usage.outputTokens
       }
       if (payload?.isError !== undefined) attributes["atf.result.is_error"] = payload.isError
-      return {
+      const span = {
         name: `atf.${fact.eventClass}`,
         attributes,
         status: { code: projectionStatusFor(fact) },
       }
+      const metadata = sourceMetadataFor(event)
+      return metadata === undefined ? span : { ...span, ...metadata }
     }),
   })
 

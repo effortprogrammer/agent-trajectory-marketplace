@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { atfTimestampSchema } from "./observation-contract"
+
 export const trajectoryProjectionProfiles = {
   otelGenAi: {
     name: "otel-genai",
@@ -41,6 +43,44 @@ const openInferenceProfileSchema = z
 const projectionScalarSchema = z.union([z.string(), z.number(), z.boolean()])
 const spanStatusSchema = z.object({ code: z.enum(["UNSET", "OK", "ERROR"]) }).strict()
 
+export const projectionSpanStartTimeSchema = atfTimestampSchema
+export const projectionSpanParentIndexSchema = z.number().int().nonnegative().nullable()
+
+const sourceMetadataSpanFields = {
+  startTime: projectionSpanStartTimeSchema,
+  parentSpanIndex: projectionSpanParentIndexSchema,
+} as const
+
+export const sourceMetadataSpanSchema = z.object(sourceMetadataSpanFields).strict()
+
+const otelRegularSpanSchema = z
+  .object({
+    name: z.string(),
+    kind: z.literal("INTERNAL"),
+    attributes: z.record(projectionScalarSchema),
+    status: spanStatusSchema,
+  })
+  .strict()
+
+const openInferenceRegularSpanSchema = z
+  .object({
+    name: z.string(),
+    attributes: z.record(projectionScalarSchema),
+    status: spanStatusSchema,
+  })
+  .strict()
+
+const otelSpanWithMetadataSchema = otelRegularSpanSchema.extend(sourceMetadataSpanFields).strict()
+const openInferenceSpanWithMetadataSchema = openInferenceRegularSpanSchema
+  .extend(sourceMetadataSpanFields)
+  .strict()
+
+const otelSpanSchema = z.union([otelRegularSpanSchema, otelSpanWithMetadataSchema])
+const openInferenceSpanSchema = z.union([
+  openInferenceRegularSpanSchema,
+  openInferenceSpanWithMetadataSchema,
+])
+
 export const otelGenAiProjectionSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -55,16 +95,7 @@ export const otelGenAiProjectionSchema = z
           .strict(),
       })
       .strict(),
-    spans: z.array(
-      z
-        .object({
-          name: z.string(),
-          kind: z.literal("INTERNAL"),
-          attributes: z.record(projectionScalarSchema),
-          status: spanStatusSchema,
-        })
-        .strict(),
-    ),
+    spans: z.array(otelSpanSchema),
   })
   .strict()
 
@@ -73,23 +104,16 @@ export const openInferenceProjectionSchema = z
     schemaVersion: z.literal(1),
     kind: z.literal("openinference-projection"),
     profile: openInferenceProfileSchema,
-    spans: z.array(
-      z
-        .object({
-          name: z.string(),
-          attributes: z.record(projectionScalarSchema),
-          status: spanStatusSchema,
-        })
-        .strict(),
-    ),
+    spans: z.array(openInferenceSpanSchema),
   })
   .strict()
 
 const transformedFieldSchema = z
   .object({ sourcePath: z.string(), targetPath: z.string(), operation: z.string() })
   .strict()
+const defaultedFieldValueSchema = z.union([projectionScalarSchema, z.null()])
 const defaultedFieldSchema = z
-  .object({ targetPath: z.string(), value: projectionScalarSchema, reason: z.string() })
+  .object({ targetPath: z.string(), value: defaultedFieldValueSchema, reason: z.string() })
   .strict()
 const lossFieldSchema = z.object({ sourcePath: z.string(), reason: z.string() }).strict()
 const lossListsShape = {

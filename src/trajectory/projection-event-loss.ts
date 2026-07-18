@@ -3,6 +3,7 @@ import type {
   TrajectoryProjectionProfileName,
 } from "./projection-contract"
 import { type ProjectionEvent, projectionStatusFor } from "./projection-source"
+import { augmentRegularEventMappingWithSourceMetadata } from "./projection-source-metadata-loss"
 
 type EventMapping = TrajectoryProjectionManifest["events"][number]
 
@@ -47,78 +48,53 @@ const markerPaths = (root: unknown, rootPath: string, marker: (value: string) =>
 }
 
 const contentPaths = (event: ProjectionEvent, base: string): EventMapping["droppedFields"] => {
-  const dropped: EventMapping["droppedFields"] = [
-    { sourcePath: `${base}/name`, reason: "content_omitted_by_projection_policy" },
-    { sourcePath: `${base}/detail`, reason: "content_omitted_by_projection_policy" },
-  ]
   const payload = event.payload
-  if (payload?.content !== undefined) {
-    dropped.push({
-      sourcePath: `${base}/payload/content`,
-      reason: "content_omitted_by_projection_policy",
-    })
-  }
-  if (payload?.input !== undefined) {
-    dropped.push({
-      sourcePath: `${base}/payload/input`,
-      reason: "content_omitted_by_projection_policy",
-    })
-  }
-  if (payload?.output !== undefined) {
-    dropped.push({
-      sourcePath: `${base}/payload/output`,
-      reason: "content_omitted_by_projection_policy",
-    })
-  }
-  if (payload?.usage?.model !== undefined) {
-    dropped.push({
-      sourcePath: `${base}/payload/usage/model`,
-      reason: "content_omitted_by_projection_policy",
-    })
-  }
-  if (payload?.label !== undefined) {
-    dropped.push({
-      sourcePath: `${base}/payload/label`,
-      reason: "content_omitted_by_projection_policy",
-    })
-  }
-  return dropped
+  const suffixes = [
+    "name",
+    "detail",
+    payload?.content !== undefined && "payload/content",
+    payload?.input !== undefined && "payload/input",
+    payload?.output !== undefined && "payload/output",
+    payload?.usage?.model !== undefined && "payload/usage/model",
+    payload?.label !== undefined && "payload/label",
+  ].filter((value): value is string => typeof value === "string")
+  return suffixes.map((suffix) => ({
+    sourcePath: `${base}/${suffix}`,
+    reason: "content_omitted_by_projection_policy",
+  }))
 }
 
 const unsupportedPaths = (event: ProjectionEvent, base: string): EventMapping["unsupported"] => {
-  const unsupported: EventMapping["unsupported"] = []
   const payload = event.payload
-  if (payload?.toolUseId !== undefined) {
-    unsupported.push({
-      sourcePath: `${base}/payload/toolUseId`,
-      reason: "source_link_identity_not_projected",
-    })
-  }
-  if (payload?.byteCount !== undefined) {
-    unsupported.push({
-      sourcePath: `${base}/payload/byteCount`,
-      reason: "no_supported_profile_field",
-    })
-  }
-  if (payload?.usage?.latencyMs !== undefined) {
-    unsupported.push({
-      sourcePath: `${base}/payload/usage/latencyMs`,
-      reason: "source_timestamps_unavailable",
-    })
-  }
-  if (payload?.role !== undefined) {
-    unsupported.push({
-      sourcePath: `${base}/payload/role`,
-      reason: "content_role_not_projected_without_content",
-    })
-  }
-  if (event.fact.eventClass === "other") {
-    unsupported.push({
-      sourcePath: `${base}/kind`,
-      reason: "unrecognized_event_kind_normalized",
-    })
-  }
-  return unsupported
+  const candidates: ReadonlyArray<readonly [string, unknown, string]> = [
+    ["payload/toolUseId", payload?.toolUseId, "source_link_identity_not_projected"],
+    ["payload/byteCount", payload?.byteCount, "no_supported_profile_field"],
+    ["payload/usage/latencyMs", payload?.usage?.latencyMs, "source_timestamps_unavailable"],
+    [
+      "payload/usage/cachedInputTokens",
+      payload?.usage?.cachedInputTokens,
+      "no_supported_profile_field",
+    ],
+    [
+      "payload/usage/reasoningOutputTokens",
+      payload?.usage?.reasoningOutputTokens,
+      "no_supported_profile_field",
+    ],
+    [
+      "payload/usage/cacheWriteTokens",
+      payload?.usage?.cacheWriteTokens,
+      "no_supported_profile_field",
+    ],
+    ["payload/role", payload?.role, "content_role_not_projected_without_content"],
+    [
+      "kind",
+      event.fact.eventClass === "other" ? "present" : undefined,
+      "unrecognized_event_kind_normalized",
+    ],
+  ]
+  return candidates
+    .filter(([, value]) => value !== undefined)
+    .map(([suffix, , reason]) => ({ sourcePath: `${base}/${suffix}`, reason }))
 }
 
 const tokenTarget = (
@@ -137,6 +113,16 @@ export const buildProjectionEventMapping = (
 ): EventMapping => {
   const sourceBase = `/events/${event.eventIndex}`
   const targetBase = `/spans/${event.eventIndex}`
+  const mapping = buildRegularEventMapping(event, profile, sourceBase, targetBase)
+  return augmentRegularEventMappingWithSourceMetadata(mapping, event, sourceBase, targetBase)
+}
+
+const buildRegularEventMapping = (
+  event: ProjectionEvent,
+  profile: TrajectoryProjectionProfileName,
+  sourceBase: string,
+  targetBase: string,
+): EventMapping => {
   const transformedFields: EventMapping["transformedFields"] = [
     {
       sourcePath: `${sourceBase}/kind`,

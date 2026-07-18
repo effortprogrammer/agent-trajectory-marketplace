@@ -8,6 +8,7 @@ import {
   renderCollectWatchPlist,
 } from "../src/trajectory/collect-service"
 import {
+  collectWatchSessionFileName,
   collectWatchStateFileName,
   resolveCollectWatchRuntimes,
   runCollectSweep,
@@ -76,6 +77,12 @@ const sweepConfig = (input: { readonly sourceDir: string; readonly outDir: strin
 afterEach(cleanupSellerWorkspaces)
 
 describe("collect watch sweep", () => {
+  test("encodes session IDs before using them as export filenames", () => {
+    const encoded = collectWatchSessionFileName("../../outside/session")
+    expect(encoded).toBe("..%2F..%2Foutside%2Fsession")
+    expect(encoded).not.toContain("/")
+  })
+
   test("exports new sessions once and skips them until they change", async () => {
     const { sourceDir, sessionPath, outDir } = writeWatchFixture()
 

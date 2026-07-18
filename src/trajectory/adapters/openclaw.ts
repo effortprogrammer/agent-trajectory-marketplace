@@ -5,9 +5,12 @@ import { basename, join, relative } from "node:path"
 import { z } from "zod"
 
 import {
+  extractHarnessSourceAttestation,
   type HarnessAdapter,
+  type HarnessEventPayload,
   type HarnessSessionInput,
   type HarnessSessionRef,
+  type HarnessSourceAttestation,
   type HarnessTraceDocument,
   type HarnessTraceEvent,
   harnessCollectedStatus,
@@ -17,6 +20,12 @@ import {
 } from "./contract"
 
 const openclawRuntime = "openclaw"
+const sourceEventIdNamespace = openclawRuntime
+
+// allow: SIZE_OK — single-responsibility OpenClaw adapter; attestation
+// source-ID builders are intrinsic to per-event emission and follow the
+// established sibling-adapter pattern. Splitting would duplicate the schema
+// or create a single-call helper module without improving cohesion.
 
 const contentBlockSchema = z
   .object({
@@ -26,6 +35,15 @@ const contentBlockSchema = z
     id: z.string().optional(),
     name: z.string().optional(),
     arguments: z.record(z.unknown()).optional(),
+  })
+  .passthrough()
+
+const openclawUsageSchema = z
+  .object({
+    input: z.number().int().nonnegative().optional(),
+    output: z.number().int().nonnegative().optional(),
+    cacheRead: z.number().int().nonnegative().optional(),
+    cacheWrite: z.number().int().nonnegative().optional(),
   })
   .passthrough()
 
@@ -41,6 +59,8 @@ const messagePayloadSchema = z
     command: z.string().optional(),
     exitCode: z.number().nullable().optional(),
     cancelled: z.boolean().optional(),
+    usage: openclawUsageSchema.optional(),
+    provider: z.string().optional(),
   })
   .passthrough()
 
@@ -49,6 +69,10 @@ const transcriptLineSchema = z
     type: z.string(),
     version: z.number().optional(),
     id: z.string().optional(),
+    // Envelope fields used for ATF v2 source attestation. `timestamp` is the
+    // ISO-8601 line arrival time; `parentId` links to the parent line.
+    timestamp: z.string().optional(),
+    parentId: z.string().nullable().optional(),
     cwd: z.string().optional(),
     message: messagePayloadSchema.optional(),
   })
@@ -56,6 +80,33 @@ const transcriptLineSchema = z
 
 type TranscriptLine = z.infer<typeof transcriptLineSchema>
 type ContentBlock = z.infer<typeof contentBlockSchema>
+
+const namespacedId = (nativeId: string): string => `${sourceEventIdNamespace}:${nativeId}`
+
+const lineAttestation = (
+  line: Readonly<Pick<TranscriptLine, "timestamp">>,
+  sourceEventId: string | undefined,
+  parentSourceEventId: string | undefined,
+): HarnessSourceAttestation | undefined => {
+  if (sourceEventId === undefined) return undefined
+  return extractHarnessSourceAttestation({
+    timestamp: line.timestamp,
+    sourceEventId,
+    ...(parentSourceEventId === undefined ? {} : { parentSourceEventId }),
+  })
+}
+
+const lineSourceEventId = (line: Readonly<Pick<TranscriptLine, "id">>): string | undefined =>
+  line.id === undefined || line.id.length === 0 ? undefined : namespacedId(line.id)
+
+const composedSourceEventId = (
+  line: Readonly<Pick<TranscriptLine, "id">>,
+  suffix: string | undefined,
+): string | undefined => {
+  if (line.id === undefined || line.id.length === 0) return undefined
+  if (suffix === undefined || suffix.length === 0) return undefined
+  return `${namespacedId(line.id)}:${suffix}`
+}
 
 const toolArgumentSummaryKeys = [
   "cmd",
@@ -149,8 +200,54 @@ const convertOpenclawSession = (session: HarnessSessionInput): HarnessTraceDocum
   }
 
   const events: HarnessTraceEvent[] = []
-  const emit = (kind: string, name: string, detail: string) => {
-    events.push({ kind, name, detail: redactHarnessDetail(detail) })
+  let hasAttestation = false
+  let hasPayload = false
+  const emittedSourceEventIds = new Set<string>()
+  // Source ids live in one `openclaw:` namespace derived from native transcript
+  // line ids; sub-events within a line (toolCall block, bash call/result pair)
+  // compose a suffix so the document never carries duplicate source ids.
+  const emit = (
+    kind: string,
+    name: string,
+    detail: string,
+    attestation?: HarnessSourceAttestation,
+    payload?: HarnessEventPayload,
+  ): HarnessTraceEvent => {
+    if (payload !== undefined) {
+      hasPayload = true
+    }
+    const extracted = extractHarnessSourceAttestation(attestation)
+    if (extracted === undefined) {
+      const event: HarnessTraceEvent = {
+        kind,
+        name,
+        detail: redactHarnessDetail(detail),
+        ...(payload === undefined ? {} : { payload }),
+      }
+      events.push(event)
+      return event
+    }
+    hasAttestation = true
+    const event: HarnessTraceEvent = {
+      kind,
+      name,
+      detail: redactHarnessDetail(detail),
+      timestamp: extracted.timestamp,
+      sourceEventId: extracted.sourceEventId,
+      ...(extracted.parentSourceEventId === undefined
+        ? {}
+        : { parentSourceEventId: extracted.parentSourceEventId }),
+      ...(payload === undefined ? {} : { payload }),
+    }
+    events.push(event)
+    emittedSourceEventIds.add(event.sourceEventId as string)
+    return event
+  }
+
+  const emittedParentSourceEventId = (line: Readonly<Pick<TranscriptLine, "parentId">>) => {
+    if (line.parentId === undefined || line.parentId === null) return undefined
+    const parentSourceEventId = namespacedId(line.parentId)
+    return emittedSourceEventIds.has(parentSourceEventId) ? parentSourceEventId : undefined
   }
 
   const sessionId = header?.id ?? session.sessionId ?? basename(sessionPath, ".jsonl")
@@ -158,10 +255,12 @@ const convertOpenclawSession = (session: HarnessSessionInput): HarnessTraceDocum
     "session_start",
     sessionId,
     `openclaw transcript-v${header?.version ?? 0} cwd=${header?.cwd ?? "unknown"}`,
+    lineAttestation(header ?? {}, lineSourceEventId(header ?? {}), undefined),
   )
 
   let turnCount = 0
   const toolNamesByCallId = new Map<string, string>()
+  const toolCallSourceByCallId = new Map<string, string>()
   const closeTurn = () => {
     if (turnCount > 0) {
       emit("function_exit", `turn-${turnCount}`, "")
@@ -179,11 +278,36 @@ const convertOpenclawSession = (session: HarnessSessionInput): HarnessTraceDocum
       }
       closeTurn()
       turnCount += 1
-      emit("function_enter", `turn-${turnCount}`, textFromContent(message.content))
+      emit(
+        "function_enter",
+        `turn-${turnCount}`,
+        textFromContent(message.content),
+        lineAttestation(line, lineSourceEventId(line), emittedParentSourceEventId(line)),
+      )
       continue
     }
     if (message.role === "assistant") {
-      emit("llm_call", message.model ?? openclawRuntime, textFromContent(message.content))
+      const usage = message.usage
+      const payload: HarnessEventPayload | undefined =
+        usage === undefined
+          ? undefined
+          : {
+              role: "assistant",
+              usage: {
+                model: message.model ?? openclawRuntime,
+                ...(usage.input === undefined ? {} : { inputTokens: usage.input }),
+                ...(usage.output === undefined ? {} : { outputTokens: usage.output }),
+                ...(usage.cacheRead === undefined ? {} : { cachedInputTokens: usage.cacheRead }),
+                ...(usage.cacheWrite === undefined ? {} : { cacheWriteTokens: usage.cacheWrite }),
+              },
+            }
+      const llmEvent = emit(
+        "llm_call",
+        message.model ?? openclawRuntime,
+        textFromContent(message.content),
+        lineAttestation(line, lineSourceEventId(line), emittedParentSourceEventId(line)),
+        payload,
+      )
       if (Array.isArray(message.content)) {
         for (const block of message.content) {
           if (block.type !== "toolCall") {
@@ -193,20 +317,51 @@ const convertOpenclawSession = (session: HarnessSessionInput): HarnessTraceDocum
           if (block.id !== undefined) {
             toolNamesByCallId.set(block.id, toolName)
           }
-          emit("tool_call", toolName, summarizeToolArguments(block.arguments))
+          const toolEvent = emit(
+            "tool_call",
+            toolName,
+            summarizeToolArguments(block.arguments),
+            lineAttestation(line, composedSourceEventId(line, block.id), llmEvent.sourceEventId),
+          )
+          if (block.id !== undefined && toolEvent.sourceEventId !== undefined) {
+            toolCallSourceByCallId.set(block.id, toolEvent.sourceEventId)
+          }
         }
       }
       continue
     }
     if (message.role === "toolResult") {
       const toolName = message.toolName ?? toolNamesByCallId.get(message.toolCallId ?? "") ?? "tool"
-      emit("tool_result", toolName, message.isError === true ? "error" : "ok")
+      emit(
+        "tool_result",
+        toolName,
+        message.isError === true ? "error" : "ok",
+        lineAttestation(
+          line,
+          lineSourceEventId(line),
+          toolCallSourceByCallId.get(message.toolCallId ?? ""),
+        ),
+      )
       continue
     }
     if (message.role === "bashExecution") {
-      emit("tool_call", "bash", message.command ?? "")
+      const bashCall = emit(
+        "tool_call",
+        "bash",
+        message.command ?? "",
+        lineAttestation(
+          line,
+          composedSourceEventId(line, "call"),
+          emittedParentSourceEventId(line),
+        ),
+      )
       const failed = message.cancelled === true || (message.exitCode ?? 0) !== 0
-      emit("tool_result", "bash", failed ? "error" : "ok")
+      emit(
+        "tool_result",
+        "bash",
+        failed ? "error" : "ok",
+        lineAttestation(line, composedSourceEventId(line, "result"), bashCall.sourceEventId),
+      )
     }
   }
   closeTurn()
@@ -214,6 +369,7 @@ const convertOpenclawSession = (session: HarnessSessionInput): HarnessTraceDocum
   return harnessTraceDocumentSchema.parse({
     runtime: openclawRuntime,
     status: harnessCollectedStatus,
+    ...(hasAttestation || hasPayload ? { formatVersion: 2 as const } : {}),
     eventCount: events.length,
     events,
   })

@@ -15,6 +15,9 @@ import {
 
 export const collectWatchStateFileName = "collect-watch-state.json"
 
+export const collectWatchSessionFileName = (sessionId: string): string =>
+  encodeURIComponent(sessionId)
+
 const watchSessionEntrySchema = z
   .object({
     modifiedAt: z.string().min(1),
@@ -201,7 +204,10 @@ export const runCollectSweep = async (
         const { trace } = await applyCollectPrivacy(converted, privacy, now)
         const runtimeDir = join(outDir, runtime)
         mkdirSync(runtimeDir, { recursive: true })
-        const exportPath = join(runtimeDir, `${ref.sessionId}.atf.json`)
+        const exportPath = join(
+          runtimeDir,
+          `${collectWatchSessionFileName(ref.sessionId)}.atf.json`,
+        )
         writeFileSync(exportPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8")
         sessions[stateKey] = {
           modifiedAt: ref.modifiedAt,
