@@ -208,14 +208,16 @@ describe("harness adapter registry", () => {
       "codex",
       "hermes",
       "openclaw",
+      "opencode",
     ])
     expect(getHarnessAdapter("claude-code").displayName).toBe("Claude Code")
     expect(getHarnessAdapter("codex").displayName).toBe("Codex CLI")
     expect(getHarnessAdapter("hermes").displayName).toBe("Hermes Agent")
+    expect(getHarnessAdapter("opencode").displayName).toBe("OpenCode")
     expect(getHarnessAdapter("openclaw").displayName).toBe("OpenClaw")
-    expect(() => getHarnessAdapter("opencode")).toThrow("unknown_runtime: opencode")
-    expect(() => getHarnessAdapter("opencode")).toThrow(
-      "available: claude-code, codex, hermes, openclaw",
+    expect(() => getHarnessAdapter("unknown-harness")).toThrow("unknown_runtime: unknown-harness")
+    expect(() => getHarnessAdapter("unknown-harness")).toThrow(
+      "available: claude-code, codex, hermes, openclaw, opencode",
     )
   })
 

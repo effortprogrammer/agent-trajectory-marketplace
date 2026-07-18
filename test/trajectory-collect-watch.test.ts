@@ -272,9 +272,10 @@ describe("collect watch sweep", () => {
       "codex",
       "hermes",
       "openclaw",
+      "opencode",
     ])
     expect(resolveCollectWatchRuntimes(["codex"])).toEqual(["codex"])
-    expect(() => resolveCollectWatchRuntimes(["opencode"])).toThrow("unknown_runtime")
+    expect(() => resolveCollectWatchRuntimes(["unknown-harness"])).toThrow("unknown_runtime")
   })
 })
 
