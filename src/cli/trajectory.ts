@@ -1,3 +1,4 @@
+import { dirname, join } from "node:path"
 import type { Command } from "commander"
 
 import { publishSellerPackageToRegistry, RegistryClientError } from "../registry/client"
@@ -17,6 +18,7 @@ import {
   runCollectWatchLoop,
 } from "../trajectory/collect-watch"
 import { bundleTrace, inspectTrace } from "../trajectory/evidence"
+import { openPrivacyCache } from "../trajectory/privacy/cache"
 import { setupPrivacyEngine } from "../trajectory/privacy/engine-setup"
 import type { CollectPrivacyOptions } from "../trajectory/privacy/pipeline"
 import { filterExistingTrace } from "../trajectory/privacy/retrofit"
@@ -77,6 +79,10 @@ type CollectServiceInstallOptions = CollectPrivacyFlagOptions &
     source?: string
   }>
 
+type CollectCacheOptions = Readonly<{
+  out: string
+}>
+
 type PrivacyEngineSetupOptions = Readonly<{
   engineDir?: string
   json?: boolean
@@ -131,11 +137,19 @@ const printJson = (value: unknown) => {
   console.log(JSON.stringify(value, null, 2))
 }
 
-const collectPrivacyOptions = (options: CollectPrivacyFlagOptions): CollectPrivacyOptions => ({
+// Threads the shared privacy flags into the CollectPrivacyOptions shape that
+// resolveCollectPrivacy consumes. The cachePath is computed by each handler
+// from its own output location (watch: outDir; export: dirname(exportPath)
+// per Oracle O5) so the cache file lives next to the artifacts it accelerates.
+const collectPrivacyOptions = (
+  options: CollectPrivacyFlagOptions,
+  cachePath: string,
+): CollectPrivacyOptions => ({
   enabled: options.privacyFilter,
   ...(options.privacyThreshold === undefined
     ? {}
     : { threshold: Number(options.privacyThreshold) }),
+  cache: { enabled: true, path: cachePath },
 })
 
 // Shared by collect export / watch / service install so the resident
@@ -241,7 +255,9 @@ export const registerTrajectoryCommand = (program: Command) => {
           exportPath: options.export,
           ...(options.source === undefined ? {} : { sourceDir: options.source }),
         },
-        collectPrivacyOptions(options),
+        // Oracle O5: export uses --export <path> (not --out). Co-locate the
+        // cache with the exported ATF so a single purge/reset clears both.
+        collectPrivacyOptions(options, join(dirname(options.export), "privacy-cache.db")),
       ),
     )
   })
@@ -271,7 +287,10 @@ export const registerTrajectoryCommand = (program: Command) => {
       ...(options.source === undefined ? {} : { sourceDir: options.source }),
       settleSeconds: Number(options.settleSeconds),
     }
-    const privacy = collectPrivacyOptions(options)
+    // Co-locate the cache with the collected ATF files so a single purge of
+    // outDir also clears the cache. Per Oracle O2, runCollectSweep owns the
+    // close() lifecycle (finally around the per-session loop).
+    const privacy = collectPrivacyOptions(options, join(options.out, "privacy-cache.db"))
     if (options.once === true) {
       printJson(await runCollectSweep(config, privacy))
       return
@@ -334,7 +353,7 @@ export const registerTrajectoryCommand = (program: Command) => {
     }
     // One flag→config translation for every surface: the same parse the
     // in-process commands use, mapped onto the service config keys.
-    const privacy = collectPrivacyOptions(options)
+    const privacy = collectPrivacyOptions(options, join(options.out, "privacy-cache.db"))
     const collector = installCollectWatchService({
       config: {
         outDir: options.out,
@@ -368,6 +387,54 @@ export const registerTrajectoryCommand = (program: Command) => {
     .description("Show whether the collector LaunchAgent is installed and running")
     .action(() => {
       printJson(collectWatchServiceStatus())
+    })
+
+  // Inspect or reset the persistent privacy-filter cache. The cache lives at
+  // `<out>/privacy-cache.db` (colocated with collected ATF files). Both actions
+  // open the cache read/write via openPrivacyCache and close it before exit.
+  // `warm` is intentionally absent — dropped per Metis B1/B2 because stamped
+  // ATF text is masked and cannot produce hash keys that hit the runtime path.
+  const collectCacheCommand = collectCommand
+    .command("cache")
+    .description("Inspect or reset the persistent privacy-filter cache")
+
+  collectCacheCommand
+    .command("stats")
+    .description("Print privacy-filter cache entry count and on-disk footprint")
+    .option(
+      "--out <dir>",
+      "Directory containing privacy-cache.db (default .tmp/collected)",
+      ".tmp/collected",
+    )
+    .action(async (options: CollectCacheOptions) => {
+      const cache = await openPrivacyCache(join(options.out, "privacy-cache.db"))
+      try {
+        const stats = cache.stats()
+        printJson({ entries: stats.entries, diskBytes: stats.diskBytes })
+      } finally {
+        await cache.close()
+      }
+    })
+
+  collectCacheCommand
+    .command("purge")
+    .description("Clear all privacy-filter cache entries and print the pre-purge count")
+    .option(
+      "--out <dir>",
+      "Directory containing privacy-cache.db (default .tmp/collected)",
+      ".tmp/collected",
+    )
+    .action(async (options: CollectCacheOptions) => {
+      const cache = await openPrivacyCache(join(options.out, "privacy-cache.db"))
+      try {
+        // Capture the count BEFORE purge so the caller sees how many entries
+        // were cleared; after purge(), stats().entries is 0 by definition.
+        const purged = cache.stats().entries
+        await cache.purge()
+        printJson({ purged })
+      } finally {
+        await cache.close()
+      }
     })
 
   const privacyCommand = trajectoryCommand

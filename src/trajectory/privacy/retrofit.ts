@@ -48,27 +48,36 @@ export const filterExistingTrace = async (
     )
   }
 
-  const privacy = resolveCollectPrivacy(privacyOptions)
+  const privacy = await resolveCollectPrivacy(privacyOptions)
   if (!privacy.enabled) {
     throw new TrajectoryAdapterError(
       "invalid_session",
       "invalid_session: the retrofit filter cannot run with the privacy filter disabled",
     )
   }
-  const passed = await applyPrivacyPass(trace, privacy.filter, privacy.config)
+  const cache = privacy.cache
+  try {
+    const passed = await applyPrivacyPass(trace, privacy.filter, privacy.config)
 
-  const exportPath = resolveWritableProjectPath({
-    inputPath: input.exportPath,
-    code: "invalid_export_path",
-    throwPathError: throwRetrofitPathError,
-  })
-  mkdirSync(dirname(exportPath), { recursive: true })
-  writeFileSync(exportPath, `${JSON.stringify(passed.trace, null, 2)}\n`, "utf8")
-  return {
-    tracePath,
-    exportPath,
-    eventCount: passed.trace.eventCount,
-    maskedSpanCount: passed.maskedSpanCount,
-    configHash: privacy.configHash,
+    const exportPath = resolveWritableProjectPath({
+      inputPath: input.exportPath,
+      code: "invalid_export_path",
+      throwPathError: throwRetrofitPathError,
+    })
+    mkdirSync(dirname(exportPath), { recursive: true })
+    writeFileSync(exportPath, `${JSON.stringify(passed.trace, null, 2)}\n`, "utf8")
+    return {
+      tracePath,
+      exportPath,
+      eventCount: passed.trace.eventCount,
+      maskedSpanCount: passed.maskedSpanCount,
+      configHash: privacy.configHash,
+    }
+  } finally {
+    // Defensive: today the retrofit CLI does not pass cache options, so this
+    // is a no-op. If a future caller injects cache options, the handle is
+    // still released (consistent with the "no leak" rule that covers all
+    // resolveCollectPrivacy call sites per Oracle O2).
+    await cache?.close()
   }
 }

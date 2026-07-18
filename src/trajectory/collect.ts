@@ -140,24 +140,38 @@ export const exportCollectedSession = async (
     ...(parsed.sourceDir === undefined ? {} : { sourceDir: parsed.sourceDir }),
   })
   const converted = adapter.convertSession(sessionInput)
-  const { trace, summary: privacySummary } = await applyCollectPrivacy(
-    converted,
-    resolveCollectPrivacy(privacyOptions),
-  )
   const exportPath = resolveWritableProjectPath({
     inputPath: parsed.exportPath,
     code: "invalid_export_path",
     throwPathError: throwExportPathError,
   })
+  // mkdir BEFORE resolveCollectPrivacy: when the cache is enabled, the export
+  // resolves the cache path to dirname(exportPath)/privacy-cache.db (Oracle
+  // O5), and openPrivacyCache refuses to open a path whose parent dir does
+  // not exist. Creating the export dir first guarantees the cache parent
+  // exists for the open call below.
   mkdirSync(dirname(exportPath), { recursive: true })
-  writeFileSync(exportPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8")
-  return {
-    runtime: trace.runtime,
-    status: trace.status,
-    sessionPath: sessionInput.sessionPath,
-    exportPath,
-    eventCount: trace.eventCount,
-    eventKinds: [...new Set(trace.events.map((event) => event.kind))].sort(),
-    privacy: privacySummary,
+  const privacy = await resolveCollectPrivacy(privacyOptions)
+  // Capture the cache handle before the try so the finally block can close
+  // it without re-narrowing the ResolvedCollectPrivacy union (TypeScript
+  // cannot carry the enabled-branch narrow into the finally).
+  const cache = privacy.enabled ? privacy.cache : undefined
+  // Per Oracle O2: close the cache handle exactly once per export in a finally
+  // around applyCollectPrivacy + writeFileSync so a privacy-pass throw or a
+  // mid-write failure does not leak the SQLite handle.
+  try {
+    const { trace, summary: privacySummary } = await applyCollectPrivacy(converted, privacy)
+    writeFileSync(exportPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8")
+    return {
+      runtime: trace.runtime,
+      status: trace.status,
+      sessionPath: sessionInput.sessionPath,
+      exportPath,
+      eventCount: trace.eventCount,
+      eventKinds: [...new Set(trace.events.map((event) => event.kind))].sort(),
+      privacy: privacySummary,
+    }
+  } finally {
+    await cache?.close()
   }
 }

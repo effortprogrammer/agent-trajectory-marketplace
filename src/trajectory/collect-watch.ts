@@ -131,153 +131,172 @@ export const runCollectSweep = async (
   now: Date = new Date(),
 ): Promise<CollectSweepSummary> => {
   const parsed = collectSweepConfigSchema.parse(config)
-  const privacy = resolveCollectPrivacy(privacyOptions)
-  const expectedPrivacyHash = privacy.enabled ? privacy.configHash : undefined
   const outDir = resolveWritableProjectPath({
     inputPath: parsed.outDir,
     code: "invalid_export_path",
     throwPathError: throwInvalidOutDir,
   })
+  // mkdir BEFORE resolveCollectPrivacy: when the cache is enabled, the watch
+  // path resolves to outDir/privacy-cache.db, and openPrivacyCache refuses to
+  // open a path whose parent dir does not exist. Creating outDir first
+  // guarantees the cache parent exists for the open call below.
   mkdirSync(outDir, { recursive: true })
-  const statePath = join(outDir, collectWatchStateFileName)
-  const state = readWatchState(statePath)
-  const sessions: Record<string, z.infer<typeof watchSessionEntrySchema>> = {
-    ...state.sessions,
-  }
-
-  let exported = 0
-  let failed = 0
-  let pendingSettle = 0
-  let unchanged = 0
-  let privacyFilterUnavailable = false
-  const missingSources: string[] = []
-  const exportedSessions: CollectSweepExportedSession[] = []
-  const failedSessions: CollectSweepFailedSession[] = []
-
-  for (const runtime of parsed.runtimes) {
-    if (privacyFilterUnavailable) {
-      break
-    }
-    const adapter = getHarnessAdapter(runtime)
-    const sourceDir = parsed.sourceDir ?? adapter.defaultSourceDir()
-    if (sourceDir === undefined) {
-      missingSources.push(runtime)
-      continue
-    }
-    let refs: ReturnType<typeof adapter.listSessions>
-    try {
-      refs = adapter.listSessions(sourceDir)
-    } catch {
-      missingSources.push(runtime)
-      continue
+  const privacy = await resolveCollectPrivacy(privacyOptions)
+  // Capture the cache handle before the try so the finally block can close
+  // it without re-narrowing the ResolvedCollectPrivacy union (TypeScript
+  // cannot carry the enabled-branch narrow into the finally).
+  const cache = privacy.enabled ? privacy.cache : undefined
+  // Per Oracle O2: close the cache handle exactly once per sweep in a finally
+  // around the per-session loop so SIGTERM between sweeps (or a mid-sweep
+  // throw from one session's conversion) does not leak the SQLite handle.
+  try {
+    const expectedPrivacyHash = privacy.enabled ? privacy.configHash : undefined
+    const statePath = join(outDir, collectWatchStateFileName)
+    const state = readWatchState(statePath)
+    const sessions: Record<string, z.infer<typeof watchSessionEntrySchema>> = {
+      ...state.sessions,
     }
 
-    for (const ref of refs) {
-      // sessionId is part of the key because store-backed harnesses (e.g.
-      // hermes state.db) expose many sessions behind one sessionPath.
-      const stateKey = `${runtime}:${ref.sessionPath}:${ref.sessionId}`
-      const previous = sessions[stateKey]
-      // A privacy-policy change only invalidates entries while the filter is
-      // enabled. With --no-privacy-filter, a hash mismatch alone must NOT
-      // force a re-export: that would overwrite stamped, masked exports with
-      // unfiltered ones.
-      if (
-        previous !== undefined &&
-        previous.modifiedAt === ref.modifiedAt &&
-        previous.sizeBytes === ref.sizeBytes &&
-        (!privacy.enabled || previous.privacyConfigHash === expectedPrivacyHash)
-      ) {
-        unchanged += 1
+    let exported = 0
+    let failed = 0
+    let pendingSettle = 0
+    let unchanged = 0
+    let privacyFilterUnavailable = false
+    const missingSources: string[] = []
+    const exportedSessions: CollectSweepExportedSession[] = []
+    const failedSessions: CollectSweepFailedSession[] = []
+
+    for (const runtime of parsed.runtimes) {
+      if (privacyFilterUnavailable) {
+        break
+      }
+      const adapter = getHarnessAdapter(runtime)
+      const sourceDir = parsed.sourceDir ?? adapter.defaultSourceDir()
+      if (sourceDir === undefined) {
+        missingSources.push(runtime)
         continue
       }
-      const ageSeconds = (now.getTime() - new Date(ref.modifiedAt).getTime()) / 1_000
-      if (ageSeconds < parsed.settleSeconds) {
-        pendingSettle += 1
-        continue
-      }
-
+      let refs: ReturnType<typeof adapter.listSessions>
       try {
-        const converted = adapter.convertSession({
-          sessionPath: ref.sessionPath,
-          sessionId: ref.sessionId,
-        })
-        const { trace } = await applyCollectPrivacy(converted, privacy, now)
-        const runtimeDir = join(outDir, runtime)
-        mkdirSync(runtimeDir, { recursive: true })
-        const exportPath = join(
-          runtimeDir,
-          `${collectWatchSessionFileName(ref.sessionId)}.atf.json`,
-        )
-        writeFileSync(exportPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8")
-        sessions[stateKey] = {
-          modifiedAt: ref.modifiedAt,
-          sizeBytes: ref.sizeBytes,
-          outcome: "exported",
-          exportPath,
-          eventCount: trace.eventCount,
-          updatedAt: now.toISOString(),
-          ...(expectedPrivacyHash === undefined ? {} : { privacyConfigHash: expectedPrivacyHash }),
+        refs = adapter.listSessions(sourceDir)
+      } catch {
+        missingSources.push(runtime)
+        continue
+      }
+
+      for (const ref of refs) {
+        // sessionId is part of the key because store-backed harnesses (e.g.
+        // hermes state.db) expose many sessions behind one sessionPath.
+        const stateKey = `${runtime}:${ref.sessionPath}:${ref.sessionId}`
+        const previous = sessions[stateKey]
+        // A privacy-policy change only invalidates entries while the filter is
+        // enabled. With --no-privacy-filter, a hash mismatch alone must NOT
+        // force a re-export: that would overwrite stamped, masked exports with
+        // unfiltered ones.
+        if (
+          previous !== undefined &&
+          previous.modifiedAt === ref.modifiedAt &&
+          previous.sizeBytes === ref.sizeBytes &&
+          (!privacy.enabled || previous.privacyConfigHash === expectedPrivacyHash)
+        ) {
+          unchanged += 1
+          continue
         }
-        exported += 1
-        exportedSessions.push({
-          runtime,
-          sessionId: ref.sessionId,
-          sessionPath: ref.sessionPath,
-          exportPath,
-          eventCount: trace.eventCount,
-        })
-      } catch (caught: unknown) {
-        // Model load/inference infrastructure failure is transient: report it
-        // but leave the session's state entry untouched so the next sweep
-        // retries instead of permanently skipping unexported (fail-closed)
-        // sessions.
-        if (caught instanceof PrivacyFilterUnavailableError) {
+        const ageSeconds = (now.getTime() - new Date(ref.modifiedAt).getTime()) / 1_000
+        if (ageSeconds < parsed.settleSeconds) {
+          pendingSettle += 1
+          continue
+        }
+
+        try {
+          const converted = adapter.convertSession({
+            sessionPath: ref.sessionPath,
+            sessionId: ref.sessionId,
+          })
+          const { trace } = await applyCollectPrivacy(converted, privacy, now)
+          const runtimeDir = join(outDir, runtime)
+          mkdirSync(runtimeDir, { recursive: true })
+          const exportPath = join(
+            runtimeDir,
+            `${collectWatchSessionFileName(ref.sessionId)}.atf.json`,
+          )
+          writeFileSync(exportPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8")
+          sessions[stateKey] = {
+            modifiedAt: ref.modifiedAt,
+            sizeBytes: ref.sizeBytes,
+            outcome: "exported",
+            exportPath,
+            eventCount: trace.eventCount,
+            updatedAt: now.toISOString(),
+            ...(expectedPrivacyHash === undefined
+              ? {}
+              : { privacyConfigHash: expectedPrivacyHash }),
+          }
+          exported += 1
+          exportedSessions.push({
+            runtime,
+            sessionId: ref.sessionId,
+            sessionPath: ref.sessionPath,
+            exportPath,
+            eventCount: trace.eventCount,
+          })
+        } catch (caught: unknown) {
+          // Model load/inference infrastructure failure is transient: report it
+          // but leave the session's state entry untouched so the next sweep
+          // retries instead of permanently skipping unexported (fail-closed)
+          // sessions.
+          if (caught instanceof PrivacyFilterUnavailableError) {
+            failed += 1
+            failedSessions.push({
+              runtime,
+              sessionId: ref.sessionId,
+              sessionPath: ref.sessionPath,
+              errorCode: "privacy_filter_unavailable",
+            })
+            // The model will not recover mid-sweep; converting the remaining
+            // sessions would only fail the same way. Stop the sweep here — the
+            // untouched sessions retry on the next one.
+            privacyFilterUnavailable = true
+            break
+          }
+          const errorCode = adapterErrorCode(caught)
+          sessions[stateKey] = {
+            modifiedAt: ref.modifiedAt,
+            sizeBytes: ref.sizeBytes,
+            outcome: "failed",
+            errorCode,
+            updatedAt: now.toISOString(),
+            // Recorded on failures too, so a failed session stays skipped under
+            // the same policy instead of re-failing every sweep.
+            ...(expectedPrivacyHash === undefined
+              ? {}
+              : { privacyConfigHash: expectedPrivacyHash }),
+          }
           failed += 1
           failedSessions.push({
             runtime,
             sessionId: ref.sessionId,
             sessionPath: ref.sessionPath,
-            errorCode: "privacy_filter_unavailable",
+            errorCode,
           })
-          // The model will not recover mid-sweep; converting the remaining
-          // sessions would only fail the same way. Stop the sweep here — the
-          // untouched sessions retry on the next one.
-          privacyFilterUnavailable = true
-          break
         }
-        const errorCode = adapterErrorCode(caught)
-        sessions[stateKey] = {
-          modifiedAt: ref.modifiedAt,
-          sizeBytes: ref.sizeBytes,
-          outcome: "failed",
-          errorCode,
-          updatedAt: now.toISOString(),
-          // Recorded on failures too, so a failed session stays skipped under
-          // the same policy instead of re-failing every sweep.
-          ...(expectedPrivacyHash === undefined ? {} : { privacyConfigHash: expectedPrivacyHash }),
-        }
-        failed += 1
-        failedSessions.push({
-          runtime,
-          sessionId: ref.sessionId,
-          sessionPath: ref.sessionPath,
-          errorCode,
-        })
       }
     }
-  }
 
-  writeWatchState(statePath, { schemaVersion: 1, sessions })
-  return {
-    sweepAt: now.toISOString(),
-    exported,
-    failed,
-    pendingSettle,
-    unchanged,
-    missingSources,
-    exportedSessions,
-    failedSessions,
-    ...(privacyFilterUnavailable ? { privacyFilterUnavailable: true } : {}),
+    writeWatchState(statePath, { schemaVersion: 1, sessions })
+    return {
+      sweepAt: now.toISOString(),
+      exported,
+      failed,
+      pendingSettle,
+      unchanged,
+      missingSources,
+      exportedSessions,
+      failedSessions,
+      ...(privacyFilterUnavailable ? { privacyFilterUnavailable: true } : {}),
+    }
+  } finally {
+    await cache?.close()
   }
 }
 

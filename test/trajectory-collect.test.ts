@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdirSync, utimesSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { existsSync, mkdirSync, utimesSync, writeFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 
 import { z } from "zod"
 
@@ -11,8 +11,19 @@ import { getHarnessAdapter, listHarnessAdapters } from "../src/trajectory/adapte
 import { exportCollectedSession } from "../src/trajectory/collect"
 import { inspectTraceFile } from "../src/trajectory/evidence"
 import { parseObservationArtifact } from "../src/trajectory/observation-parser"
+import {
+  openPrivacyCache,
+  type PrivacyCache,
+  type PrivacyCacheEntry,
+} from "../src/trajectory/privacy/cache"
+import {
+  type PrivacyFilter,
+  PrivacyFilterUnavailableError,
+  type PrivacySpan,
+} from "../src/trajectory/privacy/contract"
+import { resolveCollectPrivacy } from "../src/trajectory/privacy/pipeline"
 import { createTrajectoryProjection } from "../src/trajectory/projections"
-import { stampPrivacyForTest, testPrivacyOptions } from "./privacy-fixtures"
+import { noopPrivacyFilter, stampPrivacyForTest, testPrivacyOptions } from "./privacy-fixtures"
 import {
   cleanupSellerWorkspaces,
   createWorkspacePath,
@@ -1296,5 +1307,400 @@ describe("collect CLI", () => {
     expect(result.success).toBe(false)
     expect(result.stderr).toContain("unknown_runtime")
     expect(result.stderr).toContain("available: claude-code")
+  })
+})
+
+// =============================================================================
+// TODO 3 (privacy-filter-cache): resolveCollectPrivacy wiring + cache lifecycle.
+// Tests exercise: (a) cache enabled → resolved.cache is a PrivacyCache and
+// filter is the wrapped filter; (b) cache disabled → no cache field, unwrapped;
+// (c) privacy disabled → no cache opened even when cache flag is set;
+// (d) exportCollectedSession closes the cache exactly once per export even on
+// throw (Oracle O2); (e) export resolves cache path to
+// dirname(exportPath)/privacy-cache.db (Oracle O5).
+// =============================================================================
+
+const spanOf = (
+  start: number,
+  end: number,
+  category: PrivacySpan["category"],
+  score = 0.95,
+): PrivacySpan => ({ start, end, category, score })
+
+// In-memory PrivacyCache whose close() counter tests can assert on. Mirrors
+// the createMockCache helper in trajectory-privacy-cache.test.ts.
+interface MockCache {
+  cache: PrivacyCache
+  state: {
+    closeCalls: number
+    setManyCalls: Array<{ entries: PrivacyCacheEntry[]; configHash: string }>
+  }
+}
+
+const createMockCache = (): MockCache => {
+  const backing = new Map<string, readonly PrivacySpan[]>()
+  const state: MockCache["state"] = { closeCalls: 0, setManyCalls: [] }
+  const keyOf = (textHash: string, configHash: string) => `${textHash}|${configHash}`
+  const cache: PrivacyCache = {
+    getMany: async (entries) => {
+      const result = new Map<string, readonly PrivacySpan[] | undefined>()
+      for (const entry of entries) {
+        if (result.has(entry.textHash)) continue
+        result.set(entry.textHash, backing.get(keyOf(entry.textHash, entry.configHash)))
+      }
+      return result
+    },
+    setMany: async (entries, configHash) => {
+      state.setManyCalls.push({ entries: [...entries], configHash })
+      for (const entry of entries) {
+        backing.set(keyOf(entry.textHash, entry.configHash), entry.spans)
+      }
+    },
+    flush: async () => {},
+    stats: () => ({ entries: backing.size, diskBytes: 0 }),
+    purge: async () => {
+      backing.clear()
+    },
+    close: async () => {
+      state.closeCalls += 1
+    },
+  }
+  return { cache, state }
+}
+
+describe("resolveCollectPrivacy — privacy cache wiring (TODO 3 acceptance 4,5,6)", () => {
+  test("cache enabled + privacy enabled → resolved.cache is a PrivacyCache and filter wraps inner", async () => {
+    // Given: a temp dir for the on-disk cache and a recording inner filter.
+    const workspace = createWorkspacePath()
+    mkdirSync(workspace, { recursive: true })
+    const cachePath = join(workspace, "privacy-cache.db")
+    let innerDetectCalls = 0
+    const inner: PrivacyFilter = {
+      detect: async (texts) => {
+        innerDetectCalls += 1
+        return texts.map(() => [spanOf(0, 1, "email", 0.9)])
+      },
+    }
+
+    // When: resolveCollectPrivacy runs with cache enabled.
+    const resolved = await resolveCollectPrivacy({
+      enabled: true,
+      filter: inner,
+      cache: { enabled: true, path: cachePath },
+    })
+
+    // Then: the resolved privacy is enabled, carries a cache handle, and the
+    // filter is the wrapped one (first call is observed by the wrapper).
+    if (!resolved.enabled) {
+      throw new Error("expected privacy to be enabled")
+    }
+    expect(resolved.cache).toBeDefined()
+    expect(typeof resolved.cache?.close).toBe("function")
+
+    // Sanity: the wrapped filter still produces results and reaches inner.
+    const result = await resolved.filter.detect(["alpha"])
+    expect(result).toEqual([[spanOf(0, 1, "email", 0.9)]])
+    expect(innerDetectCalls).toBe(1)
+
+    // And: a second identical call hits the cache (inner not invoked again).
+    await resolved.filter.detect(["alpha"])
+    expect(innerDetectCalls).toBe(1)
+
+    await resolved.cache?.close()
+  })
+
+  test("cache enabled but privacy disabled → no cache field; cache file never opened", async () => {
+    // Given: a cache path that does NOT exist (opening it would throw if it
+    // were attempted). Privacy is disabled.
+    const workspace = createWorkspacePath()
+    mkdirSync(workspace, { recursive: true })
+    const cachePath = join(workspace, "never-opened.db")
+    expect(existsSync(cachePath)).toBe(false)
+
+    // When: resolveCollectPrivacy runs with privacy disabled but cache on.
+    const resolved = await resolveCollectPrivacy({
+      enabled: false,
+      cache: { enabled: true, path: cachePath },
+    })
+
+    // Then: privacy is disabled, no cache field, and the file was never
+    // created (openPrivacyCache was never called).
+    expect(resolved).toEqual({ enabled: false })
+    expect(existsSync(cachePath)).toBe(false)
+    if (resolved.enabled) {
+      throw new Error("privacy must be disabled")
+    }
+  })
+
+  test("cache disabled + privacy enabled → no cache field on resolved; filter is the unwrapped inner", async () => {
+    // Given: a recording inner filter and cache flag explicitly off.
+    let innerDetectCalls = 0
+    const inner: PrivacyFilter = {
+      detect: async (texts) => {
+        innerDetectCalls += 1
+        return texts.map(() => [])
+      },
+    }
+
+    // When: resolveCollectPrivacy runs with cache explicitly disabled.
+    const resolved = await resolveCollectPrivacy({
+      enabled: true,
+      filter: inner,
+      cache: { enabled: false, path: "/tmp/should-not-be-opened.db" },
+    })
+
+    // Then: resolved has no cache field, and the filter is the inner directly
+    // (no wrapper). Two calls hit inner twice (no caching).
+    if (!resolved.enabled) {
+      throw new Error("expected privacy to be enabled")
+    }
+    expect(resolved.cache).toBeUndefined()
+    await resolved.filter.detect(["a"])
+    await resolved.filter.detect(["a"])
+    expect(innerDetectCalls).toBe(2)
+  })
+
+  test("cache options omitted entirely → resolved.cache undefined (existing test paths unchanged)", async () => {
+    // Given: privacy options without any cache field (the shape existing tests
+    // and the retrofit path pass today).
+    const resolved = await resolveCollectPrivacy({ filter: noopPrivacyFilter })
+
+    // Then: the resolved privacy carries no cache handle.
+    if (!resolved.enabled) {
+      throw new Error("expected privacy to be enabled")
+    }
+    expect(resolved.cache).toBeUndefined()
+  })
+})
+
+describe("exportCollectedSession — privacy cache lifecycle (Oracle O2, O5)", () => {
+  test("Oracle O2: closes the cache exactly once per export on the happy path", async () => {
+    // Given: a fixture session and a mock cache handle injected via the test
+    // seam.
+    const { sourceDir, workspace } = writeFixtureSession()
+    const exportPath = join(workspace, "artifacts", "collected.atf.json")
+    const mock = createMockCache()
+
+    // When: export runs to completion with the cache enabled.
+    const result = await exportCollectedSession(
+      { runtime: "claude-code", session: sessionId, sourceDir, exportPath },
+      {
+        filter: noopPrivacyFilter,
+        cache: {
+          enabled: true,
+          path: join(dirname(exportPath), "privacy-cache.db"),
+          handle: mock.cache,
+        },
+      },
+    )
+
+    // Then: the export succeeded and the cache was closed exactly once.
+    expect(result.eventCount).toBeGreaterThan(0)
+    expect(mock.state.closeCalls).toBe(1)
+  })
+
+  test("Oracle O2: closes the cache exactly once even when applyCollectPrivacy throws", async () => {
+    // Given: a fixture session and an inner filter that throws on every call.
+    const { sourceDir, workspace } = writeFixtureSession()
+    const exportPath = join(workspace, "artifacts", "collected.atf.json")
+    const mock = createMockCache()
+    const throwingFilter: PrivacyFilter = {
+      detect: () => Promise.reject(new PrivacyFilterUnavailableError("engine down")),
+    }
+
+    // When: export runs but the privacy pass throws.
+    let caught: unknown
+    try {
+      await exportCollectedSession(
+        { runtime: "claude-code", session: sessionId, sourceDir, exportPath },
+        {
+          filter: throwingFilter,
+          cache: {
+            enabled: true,
+            path: join(dirname(exportPath), "privacy-cache.db"),
+            handle: mock.cache,
+          },
+        },
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    // Then: the error propagated AND the cache was closed exactly once via
+    // the finally block (no handle leak).
+    expect(caught).toBeInstanceOf(PrivacyFilterUnavailableError)
+    expect(mock.state.closeCalls).toBe(1)
+  })
+
+  test("Oracle O5: export resolves cache path to dirname(exportPath)/privacy-cache.db", async () => {
+    // Given: a fixture session and a real (non-mock) cache path next to the
+    // export file. The cache path is NOT injected as a handle, so
+    // openPrivacyCache runs against the path the export computed.
+    const { sourceDir, workspace } = writeFixtureSession()
+    const exportPath = join(workspace, "artifacts", "sub", "collected.atf.json")
+    const expectedCachePath = join(workspace, "artifacts", "sub", "privacy-cache.db")
+
+    // When: export runs with cache enabled at the dirname-derived path.
+    const result = await exportCollectedSession(
+      { runtime: "claude-code", session: sessionId, sourceDir, exportPath },
+      {
+        filter: noopPrivacyFilter,
+        cache: { enabled: true, path: expectedCachePath },
+      },
+    )
+
+    // Then: the export succeeded and the cache file exists at the expected
+    // dirname-derived location.
+    expect(result.eventCount).toBeGreaterThan(0)
+    expect(existsSync(expectedCachePath)).toBe(true)
+    expect(existsSync(join(workspace, "artifacts", "sub", "collected.atf.json"))).toBe(true)
+  })
+
+  test("cache disabled on export → no cache file created; inner filter invoked per call", async () => {
+    // Given: a fixture session with cache explicitly disabled.
+    const { sourceDir, workspace } = writeFixtureSession()
+    const exportPath = join(workspace, "artifacts", "collected.atf.json")
+    const cachePath = join(dirname(exportPath), "privacy-cache.db")
+    let innerCalls = 0
+    const inner: PrivacyFilter = {
+      detect: async (texts) => {
+        innerCalls += 1
+        return texts.map(() => [])
+      },
+    }
+
+    // When: export runs with cache disabled.
+    const result = await exportCollectedSession(
+      { runtime: "claude-code", session: sessionId, sourceDir, exportPath },
+      { filter: inner, cache: { enabled: false, path: cachePath } },
+    )
+
+    // Then: export succeeded; no cache file was created.
+    expect(result.eventCount).toBeGreaterThan(0)
+    expect(existsSync(cachePath)).toBe(false)
+    expect(innerCalls).toBeGreaterThan(0)
+  })
+})
+
+describe("resolveCollectPrivacy — wiring with real on-disk cache (integration)", () => {
+  test("end-to-end: two detects reuse the cache; second call invokes inner 0 times", async () => {
+    // Given: a real on-disk cache at a temp path and a recording inner filter.
+    const workspace = createWorkspacePath()
+    mkdirSync(workspace, { recursive: true })
+    const cachePath = join(workspace, "privacy-cache.db")
+    let innerCalls = 0
+    const inner: PrivacyFilter = {
+      detect: async (texts) => {
+        innerCalls += 1
+        return texts.map(() => [spanOf(0, 1, "email", 0.9)])
+      },
+    }
+
+    // When: resolveCollectPrivacy runs with cache enabled; two identical
+    // detects issued back-to-back against the resolved (wrapped) filter.
+    const resolved = await resolveCollectPrivacy({
+      enabled: true,
+      filter: inner,
+      cache: { enabled: true, path: cachePath },
+    })
+    if (!resolved.enabled) {
+      throw new Error("expected privacy to be enabled")
+    }
+    try {
+      await resolved.filter.detect(["foo"])
+      await resolved.filter.detect(["foo"])
+
+      // Then: inner was invoked exactly once (second call was a cache hit).
+      expect(innerCalls).toBe(1)
+    } finally {
+      await resolved.cache?.close()
+    }
+
+    // And: the cache file was materialized on disk.
+    expect(existsSync(cachePath)).toBe(true)
+  })
+
+  test("end-to-end: re-opening the same cache after close still serves hits (persistence)", async () => {
+    // Given: a cache populated and closed in a first resolveCollectPrivacy call.
+    const workspace = createWorkspacePath()
+    mkdirSync(workspace, { recursive: true })
+    const cachePath = join(workspace, "privacy-cache.db")
+    let innerCalls = 0
+    const inner: PrivacyFilter = {
+      detect: async (texts) => {
+        innerCalls += 1
+        return texts.map(() => [spanOf(0, 1, "email", 0.9)])
+      },
+    }
+
+    const first = await resolveCollectPrivacy({
+      enabled: true,
+      filter: inner,
+      cache: { enabled: true, path: cachePath },
+    })
+    if (!first.enabled) throw new Error("expected first privacy enabled")
+    try {
+      await first.filter.detect(["persistent-text"])
+    } finally {
+      await first.cache?.close()
+    }
+    const callsAfterFirst = innerCalls
+    expect(callsAfterFirst).toBe(1)
+
+    // When: a SECOND resolveCollectPrivacy reopens the same cache file.
+    const second = await resolveCollectPrivacy({
+      enabled: true,
+      filter: inner,
+      cache: { enabled: true, path: cachePath },
+    })
+    if (!second.enabled) throw new Error("expected second privacy enabled")
+    try {
+      await second.filter.detect(["persistent-text"])
+    } finally {
+      await second.cache?.close()
+    }
+
+    // Then: the cache hit on disk — inner was not invoked again across reopens.
+    expect(innerCalls).toBe(callsAfterFirst)
+  })
+
+  test("end-to-end: real openPrivacyCache integration — wrapped filter round-trips spans through cache", async () => {
+    // Given: a real PrivacyCache handle and a recording inner whose spans
+    // encode the input position. Bypass openPrivacyCache via the test seam.
+    const dir = await (async () => {
+      const workspace = createWorkspacePath()
+      mkdirSync(workspace, { recursive: true })
+      return workspace
+    })()
+    const realPath = join(dir, "privacy-cache.db")
+    const cacheHandle = await openPrivacyCache(realPath)
+
+    let innerCalls = 0
+    const inner: PrivacyFilter = {
+      detect: async (texts) => {
+        innerCalls += 1
+        return texts.map((_, i) => [spanOf(i, i + 1, "email", 0.9)])
+      },
+    }
+
+    try {
+      const resolved = await resolveCollectPrivacy({
+        enabled: true,
+        filter: inner,
+        cache: { enabled: true, path: realPath, handle: cacheHandle },
+      })
+      if (!resolved.enabled) throw new Error("expected privacy enabled")
+
+      // When: two detects with overlapping input run back-to-back.
+      const first = await resolved.filter.detect(["a", "b", "c"])
+      const second = await resolved.filter.detect(["a", "b", "c"])
+
+      // Then: outputs are byte-identical and inner was invoked exactly once.
+      expect(first).toEqual(second)
+      expect(first.map((spans) => spans.length)).toEqual([1, 1, 1])
+      expect(innerCalls).toBe(1)
+    } finally {
+      await cacheHandle.close()
+    }
   })
 })

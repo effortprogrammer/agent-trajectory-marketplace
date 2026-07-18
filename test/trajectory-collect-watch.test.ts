@@ -13,7 +13,12 @@ import {
   resolveCollectWatchRuntimes,
   runCollectSweep,
 } from "../src/trajectory/collect-watch"
-import { PrivacyFilterUnavailableError } from "../src/trajectory/privacy/contract"
+import type { PrivacyCache, PrivacyCacheEntry } from "../src/trajectory/privacy/cache"
+import {
+  type PrivacyFilter,
+  PrivacyFilterUnavailableError,
+  type PrivacySpan,
+} from "../src/trajectory/privacy/contract"
 import { noopPrivacyFilter, testPrivacyOptions } from "./privacy-fixtures"
 import {
   cleanupSellerWorkspaces,
@@ -396,5 +401,170 @@ describe("collect launchd service", () => {
     expect(summary.detail).toContain("dry_run")
     expect(summary.plist).toContain("<key>KeepAlive</key>")
     expect(summary.plist).toContain("collect")
+  })
+})
+
+// =============================================================================
+// TODO 3 (privacy-filter-cache): runCollectSweep cache lifecycle.
+//
+// Mock strategy: a MockPrivacyCache with a close-call counter is injected via
+// CollectPrivacyOptions.cache.handle (test seam mirroring how `filter` is
+// injectable). The sweep wraps its per-session loop in try/finally so the
+// handle is released exactly once even when a session throws.
+// =============================================================================
+
+const spanOf = (
+  start: number,
+  end: number,
+  category: PrivacySpan["category"],
+  score = 0.95,
+): PrivacySpan => ({ start, end, category, score })
+
+interface MockCache {
+  cache: PrivacyCache
+  state: {
+    closeCalls: number
+    setManyCalls: Array<{ entries: PrivacyCacheEntry[]; configHash: string }>
+  }
+}
+
+const createMockCache = (): MockCache => {
+  const backing = new Map<string, readonly PrivacySpan[]>()
+  const state: MockCache["state"] = { closeCalls: 0, setManyCalls: [] }
+  const keyOf = (textHash: string, configHash: string) => `${textHash}|${configHash}`
+  const cache: PrivacyCache = {
+    getMany: async (entries) => {
+      const result = new Map<string, readonly PrivacySpan[] | undefined>()
+      for (const entry of entries) {
+        if (result.has(entry.textHash)) continue
+        result.set(entry.textHash, backing.get(keyOf(entry.textHash, entry.configHash)))
+      }
+      return result
+    },
+    setMany: async (entries, configHash) => {
+      state.setManyCalls.push({ entries: [...entries], configHash })
+      for (const entry of entries) {
+        backing.set(keyOf(entry.textHash, entry.configHash), entry.spans)
+      }
+    },
+    flush: async () => {},
+    stats: () => ({ entries: backing.size, diskBytes: 0 }),
+    purge: async () => {
+      backing.clear()
+    },
+    close: async () => {
+      state.closeCalls += 1
+    },
+  }
+  return { cache, state }
+}
+
+describe("runCollectSweep — privacy cache lifecycle (TODO 3 acceptance 7)", () => {
+  test("Oracle O2/Mid-operation interrupts: closes the cache exactly once per sweep on the happy path", async () => {
+    // Given: a fixture session and a mock cache handle.
+    const { sourceDir, outDir } = writeWatchFixture()
+    const mock = createMockCache()
+
+    // When: a sweep runs to completion with the cache enabled.
+    const summary = await runCollectSweep(sweepConfig({ sourceDir, outDir }), {
+      filter: noopPrivacyFilter,
+      cache: {
+        enabled: true,
+        path: join(outDir, "privacy-cache.db"),
+        handle: mock.cache,
+      },
+    })
+
+    // Then: the sweep exported one session and closed the cache exactly once.
+    expect(summary).toMatchObject({ exported: 1 })
+    expect(mock.state.closeCalls).toBe(1)
+  })
+
+  test("Oracle O2/Mid-operation interrupts: closes the cache exactly once even when a session throws", async () => {
+    // Given: a fixture session and an inner filter that throws
+    // PrivacyFilterUnavailableError on every call. The sweep catches this,
+    // marks the session failed, sets privacyFilterUnavailable, and breaks.
+    const { sourceDir, outDir } = writeWatchFixture()
+    const mock = createMockCache()
+    const throwingFilter: PrivacyFilter = {
+      detect: () => Promise.reject(new PrivacyFilterUnavailableError("engine down")),
+    }
+
+    // When: the sweep runs against the throwing filter.
+    const summary = await runCollectSweep(sweepConfig({ sourceDir, outDir }), {
+      filter: throwingFilter,
+      cache: {
+        enabled: true,
+        path: join(outDir, "privacy-cache.db"),
+        handle: mock.cache,
+      },
+    })
+
+    // Then: the sweep recorded the failure AND the finally block closed the
+    // cache exactly once (no handle leak despite the throw).
+    expect(summary).toMatchObject({ exported: 0, failed: 1, privacyFilterUnavailable: true })
+    expect(mock.state.closeCalls).toBe(1)
+  })
+
+  test("cache disabled flag → cache is never opened; close NOT called", async () => {
+    // Given: a fixture session with cache.enabled = false. The mock handle is
+    // passed but should not be touched.
+    const { sourceDir, outDir } = writeWatchFixture()
+    const mock = createMockCache()
+
+    // When: the sweep runs with the cache flag off.
+    const summary = await runCollectSweep(sweepConfig({ sourceDir, outDir }), {
+      filter: noopPrivacyFilter,
+      cache: { enabled: false, path: join(outDir, "privacy-cache.db"), handle: mock.cache },
+    })
+
+    // Then: the sweep exported normally but never touched the mock cache.
+    expect(summary).toMatchObject({ exported: 1 })
+    expect(mock.state.closeCalls).toBe(0)
+    expect(mock.state.setManyCalls).toHaveLength(0)
+  })
+
+  test("cache options omitted entirely (existing test paths) → sweep behaves unchanged; no cache touched", async () => {
+    // Given: a fixture session and the same privacy options existing tests pass
+    // (no `cache` field at all).
+    const { sourceDir, outDir } = writeWatchFixture()
+
+    // When: the sweep runs without any cache options.
+    const summary = await runCollectSweep(sweepConfig({ sourceDir, outDir }), testPrivacyOptions)
+
+    // Then: the sweep still exports normally (existing behavior preserved).
+    expect(summary).toMatchObject({ exported: 1, failed: 0 })
+  })
+
+  test("end-to-end (real on-disk cache): second sweep reuses entries — inner filter invoked 0 times on warm pass", async () => {
+    // Given: a fixture session and a recording inner filter, with the cache
+    // path enabled against a real on-disk SQLite file (no mock handle).
+    const { sourceDir, outDir } = writeWatchFixture()
+    const cachePath = join(outDir, "privacy-cache.db")
+    let innerCalls = 0
+    const inner: PrivacyFilter = {
+      detect: async (texts) => {
+        innerCalls += 1
+        return texts.map(() => [spanOf(0, 1, "email", 0.9)])
+      },
+    }
+
+    // When: two sweeps run back-to-back over the same fixture.
+    const first = await runCollectSweep(sweepConfig({ sourceDir, outDir }), {
+      filter: inner,
+      cache: { enabled: true, path: cachePath },
+    })
+    const firstInnerCalls = innerCalls
+    const second = await runCollectSweep(sweepConfig({ sourceDir, outDir }), {
+      filter: inner,
+      cache: { enabled: true, path: cachePath },
+    })
+
+    // Then: the first sweep exported and hit inner; the second sweep skipped
+    // (unchanged), and the on-disk cache file exists.
+    expect(first).toMatchObject({ exported: 1 })
+    expect(second).toMatchObject({ exported: 0, unchanged: 1 })
+    expect(firstInnerCalls).toBeGreaterThan(0)
+    expect(existsSync(cachePath)).toBe(true)
   })
 })

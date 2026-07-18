@@ -1,5 +1,6 @@
 import type { HarnessTraceDocument } from "../adapters/contract"
 import { applyPrivacyPass } from "./apply"
+import { createCachedPrivacyFilter, openPrivacyCache, type PrivacyCache } from "./cache"
 import {
   type PiiCategory,
   type PrivacyFilter,
@@ -67,6 +68,14 @@ export type CollectPrivacyOptions = Readonly<{
   modelId?: string
   maskCategories?: readonly PiiCategory[]
   filter?: PrivacyFilter
+  cache?: Readonly<{
+    enabled: boolean
+    path: string
+    // Test-injection seam mirroring how `filter` is injectable: when provided,
+    // the pipeline uses this handle verbatim instead of calling
+    // openPrivacyCache(path). Production callers omit it; the CLI always does.
+    handle?: PrivacyCache
+  }>
 }>
 
 export type ResolvedCollectPrivacy =
@@ -76,11 +85,21 @@ export type ResolvedCollectPrivacy =
       config: PrivacyPassConfig
       configHash: string
       filter: PrivacyFilter
+      // Present only when the caller asked for the cache AND privacy is on.
+      // Owners are the call sites of resolveCollectPrivacy (runCollectSweep,
+      // exportCollectedSession, filterExistingTrace) — they MUST call
+      // `cache?.close()` in a `finally` block around the work that uses the
+      // resolved privacy. Per Oracle O1, the resolved type exposes the handle
+      // so callers can close it without re-deriving it from the options.
+      cache?: PrivacyCache
     }>
 
-export const resolveCollectPrivacy = (
+export const resolveCollectPrivacy = async (
   options: CollectPrivacyOptions = {},
-): ResolvedCollectPrivacy => {
+): Promise<ResolvedCollectPrivacy> => {
+  // Privacy disabled short-circuits BEFORE any cache is opened — the spec
+  // requires the cache file never be touched when the privacy filter is off
+  // (acceptance 6).
   if (options.enabled === false) {
     return { enabled: false }
   }
@@ -91,11 +110,27 @@ export const resolveCollectPrivacy = (
       ? {}
       : { maskCategories: [...options.maskCategories] }),
   })
+  const configHash = privacyConfigHash(config)
+  const innerFilter = options.filter ?? defaultPrivacyFilter(config.modelId)
+  const cacheOptions = options.cache
+  // Gate: cache must be explicitly enabled AND privacy is on (privacy off
+  // returns above). When enabled, open (or reuse the injected handle) and
+  // wrap the inner filter so every detect() round-trips through the cache.
+  if (cacheOptions?.enabled === true) {
+    const cache = cacheOptions.handle ?? (await openPrivacyCache(cacheOptions.path))
+    return {
+      enabled: true,
+      config,
+      configHash,
+      filter: createCachedPrivacyFilter(innerFilter, cache, configHash),
+      cache,
+    }
+  }
   return {
     enabled: true,
     config,
-    configHash: privacyConfigHash(config),
-    filter: options.filter ?? defaultPrivacyFilter(config.modelId),
+    configHash,
+    filter: innerFilter,
   }
 }
 
