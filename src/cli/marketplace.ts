@@ -4,14 +4,12 @@ import { basename } from "node:path"
 import type { Command } from "commander"
 
 import {
-  createWantedDatasetInRegistry,
   downloadEscrowDatasetFromRegistry,
   downloadRegistryListingPackage,
   inspectRegistryListing,
   inspectRegistrySupplyRecord,
   listRegistryListings,
   listRegistrySupply,
-  listRegistryWantedDatasets,
   publishEscrowCandidateToRegistry,
   submitSupplyCommitmentToRegistry,
 } from "../registry/client"
@@ -20,7 +18,6 @@ import {
   supplyCandidateRequestSchema,
   supplyCommitmentRequestSchema,
   supplyIdSchema,
-  wantedDatasetRequestSchema,
 } from "../registry/supply-contract"
 import { readStoredRegistrySession } from "./auth-store"
 
@@ -109,45 +106,6 @@ export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
     .command("marketplace")
     .description("Browse escrowed supply and legacy registry listings")
 
-  const wantedCommand = marketplaceCommand
-    .command("wanted")
-    .description("Buyer wanted-dataset demand signals (never inventory)")
-
-  wantedCommand
-    .command("create")
-    .description("Post one wanted-dataset demand signal from a JSON fixture")
-    .requiredOption("--registry <url>", "Marketplace registry base URL")
-    .requiredOption("--fixture <path>", "Wanted dataset JSON fixture")
-    .option("--api-key <key>", "Buyer registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
-    .option("--json", "Print the stored wanted record as JSON")
-    .action(async (options: SupplyFixtureOptions) => {
-      const wanted = wantedDatasetRequestSchema.parse(readFixtureJson(options.fixture))
-      const apiKey = marketplaceBuyerApiKey(options)
-      printJson(
-        await createWantedDatasetInRegistry({
-          ...(apiKey === undefined ? {} : { apiKey }),
-          registryUrl: options.registry,
-          wanted,
-        }),
-      )
-    })
-
-  wantedCommand
-    .command("list")
-    .description("List wanted-dataset demand signals")
-    .requiredOption("--registry <url>", "Marketplace registry base URL")
-    .option("--api-key <key>", "Buyer registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
-    .option("--json", "Print wanted records as JSON")
-    .action(async (options: Omit<SupplyFixtureOptions, "fixture">) => {
-      const apiKey = marketplaceBuyerApiKey(options)
-      printJson(
-        await listRegistryWantedDatasets({
-          ...(apiKey === undefined ? {} : { apiKey }),
-          registryUrl: options.registry,
-        }),
-      )
-    })
-
   const supplyCommand = marketplaceCommand
     .command("supply")
     .description(
@@ -156,7 +114,7 @@ export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
 
   supplyCommand
     .command("list")
-    .description("List supply records and wanted demand signals")
+    .description("List supply records")
     .requiredOption("--registry <url>", "Marketplace registry base URL")
     .option("--api-key <key>", "Registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")
     .option("--json", "Print supply records as JSON")
@@ -173,7 +131,7 @@ export const registerMarketplaceCommand = (trajectoryCommand: Command) => {
   supplyCommand
     .command("inspect <supplyRecordId>")
     .description(
-      "Inspect one anonymous supply proof preview or wanted post; dataset bytes stay gated until fulfillment",
+      "Inspect one anonymous supply proof preview; dataset bytes stay gated until fulfillment",
     )
     .requiredOption("--registry <url>", "Marketplace registry base URL")
     .option("--api-key <key>", "Registry API key; prefer TRAJECTORY_REGISTRY_BUYER_API_KEY")

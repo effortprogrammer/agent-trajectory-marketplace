@@ -11,8 +11,6 @@ import {
   supplyListResponseSchema,
   supplyRecordResponseSchema,
   supplyRecordSchema,
-  wantedDatasetListResponseSchema,
-  wantedDatasetResponseSchema,
 } from "../src/registry/supply-contract"
 import { stampPrivacyForTest } from "./privacy-fixtures"
 import { createRegistryApiHarness } from "./registry-api-fixtures"
@@ -177,42 +175,10 @@ describe("trajectory marketplace supply CLI", () => {
     })
   })
 
-  test("creates and lists wanted demand signals from the fixture", async () => {
-    const created = await runCli([
-      "trajectory",
-      "marketplace",
-      "wanted",
-      "create",
-      "--registry",
-      registryUrl(),
-      "--api-key",
-      "buyer-smoke-key",
-      "--fixture",
-      "test/fixtures/wanted-dataset.json",
-      "--json",
-    ])
-    expect(created.success).toBe(true)
-    const wanted = wantedDatasetResponseSchema.parse(parseJsonOutput(created.stdout)).wanted
-    expect(wanted.state).toBe("wanted")
-    expect(wanted.requesterLabel).toMatch(/^buyer-[a-f0-9]{8}$/)
-    // The demand signal is never inventory: no files, no price, no binding.
-    expect(created.stdout).not.toContain("files")
-    expect(created.stdout).not.toContain("downloadAllowed")
-
-    const listed = await runCli([
-      "trajectory",
-      "marketplace",
-      "wanted",
-      "list",
-      "--registry",
-      registryUrl(),
-      "--api-key",
-      "buyer-smoke-key",
-      "--json",
-    ])
-    expect(listed.success).toBe(true)
-    const list = wantedDatasetListResponseSchema.parse(parseJsonOutput(listed.stdout))
-    expect(list.wanted.map((record) => record.wantedId)).toContain(wanted.wantedId)
+  test("retires the wanted CLI command", async () => {
+    const retired = await runCli(["trajectory", "marketplace", "wanted", "list"])
+    expect(retired.success).toBe(false)
+    expect(retired.stderr).toContain("unknown command")
   })
 
   test("publishes an escrow candidate and promotes it with full commitment terms", async () => {

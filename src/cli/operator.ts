@@ -277,45 +277,6 @@ export const registerOperatorCommand = (registryCommand: Command) => {
       printJson(inspectOperatorKey(readRegistryOperatorState(options.state), options.accessId))
     })
 
-  const auctionCommand = operatorCommand
-    .command("auction")
-    .description("Operate anonymous committed-supply auctions")
-
-  auctionCommand
-    .command("close")
-    .description(
-      "Close one auction; a reserve-met highest bid becomes the winning commitment record",
-    )
-    .requiredOption("--db <path>", "Registry SQLite database path")
-    .requiredOption("--commitment-id <id>", "Commitment id whose auction closes")
-    .requiredOption("--actor <id>", "Operator actor id recorded with the action")
-    .option("--json", "Print the closed auction summary as JSON")
-    .action(
-      (options: Readonly<{ db: string; commitmentId: string; actor: string; json?: boolean }>) => {
-        const database = createRegistryDatabase({ dbPath: options.db })
-        try {
-          const auction = database.closeSupplyAuction({
-            commitmentId: options.commitmentId,
-            now: new Date().toISOString(),
-          })
-          // Auction close never starts payment automation: the winning bid
-          // waits for operator-confirmed fulfillment (registry operator
-          // fulfillment ...) before anything else happens.
-          printJson({
-            actor: options.actor,
-            auction,
-            paymentAutomation: "none",
-            nextStep:
-              auction.winningBidId === undefined
-                ? "no reserve-met winning bid; auction closed without a winner"
-                : "operator confirmation opens a fulfillment transaction (Todo 6 CLI)",
-          })
-        } finally {
-          database.close()
-        }
-      },
-    )
-
   registerOperatorFulfillmentCommands(operatorCommand)
 
   registerOperatorAccountCommands(operatorCommand)

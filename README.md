@@ -50,6 +50,17 @@ bun run dev -- trajectory seller package --trace .tmp/trajectory-e2e/artifacts/t
 bun run dev -- trajectory seller inspect --path .omo/seller-packages/claude-code-session --json
 ```
 
+### Local Seller Session Browser
+
+Sync a fixture-scoped or local seller source into the session index, start the loopback browser, and open the printed URL:
+
+```bash
+bun run dev -- trajectory collect index sync --db .tmp/seller-browser/session-index.db --runtime claude-code --source <source-dir>
+bun run dev -- trajectory collect serve --db .tmp/seller-browser/session-index.db --port 0 --no-sync
+```
+
+The browser presents indexed sessions with token metrics, an archetype, and trace-derived signals. Search uses indexed session messages; all data remains local to the machine running the command.
+
 Or exercise the synthetic prototype workspace instead of a real harness log:
 
 ```bash
@@ -84,7 +95,7 @@ Start a local registry with a dev seller key:
 bun run dev -- trajectory registry serve --host 127.0.0.1 --port 0 --db .tmp/registry/registry.sqlite --storage .tmp/registry/storage --tmp .tmp/registry/tmp --seller-key agent-local:test-key
 ```
 
-The six-file package publish/list/inspect/download endpoints are test-only legacy and retired: `trajectory seller publish` and `trajectory marketplace list/inspect/download` now fail with the typed `410 gone` error. Marketplace supply is seller-originated canonical ATF held in encrypted registry escrow after publication — buyers post Wanted Dataset demand signals, sellers publish Candidate Datasets, and only Committed Datasets (reserve price, delivery SLA, proof profile, failure consequences) enter anonymous binding auctions. Anonymous browse exposes the bounded redacted legacy proof preview plus optional aggregate-only evidence, never raw archive bytes or a download; data is released only after operator-validated fulfillment. Local packaging (`trajectory seller package` / `seller inspect`) remains supported for producing hash-verifiable delivery artifacts.
+The six-file package publish/list/inspect/download endpoints are test-only legacy and retired: `trajectory seller publish` and `trajectory marketplace list/inspect/download` now fail with the typed `410 gone` error. Marketplace supply is seller-originated canonical ATF held in encrypted registry escrow after publication: sellers publish Candidate Datasets and commit the delivery terms (reserve price, delivery SLA, proof profile, and failure consequences). Anonymous browse exposes the bounded redacted legacy proof preview plus optional aggregate-only evidence, never raw archive bytes or a download; an operator selects an approved buyer access record, validates fulfillment, and releases the entitlement before download. Local packaging (`trajectory seller package` / `seller inspect`) remains supported for producing hash-verifiable delivery artifacts.
 
 Prefer `TRAJECTORY_REGISTRY_API_KEY` over `--api-key` so seller secrets do not land in shell history. The closed-alpha machine-readable API contract is [docs/marketplace-registry-openapi.yaml](docs/marketplace-registry-openapi.yaml); it covers `Authorization: Bearer <api-key>`, the `/v1/supply/*` encrypted-escrow supply surface, `/v1/auth/signup`, `/v1/auth/device`, `/v1/auth/token`, `/v1/waitlist-requests`, listing access requests and reviews, fail-closed access state, stable `error.code` values, and the `/v1` version policy.
 
@@ -99,8 +110,8 @@ URL; CLI account creation is intentionally disabled.
 
 Web sign-in is passwordless: `/v1/auth/signup` emails a one-time code and `/v1/auth/login`
 verifies it. Anonymous callers can browse current supply metadata, the bounded legacy proof
-preview, optional aggregate-only evidence, and anonymous auction summaries; signed-in accounts
-can submit authenticated interest, bid, fulfillment, and legacy listing access requests. Request-required,
+preview and optional aggregate-only evidence; signed-in accounts can submit authenticated interest,
+fulfillment, and legacy listing access requests. Request-required,
 purchase-required, and entitlement-required listings do not download with account login or a legacy
 buyer key alone; an operator must approve the buyer record and grant the listing entitlement. This alpha intentionally excludes live Stripe checkout,
 payouts, paid refunds, tax handling, HF Datasets/Parquet conversion, seller/operator dashboards, and

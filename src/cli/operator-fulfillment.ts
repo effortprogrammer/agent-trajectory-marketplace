@@ -16,7 +16,11 @@ import {
   rewrapEscrowDek,
 } from "../registry/escrow-crypto"
 import { EscrowIntakeError, validateEscrowArchive } from "../registry/escrow-intake"
-import { grantOperatorEntitlement, mutateRegistryOperatorState } from "../registry/operator"
+import {
+  grantOperatorEntitlement,
+  mutateRegistryOperatorState,
+  readRegistryOperatorState,
+} from "../registry/operator"
 import { createRegistryStorage, type RegistryStorage } from "../registry/storage"
 import {
   buildFulfillmentTransactionId,
@@ -157,22 +161,22 @@ const proofHashMismatches = (
 export const registerOperatorFulfillmentCommands = (operatorCommand: Command) => {
   const fulfillmentCommand = operatorCommand
     .command("fulfillment")
-    .description("Drive seller-custodied fulfillment transactions after a winning commitment")
+    .description("Drive seller-custodied fulfillment transactions after operator buyer selection")
 
   fulfillmentCommand
     .command("open")
     .description(
-      "Confirm a winning commitment and open the fulfillment transaction (starts the SLA clock)",
+      "Select an approved buyer and open the committed-supply fulfillment transaction (starts the SLA clock)",
     )
     .requiredOption("--db <path>", "Registry SQLite database path")
+    .requiredOption("--state <path>", "Operator access state JSON path")
     .requiredOption("--commitment-id <id>", "Committed supply commitment id")
-    .requiredOption("--buyer-access-id <id>", "Winning buyer access record id")
+    .requiredOption("--buyer-access-id <id>", "Approved buyer access record id selected by the operator")
     .requiredOption(
       "--listing-id <id>",
       "Entitlement listing id (listing-<hex16>) released at fulfillment",
     )
     .requiredOption("--actor <id>", "Operator actor id")
-    .option("--manual", "Open a manual (non-auction) fulfillment for a committed record")
     .option("--json", "Print the fulfillment transaction as JSON")
     .action(
       (
@@ -181,24 +185,21 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
             commitmentId: string
             buyerAccessId: string
             listingId: string
-            manual?: boolean
+            state: string
           }>,
       ) => {
         withDatabase(options.db, (database) => {
-          const auction = database.getSupplyAuctionSummary(options.commitmentId)
-          if (auction === undefined) {
+          const supply = database
+            .listSupplyRecords()
+            .find((record) => record.state === "committed" && record.commitmentId === options.commitmentId)
+          if (supply === undefined || supply.state !== "committed") {
             throw new Error(`supply_not_found: ${options.commitmentId}`)
           }
-          if (options.manual !== true) {
-            if (auction.state !== "closed" || auction.winningBidId === undefined) {
-              throw new Error(
-                "supply_state_invalid: fulfillment requires a closed auction with a reserve-met winning bid (or --manual)",
-              )
-            }
-          }
-          const supply = database.getSupplyRecord(auction.supplyId)
-          if (supply === undefined || supply.state !== "committed") {
-            throw new Error(`supply_state_invalid: ${auction.supplyId} is not committed supply`)
+          const buyer = readRegistryOperatorState(options.state).records.find(
+            (record) => record.accessId === options.buyerAccessId,
+          )
+          if (buyer?.role !== "buyer" || buyer.waitlistState !== "approved") {
+            throw new Error("invalid_request: fulfillment requires an operator-approved buyer access record")
           }
           // One live attempt per commitment: a stale duplicate transaction
           // could later be timed out and demote supply that was actually
@@ -221,8 +222,7 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
               nonce: now.toISOString(),
             }),
             commitmentId: options.commitmentId,
-            supplyId: auction.supplyId,
-            ...(auction.winningBidId === undefined ? {} : { winningBidId: auction.winningBidId }),
+            supplyId: supply.supplyId,
             slaDeadline,
             buyerAccessId: options.buyerAccessId,
             entitlementListingId: options.listingId,
@@ -234,7 +234,7 @@ export const registerOperatorFulfillmentCommands = (operatorCommand: Command) =>
           // so the transaction rests at fulfilled immediately. The transient
           // delivery states land in the event log only, and the delivery
           // manifest / validation report are machine-generated.
-          const escrow = activeSupplyEscrow(database, auction.supplyId)
+          const escrow = activeSupplyEscrow(database, supply.supplyId)
           if (escrow === undefined) {
             printJson({ actor: options.actor, fulfillment: transaction })
             return
