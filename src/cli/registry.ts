@@ -1,8 +1,13 @@
 import type { Command } from "commander"
+import { join } from "node:path"
 
 import { createRegistryDatabase } from "../registry/database"
+import { EmailAuthRateLimiter } from "../registry/email-auth"
+import { createRegistryAccountMailer } from "../registry/email-delivery"
+import { createRegistryLogger } from "../registry/logger"
 import { parseRegistryEmailAuthEnvConfig } from "../registry/email-delivery"
 import { readRegistryOperatorState } from "../registry/operator"
+import { rebuildRawPackages } from "../registry/raw-package-rebuild"
 import {
   parseHostedRegistryServeEnvConfig,
   parseRegistryEscrowEnvConfig,
@@ -13,6 +18,10 @@ import {
 } from "../registry/server"
 import { createRegistryStorage, type RegistryStorageBackend } from "../registry/storage"
 import { backupRegistryStorage, restoreRegistryStorage } from "../registry/storage-backup"
+import { AuthAttemptRateLimiter } from "../registry/server-account-auth"
+import { FailedAttemptRateLimiter } from "../registry/server-config"
+import type { RegistryRuntime } from "../registry/server-runtime"
+import { createRegistryTelemetry } from "../registry/telemetry"
 import { registerOperatorCommand } from "./operator"
 
 type RegistryServeOptions = Readonly<{
@@ -41,6 +50,13 @@ type RegistryRestoreOptions = Readonly<{
   db: string
   storage: string
   storageBackend?: string
+}>
+
+type RegistryRawPackageRebuildOptions = Readonly<{
+  db: string
+  storage: string
+  storageBackend?: string
+  tmp?: string
 }>
 
 const printJson = (value: unknown) => {
@@ -73,6 +89,43 @@ const openRegistryStorage = (options: {
       database,
       storageRoot: options.storage,
     }),
+  }
+}
+
+const openRegistryRuntime = (options: RegistryRawPackageRebuildOptions): RegistryRuntime => {
+  const localEscrow = parseRegistryEscrowEnvConfig(process.env, false)
+  const config = parseRegistryServeConfig({
+    emailAuth: parseRegistryEmailAuthEnvConfig(process.env, "local"),
+    host: "127.0.0.1",
+    port: 0,
+    db: options.db,
+    storage: options.storage,
+    tmp: options.tmp ?? join(options.storage, "raw-package-rebuild-tmp"),
+    sellerKey: "operator-rebuild:local",
+    ...(options.storageBackend === undefined ? {} : { storageBackend: options.storageBackend }),
+    ...(localEscrow === undefined ? {} : { escrow: localEscrow }),
+  })
+  const database = createRegistryDatabase({ dbPath: config.dbPath })
+  return {
+    authRateLimiter: new AuthAttemptRateLimiter(),
+    config,
+    database,
+    emailAuthRateLimiter: new EmailAuthRateLimiter(),
+    logger: createRegistryLogger({
+      level: "error",
+      format: "text",
+      stdout: false,
+      rotation: { maxSizeBytes: 1024, maxBackups: 1 },
+    }),
+    mailer: createRegistryAccountMailer(config.emailAuth),
+    rateLimiter: new FailedAttemptRateLimiter(),
+    storage: createRegistryStorage({
+      backend: config.storageBackend,
+      database,
+      storageRoot: config.storageRoot,
+      ...(config.escrowS3 === undefined ? {} : { escrowS3: config.escrowS3 }),
+    }),
+    telemetry: createRegistryTelemetry(),
   }
 }
 
@@ -145,6 +198,22 @@ export const registerRegistryCommand = (trajectoryCommand: Command) => {
     })
 
   registerOperatorCommand(registryCommand)
+
+  registryCommand
+    .command("rebuild-raw-packages")
+    .description("Operator rebuild of Marketplace raw packages from durable private custody")
+    .requiredOption("--db <path>", "Registry SQLite database path")
+    .requiredOption("--storage <path>", "Registry package storage root")
+    .option("--storage-backend <backend>", "Registry storage backend: local or hosted", "local")
+    .option("--tmp <path>", "Registry temporary upload root")
+    .action(async (options: RegistryRawPackageRebuildOptions) => {
+      const runtime = openRegistryRuntime(options)
+      try {
+        printJson(await rebuildRawPackages({ now: () => new Date().toISOString(), runtime }))
+      } finally {
+        runtime.database.close()
+      }
+    })
 
   registryCommand
     .command("backup")
