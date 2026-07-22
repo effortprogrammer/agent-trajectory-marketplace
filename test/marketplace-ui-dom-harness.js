@@ -119,12 +119,12 @@ const requiredIds = `
   my-data-access-tab my-data-downloads-tab my-data-access-content my-data-downloads-content
   buyer-onboarding-form buyer-onboarding-contact buyer-onboarding-use detail-panel-content
   catalog-view record-view record-back record-breadcrumb-title
-  listing-grid nav-marketplace nav-my-data nav-operator nav-requests nav-seller-publish
-  open-requests-view refresh-listings registry-state operator-actions-content
-  requests-actions-content requests-view-content listing-search seller-actions-content seller-onboarding-form
+  listing-grid nav-marketplace nav-my-data nav-operator nav-seller-publish
+  refresh-listings registry-state operator-actions-content
+  listing-search seller-actions-content seller-onboarding-form
   seller-onboarding-contact seller-onboarding-id seller-onboarding-use signal-access
-  signal-events signal-files signal-listings summary-strip view-marketplace
-  view-my-data view-operator view-requests view-seller
+  signal-listings summary-strip view-marketplace
+  view-my-data view-operator view-seller
 `
   .trim()
   .split(/\s+/)
@@ -402,12 +402,21 @@ export const defaultMarketplaceFetch = async (input, _init) => {
   )
 }
 
-export const installMarketplaceHarness = (fetchHandler = defaultMarketplaceFetch) => {
+export const installMarketplaceHarness = (fetchHandler = defaultMarketplaceFetch, options = {}) => {
   currentAuthBody = signedOutAuthBody()
   const document = new FakeDocument(requiredIds)
   const objectUrls = []
   const storage = new FakeStorage()
-  const window = { localStorage: storage }
+  const listeners = new Map()
+  const window = {
+    localStorage: storage,
+    location: { hash: options.hash ?? "" },
+    addEventListener(type, listener) {
+      const callbacks = listeners.get(type) ?? []
+      callbacks.push(listener)
+      listeners.set(type, callbacks)
+    },
+  }
   const url = Object.create(globalThis.URL ?? {})
   url.createObjectURL = (blob) => {
     objectUrls.push(blob)
