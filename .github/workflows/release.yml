@@ -1,0 +1,75 @@
+name: Stable release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout protected tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate stable protected tag
+        env:
+          REF_PROTECTED: ${{ github.ref_protected }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          test "$REF_PROTECTED" = true
+          [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          git rev-parse --verify "refs/tags/$TAG^{commit}"
+          test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$GITHUB_SHA"
+          test "$(jq -r '.version' package.json)" = "${TAG#v}"
+
+      - name: Build source archive and bound manifest
+        env:
+          TAG: ${{ github.ref_name }}
+          ATM_RELEASE_POSTHOG_API_KEY: ${{ secrets.ATM_RELEASE_POSTHOG_API_KEY }}
+        run: |
+          set -euo pipefail
+          bash scripts/build-release-assets.sh "$TAG" "$GITHUB_SHA" "$PWD"
+          archive="atm-$TAG.tar.gz"
+          tar -tzf "$archive" | grep -Fx 'agent-trajectory-marketplace/package.json'
+          test "$(jq -r '.archive.size' atm-release-manifest.json)" = "$(stat -c%s "$archive")"
+          test "$(jq -r '.archive.sha256' atm-release-manifest.json)" = "$(sha256sum "$archive" | cut -d' ' -f1)"
+
+      - name: Create immutable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: >-
+          gh release create "$TAG" "atm-$TAG.tar.gz" atm-release-manifest.json
+          install.sh install.sh.sha256 install-agent.sh install-agent.sh.sha256
+          install-core.sh install-core.sh.sha256 --verify-tag --latest --generate-notes
+
+      - name: Verify published asset binding
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > release-metadata.json
+          core_digest="$(sha256sum install-core.sh | cut -d' ' -f1)"
+          checksum_digest="$(sha256sum install-core.sh.sha256 | cut -d' ' -f1)"
+          jq -e --slurpfile manifest atm-release-manifest.json \
+            --arg core_digest "sha256:$core_digest" \
+            --arg checksum_digest "sha256:$checksum_digest" '
+            .immutable == true and .draft == false and .prerelease == false and
+            ([.assets[] | select(
+              .name == $manifest[0].archive.name and
+              .size == $manifest[0].archive.size and
+              .digest == ("sha256:" + $manifest[0].archive.sha256)
+            )] | length == 1) and
+            ([.assets[] | select(.name == "atm-release-manifest.json")] | length == 1) and
+            ([.assets[] | select(.name == "install-core.sh" and .digest == $core_digest)] | length == 1) and
+            ([.assets[] | select(.name == "install-core.sh.sha256" and .digest == $checksum_digest)] | length == 1)
+          ' release-metadata.json

@@ -21,6 +21,9 @@ import {
   listCollectRuntimes,
   listCollectSessions,
 } from "@/trajectory/collect";
+import { CollectorRequestError } from "./collector-error";
+
+export { CollectorRequestError } from "./collector-error";
 
 type CollectorCliResult =
   | readonly CollectRuntimeSummary[]
@@ -31,13 +34,7 @@ type CollectorCliResult =
   | CollectServiceStatusResult
   | CollectServiceUninstallResult;
 
-export class CollectorRequestError extends Error {
-  readonly name = "CollectorRequestError";
-
-  constructor() {
-    super("invalid_collector_request");
-  }
-}
+export { parseUpdateCommand, type UpdateCommand } from "./update-command";
 
 type CollectWatchRequest = Readonly<{ readonly command: "watch"; readonly intervalSeconds: number; readonly once: boolean; readonly outDir?: string; readonly outputRoot?: string; readonly runtimes: readonly string[]; readonly settleSeconds: number; readonly sourceDir?: string }>;
 

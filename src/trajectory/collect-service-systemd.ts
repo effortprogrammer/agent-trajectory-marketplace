@@ -25,6 +25,14 @@ const systemdQuote = (value: string): string =>
     .replaceAll("\r", "\\r")
     .replaceAll("\t", "\\t")}"`;
 
+export const renderSystemdWorkingDirectory = (value: string): string =>
+  value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("%", "%%")
+    .replaceAll("\n", "\\n")
+    .replaceAll("\r", "\\r")
+    .replaceAll("\t", "\\t");
+
 export const collectSystemdServicePaths = (home: string, label: string): SystemdServicePaths => ({
   label,
   serviceName: `${label}.service`,
@@ -35,7 +43,7 @@ export const renderCollectWatchSystemdUnit = (input: Readonly<{
   config: CollectServiceConfig;
   entryScriptPath: string;
   executablePath: string;
-  telemetryEnvironmentVariables?: Readonly<Record<"ATM_POSTHOG_API_KEY" | "ATM_POSTHOG_HOST", string>>;
+  telemetryEnvironmentVariables?: Readonly<Record<string, string>>;
   workingDirectory: string;
 }>): string => {
   const workingDirectory = resolve(input.workingDirectory);
@@ -60,7 +68,7 @@ export const renderCollectWatchSystemdUnit = (input: Readonly<{
     "",
     "[Service]",
     "Type=simple",
-    `WorkingDirectory=${systemdQuote(workingDirectory)}`,
+    `WorkingDirectory=${renderSystemdWorkingDirectory(workingDirectory)}`,
     ...Object.entries(input.telemetryEnvironmentVariables ?? {})
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, value]) => `Environment=${systemdQuote(`${key}=${value}`)}`),
