@@ -23,7 +23,7 @@ export type CollectServiceEnvironment = Readonly<{
   runLaunchctl: (argumentsList: readonly string[]) => ServiceCommandResult;
   runSystemctl: (argumentsList: readonly string[]) => ServiceCommandResult;
   sleep: (milliseconds: number) => void;
-  telemetryEnvironmentVariables?: Readonly<Record<"ATM_POSTHOG_API_KEY" | "ATM_POSTHOG_HOST", string>>;
+  telemetryEnvironmentVariables?: Readonly<Record<string, string>>;
   uid: number;
   workingDirectory: string;
 }>;

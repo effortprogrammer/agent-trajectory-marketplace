@@ -36,3 +36,6 @@ jobs:
 
       - name: Installer regression
         run: bash test/installers.test.sh
+
+      - name: Release workflow regression
+        run: bash test/release-workflow.test.sh

@@ -246,6 +246,8 @@ describe("safe systemd user collector lifecycle", () => {
     expect(preview).toHaveProperty("unit");
     const unit = "unit" in preview ? preview.unit : "";
     expect(unit).toContain("[Service]");
+    expect(unit).toContain("WorkingDirectory=/repo & source");
+    expect(unit).not.toContain('WorkingDirectory="');
     expect(unit).toContain('ExecStart="/opt/bun/bin/bun" "/repo/dist/collector.js" "trajectory" "collect" "watch"');
     expect(unit.match(/"--runtime"/g)).toHaveLength(2);
     expect(unit).toContain("Restart=always");

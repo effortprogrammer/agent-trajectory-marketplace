@@ -1,9 +1,15 @@
 # ATM (Agent Trajectory Marketplace)
 
-Paste this into Codex or Claude Code.
+ATM collects local Claude Code, Codex, Hermes, OpenClaw, and OpenCode sessions and exports credential-redacted ATF datasets. Run it only after you consent to this local collection.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/effortprogrammer/agent-trajectory-marketplace/main/scripts/install-agent.sh | bash -s -- --dir atm
+curl -fsSL https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/latest/download/install-agent.sh | bash -s -- --dir atm
 ```
 
-With your consent, ATM collects local coding-agent sessions from Claude Code, Codex, Hermes, OpenClaw, and OpenCode, then exports credential-redacted ATF datasets.
+The installer requires Git, Bun 1.3+, and either macOS launchd or Linux systemd `--user`. It starts collection immediately and checks immutable stable GitHub Releases every six hours. Updates never pull mutable `main`; a failed service handover rolls back to the previous release while preserving `collected/` and watch state.
+
+```bash
+bun atm/current/dist/collector.js trajectory collect service status
+bun atm/current/dist/collector.js trajectory update status
+bun atm/current/dist/collector.js trajectory update
+```
