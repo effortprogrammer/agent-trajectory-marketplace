@@ -16,6 +16,11 @@ fail() {
   exit 1
 }
 
+for installer in scripts/install.sh scripts/install-agent.sh; do
+  stdin_stderr="$(head -n 9 "$ROOT/$installer" | /bin/bash -s 2>&1 >/dev/null)" || fail "$installer cannot initialize from stdin"
+  [[ -z "$stdin_stderr" ]] || fail "$installer emits an error when piped to bash"
+done
+
 initialize_checkout() {
   local root="$1"
   mkdir -p "$root/dist"

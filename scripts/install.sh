@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
-CORE="$SCRIPT_DIR/install-core.sh"
-if [ ! -f "$CORE" ]; then
+SCRIPT_DIR=""
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+fi
+CORE=""
+if [ -n "$SCRIPT_DIR" ]; then CORE="$SCRIPT_DIR/install-core.sh"; fi
+if [ -z "$CORE" ] || [ ! -f "$CORE" ]; then
   command -v curl >/dev/null || { printf '%s\n' 'curl is required.' >&2; exit 1; }
   command -v bun >/dev/null || { printf '%s\n' 'Bun 1.3.0 or newer is required.' >&2; exit 1; }
   ATM_BOOTSTRAP_TEMP="$(mktemp -d "${TMPDIR:-/tmp}/atm-bootstrap.XXXXXX")"
