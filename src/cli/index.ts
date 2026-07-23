@@ -8,6 +8,8 @@ import {
   resolveCollectorTelemetryConfig,
   sendCollectorTelemetry,
 } from "@/trajectory/telemetry";
+import { runUpdateCli } from "@/trajectory/update-cli";
+import { installUpdateServiceSchedule } from "@/trajectory/update-service-schedule";
 
 import { parseCollectorCommand, runCollectorCli, runCollectorResidentCli, type CollectorCommand } from "./collector";
 
@@ -83,6 +85,25 @@ const main = async (): Promise<void> => {
   process.once("SIGTERM", stop);
 
   try {
+    if (
+      argumentsList.length === 6 &&
+      argumentsList[0] === "trajectory" &&
+      argumentsList[1] === "update" &&
+      argumentsList[2] === "service" &&
+      argumentsList[3] === "install" &&
+      argumentsList[4] === "--state-root"
+    ) {
+      const schedule = installUpdateServiceSchedule({ stateRoot: argumentsList[5] ?? "" });
+      console.log(JSON.stringify(schedule));
+      if (!schedule.installed) process.exitCode = 1;
+      return;
+    }
+    const updateInvocation = argumentsList[0] === "update" ||
+      (argumentsList[0] === "trajectory" && argumentsList[1] === "update");
+    if (updateInvocation) {
+      console.log(JSON.stringify(await runUpdateCli(argumentsList)));
+      return;
+    }
     command = parseCollectorCommand(argumentsList);
     const parsedCommand = command;
     if (parsedCommand.command === "telemetry") {

@@ -99,7 +99,7 @@ export const renderCollectWatchPlist = (input: Readonly<{
   entryScriptPath: string;
   executablePath: string;
   paths: CollectServicePaths;
-  telemetryEnvironmentVariables?: Readonly<Record<"ATM_POSTHOG_API_KEY" | "ATM_POSTHOG_HOST", string>>;
+  telemetryEnvironmentVariables?: Readonly<Record<string, string>>;
   workingDirectory: string;
 }>): string => {
   const config = serviceConfigSchema.parse(input.config);
