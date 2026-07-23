@@ -4,11 +4,10 @@ import { basename, dirname, join, relative } from "node:path";
 import { z } from "zod";
 
 import {
-  boundedRedactedString,
   extractHarnessSourceAttestation,
   harnessCollectedStatus,
   harnessTraceDocumentSchema,
-  redactHarnessDetail,
+  sanitizeHarnessPayload,
   type HarnessAdapter,
   type HarnessEventPayload,
   type HarnessSessionInput,
@@ -38,8 +37,6 @@ const payloadSchema = z.object({
 const recordSchema = z.object({ type: z.string(), timestamp: z.string().optional(), payload: payloadSchema.optional() }).passthrough();
 type RolloutRecord = z.infer<typeof recordSchema>;
 type TokenUsage = z.infer<typeof usageSchema>;
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
 
 const parseRecords = (path: string): readonly RolloutRecord[] => {
   const records: RolloutRecord[] = [];
@@ -56,25 +53,9 @@ const parseRecords = (path: string): readonly RolloutRecord[] => {
   return records;
 };
 
-const safeDetail = (value: string): string => redactHarnessDetail(boundedRedactedString(value).text);
-const argumentSummary = (raw: string | undefined): string => {
-  if (raw === undefined || raw.trim() === "") return "";
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (!isRecord(value)) return "";
-    const record = value;
-    for (const key of ["cmd", "command", "file_path", "path", "pattern", "query", "prompt", "url"] as const) {
-      const candidate = record[key];
-      if (typeof candidate === "string" && candidate.trim() !== "") return candidate;
-    }
-    return "";
-  } catch {
-    return "[redacted]";
-  }
-};
-const outputStatus = (output: string | undefined): string => {
+const hasNonzeroExitCode = (output: string | undefined): boolean => {
   const match = output?.match(/process exited with code (\d+)/i);
-  return match?.[1] !== undefined && match[1] !== "0" ? "error" : "ok";
+  return match?.[1] !== undefined && match[1] !== "0";
 };
 const usageSignature = (usage: TokenUsage | undefined): string => usage === undefined ? "" : [
   usage.input_tokens ?? 0, usage.cached_input_tokens ?? 0, usage.output_tokens ?? 0,
@@ -98,22 +79,23 @@ const convertCodexSession = (session: HarnessSessionInput): HarnessTraceDocument
   const toolSourceIds = new Map<string, string>();
   let hasAttestation = false;
   let hasPayload = false;
-  const emit = (kind: string, name: string, detail: string, record?: RolloutRecord, sourceEventId?: string, parentSourceEventId?: string, payload?: HarnessEventPayload): void => {
+  const emit = (kind: string, name: string, record?: RolloutRecord, sourceEventId?: string, parentSourceEventId?: string, payload?: HarnessEventPayload): void => {
     const attestation = record === undefined || sourceEventId === undefined ? undefined : extractHarnessSourceAttestation({
       timestamp: record.timestamp, sourceEventId, parentSourceEventId,
     });
+    const sanitizedPayload = payload === undefined ? undefined : sanitizeHarnessPayload(payload);
     if (attestation !== undefined) hasAttestation = true;
-    if (payload !== undefined) hasPayload = true;
+    if (sanitizedPayload !== undefined) hasPayload = true;
     events.push({
-      kind, name, detail: safeDetail(detail),
+      kind, name,
       ...(attestation === undefined ? {} : { timestamp: attestation.timestamp, sourceEventId: attestation.sourceEventId, ...(attestation.parentSourceEventId === undefined ? {} : { parentSourceEventId: attestation.parentSourceEventId }) }),
-      ...(payload === undefined ? {} : { payload }),
+      ...(sanitizedPayload === undefined ? {} : { payload: sanitizedPayload }),
     });
   };
-  const closeTurn = (): void => { if (turnCount > 0) emit("function_exit", `turn-${turnCount}`, ""); };
+  const closeTurn = (): void => { if (turnCount > 0) emit("function_exit", `turn-${turnCount}`); };
   const meta = metaRecord.payload;
   const sessionId = meta?.id ?? meta?.session_id ?? basename(path, ".jsonl");
-  emit("session_start", sessionId, `codex ${meta?.cli_version ?? "unknown"} cwd=${meta?.cwd ?? "unknown"} originator=${meta?.originator ?? "unknown"}`, metaRecord, `codex:session:${sessionId}`);
+  emit("session_start", sessionId, metaRecord, `codex:session:${sessionId}`);
 
   records.forEach((record, index) => {
     const payload = record.payload;
@@ -125,7 +107,10 @@ const convertCodexSession = (session: HarnessSessionInput): HarnessTraceDocument
     if (record.type === "event_msg" && payload.type === "user_message") {
       closeTurn();
       turnCount += 1;
-      emit("function_enter", `turn-${turnCount}`, payload.message ?? "", record, `codex:user_message:${sessionId}:${index}`);
+      emit("function_enter", `turn-${turnCount}`, record, `codex:user_message:${sessionId}:${index}`, undefined, {
+        role: "user",
+        content: payload.message ?? "",
+      });
       return;
     }
     if (record.type === "event_msg" && payload.type === "token_count") {
@@ -154,7 +139,10 @@ const convertCodexSession = (session: HarnessSessionInput): HarnessTraceDocument
     if (payload.type === "message" && payload.role === "assistant") {
       const text = (payload.content ?? []).filter((block) => block.type === "output_text").map((block) => block.text ?? "").join(" ").trim();
       const source = payload.id === undefined ? `codex:message:${sessionId}:${index}` : `codex:message:${payload.id}`;
-      emit("llm_call", currentModel, text, record, source);
+      emit("llm_call", currentModel, record, source, undefined, {
+        role: "assistant",
+        ...(text.length === 0 ? {} : { content: text }),
+      });
       lastLlmIndex = events.length - 1;
       return;
     }
@@ -162,13 +150,20 @@ const convertCodexSession = (session: HarnessSessionInput): HarnessTraceDocument
       const name = payload.name ?? "function";
       const source = payload.call_id === undefined ? `codex:function_call:${sessionId}:${index}` : `codex:function_call:${payload.call_id}`;
       if (payload.call_id !== undefined) { functionNames.set(payload.call_id, name); toolSourceIds.set(payload.call_id, source); }
-      emit("tool_call", name, argumentSummary(payload.arguments), record, source);
+      emit("tool_call", name, record, source, undefined, {
+        ...(payload.call_id === undefined ? {} : { toolUseId: payload.call_id }),
+        ...(payload.arguments === undefined ? {} : { input: payload.arguments }),
+      });
       return;
     }
     if (payload.type === "function_call_output") {
       const callId = payload.call_id;
       const source = callId === undefined ? `codex:function_call_output:${sessionId}:${index}` : `codex:function_call_output:${callId}`;
-      emit("tool_result", functionNames.get(callId ?? "") ?? "function", outputStatus(payload.output), record, source, callId === undefined ? undefined : toolSourceIds.get(callId));
+      emit("tool_result", functionNames.get(callId ?? "") ?? "function", record, source, callId === undefined ? undefined : toolSourceIds.get(callId), {
+        ...(callId === undefined ? {} : { toolUseId: callId }),
+        isError: hasNonzeroExitCode(payload.output),
+        ...(payload.output === undefined ? {} : { output: payload.output }),
+      });
     }
   });
   closeTurn();

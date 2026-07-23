@@ -72,7 +72,6 @@ export const harnessTraceEventSchema = z
   .object({
     kind: z.string().min(1),
     name: z.string().min(1),
-    detail: z.string(),
     timestamp: atfTimestampSchema.optional(),
     sourceEventId: harnessSourceEventIdSchema.optional(),
     parentSourceEventId: harnessSourceEventIdSchema.optional(),
@@ -203,7 +202,6 @@ export class TrajectoryAdapterError extends Error {
   }
 }
 
-const secretMarkers = ["authorization", "bearer", "api_key", "secret", "token"] as const;
 const credentialPatterns = [
   /\bBearer\s+[A-Za-z0-9._~+/-]{16,}={0,2}/gi,
   /\b(?:authorization|api[_-]?key|secret|password|passwd|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*["']?[A-Za-z0-9._~+/-]{12,}={0,2}/gi,
@@ -218,17 +216,6 @@ const sensitiveKeyMarkers = new Set([
 const sensitiveKeyCompounds = new Set([
   "apikey", "accesstoken", "refreshtoken", "authtoken", "clientsecret", "privatekey", "bearer",
 ]);
-
-export const harnessDetailMaxLength = 240;
-
-export const redactHarnessDetail = (detail: string): string => {
-  const lowered = detail.toLowerCase();
-  if (secretMarkers.some((marker) => lowered.includes(marker))) return "[redacted]";
-  const collapsed = detail.replaceAll(/\s+/g, " ").trim();
-  return collapsed.length <= harnessDetailMaxLength
-    ? collapsed
-    : `${collapsed.slice(0, harnessDetailMaxLength - 1)}…`;
-};
 
 const redactCredentialSpans = (value: string): string => {
   let redacted = value;

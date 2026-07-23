@@ -53,7 +53,8 @@ describe("native Claude Code JSONL adapter", () => {
     const document = claudeCodeAdapter.convertSession({ sessionPath });
     const byKind = (kind: string) => document.events.filter((event) => event.kind === kind);
     expect(document.runtime).toBe("claude-code");
-    expect(byKind("function_enter")[0]?.detail).toBe("Fix bug");
+    expect(byKind("function_enter")[0]?.payload).toMatchObject({ role: "user", content: "Fix bug" });
+    expect(byKind("function_enter")[0]).not.toHaveProperty("detail");
     expect(byKind("llm_call")[0]).toMatchObject({ name: "claude-3", sourceEventId: "claude-code:message:a1", timestamp: timestamp(2) });
     expect(byKind("tool_call")[0]).toMatchObject({ name: "Bash", sourceEventId: "claude-code:tool:tool1", parentSourceEventId: "claude-code:message:a1", timestamp: timestamp(2) });
     expect(byKind("tool_result")[0]).toMatchObject({ sourceEventId: "claude-code:result:tool1", parentSourceEventId: "claude-code:tool:tool1", timestamp: timestamp(3) });

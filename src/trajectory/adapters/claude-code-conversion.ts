@@ -20,7 +20,6 @@ import {
   contentBlocks,
   humanPromptText,
   parseTranscriptRecords,
-  summarizeToolInput,
   toolResultOutput,
 } from "./claude-code-parsing"
 import { createClaudeEventSink, emitClaudeEvent } from "./claude-code-events"
@@ -103,7 +102,6 @@ export const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessT
     sink,
     "session_start",
     sessionId,
-    `claude-code ${first?.version ?? "unknown"} cwd=${first?.cwd ?? "unknown"} branch=${first?.gitBranch ?? "unknown"}`,
     {
       attestation: extractHarnessSourceAttestation({
         ...(first?.timestamp === undefined ? {} : { timestamp: first.timestamp }),
@@ -117,7 +115,7 @@ export const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessT
   const toolNamesByUseId = new Map<string, string>()
   let turnCount = 0
   const closeTurn = () => {
-    if (turnCount > 0) emitClaudeEvent(sink, "function_exit", `turn-${turnCount}`, "")
+    if (turnCount > 0) emitClaudeEvent(sink, "function_exit", `turn-${turnCount}`)
   }
 
   for (const record of conversational) {
@@ -126,7 +124,7 @@ export const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessT
       if (prompt !== undefined) {
         closeTurn()
         turnCount += 1
-        emitClaudeEvent(sink, "function_enter", `turn-${turnCount}`, prompt, {
+        emitClaudeEvent(sink, "function_enter", `turn-${turnCount}`, {
           payload: { role: "user", content: prompt },
         })
         continue
@@ -137,7 +135,7 @@ export const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessT
         const output = toolResultOutput(block.content)
         const parentToolSourceId =
           toolUseId === undefined ? undefined : toolCallSourceEventIdByUseId.get(toolUseId)
-        emitClaudeEvent(sink, "tool_result", toolNamesByUseId.get(toolUseId ?? "") ?? "tool", block.is_error === true ? "error" : "ok", {
+        emitClaudeEvent(sink, "tool_result", toolNamesByUseId.get(toolUseId ?? "") ?? "tool", {
           payload: {
             ...(toolUseId === undefined ? {} : { toolUseId }),
             isError: block.is_error === true,
@@ -178,7 +176,7 @@ export const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessT
             : { cacheWriteTokens: usage.cache_creation_input_tokens }),
         },
       }
-      const llmEvent = emitClaudeEvent(sink, "llm_call", model, (assistantData.textById.get(messageId) ?? "").trim(), {
+      const llmEvent = emitClaudeEvent(sink, "llm_call", model, {
         payload,
         attestation: extractHarnessSourceAttestation({
           ...(record.timestamp === undefined ? {} : { timestamp: record.timestamp }),
@@ -191,7 +189,7 @@ export const convertClaudeCodeSession = (session: HarnessSessionInput): HarnessT
       if (block.type !== "tool_use") continue
       const toolName = block.name ?? "tool"
       if (block.id !== undefined) toolNamesByUseId.set(block.id, toolName)
-      const toolEvent = emitClaudeEvent(sink, "tool_call", toolName, summarizeToolInput(block.input), {
+      const toolEvent = emitClaudeEvent(sink, "tool_call", toolName, {
         payload: {
           ...(block.id === undefined ? {} : { toolUseId: block.id }),
           input: block.input ?? {},

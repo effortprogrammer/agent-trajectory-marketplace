@@ -70,10 +70,12 @@ describe("native Codex rollout adapter", () => {
     ]);
     expect(trace.events[0]).toMatchObject({
       name: "native-1",
-      detail: "codex 1.2.3 cwd=/tmp/project originator=codex_cli",
       timestamp: "2026-07-23T01:00:00.000Z",
       sourceEventId: "codex:session:native-1",
     });
+    expect(trace.events[0]).not.toHaveProperty("detail");
+    expect(trace.events[1]?.payload).toMatchObject({ role: "user", content: "Fix auth" });
+    expect(trace.events[2]?.payload).toMatchObject({ role: "assistant", content: "On it" });
     expect(trace.events[2]?.payload?.usage).toEqual({
       model: "gpt-5.4",
       inputTokens: 8,
@@ -81,11 +83,15 @@ describe("native Codex rollout adapter", () => {
       outputTokens: 7,
       reasoningOutputTokens: 2,
     });
-    expect(trace.events[3]).toMatchObject({ name: "exec_command", detail: "rg auth src", sourceEventId: "codex:function_call:call-1" });
+    expect(trace.events[3]).toMatchObject({
+      name: "exec_command",
+      sourceEventId: "codex:function_call:call-1",
+      payload: { toolUseId: "call-1", input: '{"cmd":"rg auth src","token":"[redacted]"}' },
+    });
     expect(trace.events[4]).toMatchObject({
       name: "exec_command",
-      detail: "ok",
       parentSourceEventId: "codex:function_call:call-1",
+      payload: { toolUseId: "call-1", isError: false, output: "Process exited with code 0" },
     });
     expect(JSON.stringify(trace)).not.toContain("sk-abcdefghijklmnopqrstuvwxyz");
   });
@@ -110,7 +116,7 @@ describe("native Codex rollout adapter", () => {
     expect(refs[1]?.projectDir).toBe(join("2026", "07", "23"));
   });
 
-  test("skips malformed JSONL records and redacts malformed function arguments", () => {
+  test("skips malformed JSONL records and redacts malformed function arguments in payloads", () => {
     const root = mkdtempSync(join(tmpdir(), "atm-codex-malformed-"));
     const path = join(root, "rollout-malformed.jsonl");
     const lines = [
@@ -133,8 +139,8 @@ describe("native Codex rollout adapter", () => {
       "tool_result",
       "function_exit",
     ]);
-    expect(trace.events[2]?.detail).toBe("[redacted]");
-    expect(trace.events[3]?.detail).toBe("error");
+    expect(trace.events[2]?.payload).toMatchObject({ toolUseId: "bad" });
+    expect(trace.events[3]?.payload).toMatchObject({ isError: true });
     expect(JSON.stringify(trace)).not.toContain("abcdefghijklmnopqrstuvwxyz");
     expect(() => codexAdapter.convertSession({ sessionPath: join(root, "not-a-rollout.json") })).toThrow("missing_session");
     const genericPath = join(root, "generic.jsonl");

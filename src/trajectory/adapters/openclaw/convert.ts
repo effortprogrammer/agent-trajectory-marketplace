@@ -10,7 +10,7 @@ import {
   type HarnessTraceEvent,
   harnessCollectedStatus,
   harnessTraceDocumentSchema,
-  redactHarnessDetail,
+  sanitizeHarnessPayload,
   TrajectoryAdapterError,
 } from "../contract";
 import { parseTranscriptLines } from "./parse";
@@ -19,7 +19,6 @@ import {
   lineAttestation,
   lineSourceId,
   namespacedId,
-  summarizeToolArguments,
   textFromContent,
 } from "./source";
 import type { TranscriptLine } from "./schema";
@@ -52,16 +51,15 @@ export const convertOpenclawSession = (session: HarnessSessionInput): HarnessTra
   const emit = (
     kind: string,
     name: string,
-    detail: string,
     attestation?: HarnessSourceAttestation,
     payload?: HarnessEventPayload,
   ): HarnessTraceEvent => {
-    if (payload !== undefined) hasPayload = true;
+    const sanitizedPayload = payload === undefined ? undefined : sanitizeHarnessPayload(payload);
+    if (sanitizedPayload !== undefined) hasPayload = true;
     const source = extractHarnessSourceAttestation(attestation);
     const event: HarnessTraceEvent = {
       kind,
       name,
-      detail: redactHarnessDetail(detail),
       ...(source === undefined
         ? {}
         : {
@@ -71,7 +69,7 @@ export const convertOpenclawSession = (session: HarnessSessionInput): HarnessTra
               ? {}
               : { parentSourceEventId: source.parentSourceEventId }),
           }),
-      ...(payload === undefined ? {} : { payload }),
+      ...(sanitizedPayload === undefined ? {} : { payload: sanitizedPayload }),
     };
     events.push(event);
     if (source !== undefined) {
@@ -91,13 +89,12 @@ export const convertOpenclawSession = (session: HarnessSessionInput): HarnessTra
   emit(
     "session_start",
     sessionId,
-    `openclaw transcript-v${header?.version ?? 0} cwd=${header?.cwd ?? "unknown"}`,
     lineAttestation(header ?? {}, lineSourceId(header ?? {}), undefined),
   );
 
   let turnCount = 0;
   const closeTurn = (): void => {
-    if (turnCount > 0) emit("function_exit", `turn-${turnCount}`, "");
+    if (turnCount > 0) emit("function_exit", `turn-${turnCount}`);
   };
 
   for (const line of messageLines) {
@@ -110,8 +107,8 @@ export const convertOpenclawSession = (session: HarnessSessionInput): HarnessTra
       emit(
         "function_enter",
         `turn-${turnCount}`,
-        textFromContent(message.content),
         lineAttestation(line, lineSourceId(line), emittedParentId(line)),
+        { role: "user", content: textFromContent(message.content) },
       );
       continue;
     }
@@ -132,9 +129,12 @@ export const convertOpenclawSession = (session: HarnessSessionInput): HarnessTra
       const llmEvent = emit(
         "llm_call",
         message.model ?? runtime,
-        textFromContent(message.content),
         lineAttestation(line, lineSourceId(line), emittedParentId(line)),
-        payload,
+        {
+          role: "assistant",
+          content: textFromContent(message.content),
+          ...(payload?.usage === undefined ? {} : { usage: payload.usage }),
+        },
       );
       if (Array.isArray(message.content)) {
         for (const block of message.content) {
@@ -144,8 +144,11 @@ export const convertOpenclawSession = (session: HarnessSessionInput): HarnessTra
           const toolEvent = emit(
             "tool_call",
             toolName,
-            summarizeToolArguments(block.arguments),
             lineAttestation(line, composedSourceId(line, block.id), llmEvent.sourceEventId),
+            {
+              ...(block.id === undefined ? {} : { toolUseId: block.id }),
+              ...(block.arguments === undefined ? {} : { input: block.arguments }),
+            },
           );
           if (block.id !== undefined && toolEvent.sourceEventId !== undefined) {
             toolSourceIdsByCallId.set(block.id, toolEvent.sourceEventId);
@@ -160,24 +163,29 @@ export const convertOpenclawSession = (session: HarnessSessionInput): HarnessTra
       emit(
         "tool_result",
         toolName,
-        message.isError === true ? "error" : "ok",
         lineAttestation(line, lineSourceId(line), toolSourceIdsByCallId.get(callId)),
+        {
+          ...(message.toolCallId === undefined ? {} : { toolUseId: message.toolCallId }),
+          isError: message.isError === true,
+          output: textFromContent(message.content),
+        },
       );
       continue;
     }
     if (message.role === "bashExecution") {
+      const bashPayload = message.command === undefined ? undefined : { input: { command: message.command } };
       const bashCall = emit(
         "tool_call",
         "bash",
-        message.command ?? "",
         lineAttestation(line, composedSourceId(line, "call"), emittedParentId(line)),
+        bashPayload,
       );
       const failed = message.cancelled === true || (message.exitCode ?? 0) !== 0;
       emit(
         "tool_result",
         "bash",
-        failed ? "error" : "ok",
         lineAttestation(line, composedSourceId(line, "result"), bashCall.sourceEventId),
+        { isError: failed },
       );
     }
   }

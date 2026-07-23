@@ -2,7 +2,6 @@ import {
   type HarnessEventPayload,
   type HarnessSourceAttestation,
   type HarnessTraceEvent,
-  redactHarnessDetail,
   sanitizeHarnessPayload,
 } from "./contract"
 
@@ -27,7 +26,6 @@ export const emitClaudeEvent = (
   sink: ClaudeEventSink,
   kind: string,
   name: string,
-  detail: string,
   options?: ClaudeEmitOptions,
 ): HarnessTraceEvent => {
   const sanitized =
@@ -38,7 +36,6 @@ export const emitClaudeEvent = (
   const event: HarnessTraceEvent = {
     kind,
     name,
-    detail: redactHarnessDetail(detail),
     ...(sanitized === undefined ? {} : { payload: sanitized }),
     ...(attestation === undefined
       ? {}

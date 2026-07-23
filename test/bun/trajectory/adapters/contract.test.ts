@@ -6,12 +6,11 @@ import {
   harnessPayloadPolicy,
   harnessTraceDocumentSchema,
   harnessTraceEventSchema,
-  redactHarnessDetail,
   sanitizeHarnessPayload,
 } from "../../../../src/trajectory/adapters/contract";
 
 const validTimestamp = "2026-07-18T12:34:56.000Z";
-const minimalEvent = { kind: "function_enter", name: "turn-1", detail: "Fix the bug" };
+const minimalEvent = { kind: "function_enter", name: "turn-1" };
 
 describe("harnessTraceDocumentSchema ATF v2", () => {
   test("accepts a source-attested payload event when the ATF version is 2", () => {
@@ -25,7 +24,6 @@ describe("harnessTraceDocumentSchema ATF v2", () => {
         {
           kind: "tool_call",
           name: "terminal",
-          detail: "rg login src/",
           timestamp: validTimestamp,
           sourceEventId: "evt-1",
           payload: { toolUseId: "call-1", input: { command: "rg login src/" } },
@@ -143,6 +141,17 @@ describe("harnessTraceDocumentSchema ATF v2", () => {
 });
 
 describe("harnessTraceEventSchema source attestation", () => {
+  test("rejects the retired detail field", () => {
+    // Given: an event encoded with the retired preview field.
+    const event = { ...minimalEvent, detail: "legacy preview" };
+
+    // When: it crosses the ATF event boundary.
+    const result = harnessTraceEventSchema.safeParse(event);
+
+    // Then: ATF rejects the duplicate representation rather than persisting it.
+    expect(result.success).toBe(false);
+  });
+
   test("rejects malformed and partial source attestation groups", () => {
     // Given: malformed or incomplete variants that cannot prove native provenance.
     const invalidEvents = [
@@ -288,18 +297,4 @@ describe("collector redaction and payload bounds", () => {
     );
   });
 
-  test("redacts sensitive summaries and caps harmless summaries", () => {
-    // Given: one sensitive detail and one harmless oversized detail.
-    const secret = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz";
-    const harmless = `run ${"x".repeat(300)}`;
-
-    // When: both summary strings cross the public detail lane.
-    const redacted = redactHarnessDetail(secret);
-    const bounded = redactHarnessDetail(harmless);
-
-    // Then: the secret disappears and the harmless detail remains bounded.
-    expect(redacted).toBe("[redacted]");
-    expect(bounded.length).toBe(240);
-    expect(bounded.endsWith("…")).toBe(true);
-  });
 });

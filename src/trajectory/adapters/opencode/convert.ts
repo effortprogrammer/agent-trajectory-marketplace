@@ -7,7 +7,6 @@ import {
   type HarnessTraceEvent,
   harnessCollectedStatus,
   harnessTraceDocumentSchema,
-  redactHarnessDetail,
   sanitizeHarnessPayload,
   TrajectoryAdapterError,
 } from "../contract";
@@ -24,8 +23,6 @@ import {
   collectTextParts,
   readToolPart,
   safeJsonParse,
-  summarizeToolInput,
-  toolStatusDetail,
 } from "./parts";
 import { messageDataSchema, type OpenCodeTokenSet } from "./schema";
 
@@ -34,7 +31,6 @@ export const opencodeRuntime = "opencode";
 type EventInput = Readonly<{
   kind: string;
   name: string;
-  detail: string;
   attestation?: HarnessSourceAttestation;
   payload?: HarnessEventPayload;
 }>;
@@ -93,7 +89,6 @@ export const convertOpenCodeSession = (session: HarnessSessionInput): HarnessTra
       const event: HarnessTraceEvent = {
         kind: input.kind,
         name: input.name,
-        detail: redactHarnessDetail(input.detail),
         ...(attestation === undefined ? {} : attestation),
         ...(payload === undefined ? {} : { payload }),
       };
@@ -104,7 +99,6 @@ export const convertOpenCodeSession = (session: HarnessSessionInput): HarnessTra
     emit({
       kind: "session_start",
       name: session.sessionId,
-      detail: `opencode session=${session.sessionId}`,
       ...(sessionTimestamp === undefined ? {} : {
         attestation: {
           timestamp: sessionTimestamp,
@@ -115,7 +109,7 @@ export const convertOpenCodeSession = (session: HarnessSessionInput): HarnessTra
 
     let turnCount = 0;
     const closeTurn = (): void => {
-      if (turnCount > 0) emit({ kind: "function_exit", name: `turn-${turnCount}`, detail: "" });
+      if (turnCount > 0) emit({ kind: "function_exit", name: `turn-${turnCount}` });
     };
     for (const message of messages) {
       const parsed = messageDataSchema.safeParse(safeJsonParse(message.data));
@@ -130,7 +124,6 @@ export const convertOpenCodeSession = (session: HarnessSessionInput): HarnessTra
         emit({
           kind: "function_enter",
           name: `turn-${turnCount}`,
-          detail: prompt,
           payload: { role: "user", content: prompt },
           ...(timestamp === undefined ? {} : {
             attestation: { timestamp, sourceEventId: `opencode:message:${message.id}` },
@@ -146,10 +139,9 @@ export const convertOpenCodeSession = (session: HarnessSessionInput): HarnessTra
       );
       const content = collectTextParts(parts);
       const llmEvent = emit({
-        kind: "llm_call",
-        name: model,
-        detail: content,
-        payload: {
+          kind: "llm_call",
+          name: model,
+          payload: {
           role: "assistant",
           ...(content.length === 0 ? {} : { content }),
           ...(usage === undefined ? {} : { usage }),
@@ -166,7 +158,6 @@ export const convertOpenCodeSession = (session: HarnessSessionInput): HarnessTra
         const toolCall = emit({
           kind: "tool_call",
           name: tool.tool,
-          detail: summarizeToolInput(tool.state.input),
           payload: {
             toolUseId: part.id,
             ...(tool.state.input === undefined ? {} : { input: tool.state.input }),
@@ -184,7 +175,6 @@ export const convertOpenCodeSession = (session: HarnessSessionInput): HarnessTra
         emit({
           kind: "tool_result",
           name: tool.tool,
-          detail: toolStatusDetail(tool.state.status),
           payload: {
             toolUseId: part.id,
             isError: tool.state.status === "error",

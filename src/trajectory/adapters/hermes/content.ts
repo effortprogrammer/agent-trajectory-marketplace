@@ -15,42 +15,6 @@ export const hermesToolCallSchema = z
   })
   .passthrough()
 
-const hermesToolArgumentsSchema = z.record(z.string(), z.unknown())
-
-const toolArgumentSummaryKeys = [
-  "cmd",
-  "command",
-  "file_path",
-  "path",
-  "pattern",
-  "query",
-  "prompt",
-  "url",
-] as const
-
-export const summarizeArgumentsJson = (rawArguments: string | undefined): string => {
-  if (rawArguments === undefined || rawArguments.trim().length === 0) {
-    return ""
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(rawArguments)
-  } catch {
-    return rawArguments
-  }
-  const record = hermesToolArgumentsSchema.safeParse(parsed)
-  if (!record.success) {
-    return rawArguments
-  }
-  for (const key of toolArgumentSummaryKeys) {
-    const value = record.data[key]
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value
-    }
-  }
-  return rawArguments
-}
-
 export const decodeHermesContent = (content: string | null): string => {
   if (content === null) {
     return ""

@@ -87,15 +87,17 @@ test("converts the native OpenClaw envelope and message semantics", () => {
     sourceEventId: `openclaw:${sessionId}`,
   });
   expect(trace.events[3]).toMatchObject({
-    detail: "bun test",
     sourceEventId: "openclaw:m2:tc1",
     parentSourceEventId: "openclaw:m2",
+    payload: { toolUseId: "tc1", input: { command: "bun test" } },
   });
   expect(trace.events[4]).toMatchObject({
-    detail: "ok",
     sourceEventId: "openclaw:m3",
     parentSourceEventId: "openclaw:m2:tc1",
+    payload: { toolUseId: "tc1", isError: false, output: "tests passed" },
   });
+  expect(trace.events[1]?.payload).toMatchObject({ role: "user", content: "Ship the feature" });
+  expect(trace.events[2]).not.toHaveProperty("detail");
   expect(trace.events[2]?.payload?.usage).toEqual({
     model: "claude-opus-4-8",
     inputTokens: 1660,
@@ -192,14 +194,13 @@ test("converts bash execution into paired tool events and omits secrets", () => 
     "function_exit:turn-1",
   ]);
   expect(trace.events[2]).toMatchObject({
-    detail: "[redacted]",
     sourceEventId: "openclaw:m2:call",
     parentSourceEventId: "openclaw:m1",
   });
   expect(trace.events[3]).toMatchObject({
-    detail: "error",
     sourceEventId: "openclaw:m2:result",
     parentSourceEventId: "openclaw:m2:call",
+    payload: { isError: true },
   });
   expect(JSON.stringify(trace)).not.toContain("sk-abcdefghijklmnop");
 });

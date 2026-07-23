@@ -34,17 +34,6 @@ export const lineAttestation = (
   });
 };
 
-const summaryKeys = ["cmd", "command", "file_path", "path", "pattern", "query", "prompt", "url"] as const;
-
-export const summarizeToolArguments = (input: Readonly<Record<string, unknown>> | undefined): string => {
-  if (input === undefined) return "";
-  for (const key of summaryKeys) {
-    const value = input[key];
-    if (typeof value === "string" && value.trim().length > 0) return value;
-  }
-  return JSON.stringify(input);
-};
-
 export const textFromContent = (content: string | readonly ContentBlock[] | undefined): string => {
   if (content === undefined) return "";
   if (typeof content === "string") return content;

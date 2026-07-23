@@ -7,12 +7,12 @@ import {
   type HarnessTraceEvent,
   harnessCollectedStatus,
   harnessTraceDocumentSchema,
-  redactHarnessDetail,
+  sanitizeHarnessPayload,
   TrajectoryAdapterError,
 } from "../contract"
 
 import { epochToIso, readHermesSession, type HermesMessageRow } from "./database"
-import { decodeHermesContent, hermesToolCallSchema, summarizeArgumentsJson } from "./content"
+import { decodeHermesContent, hermesToolCallSchema } from "./content"
 
 export const hermesRuntime = "hermes"
 
@@ -39,11 +39,11 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
   const emit = (
     kind: string,
     name: string,
-    detail: string,
     attestation?: HarnessSourceAttestation,
     payload?: HarnessEventPayload,
   ): HarnessTraceEvent => {
-    if (payload !== undefined) {
+    const sanitizedPayload = payload === undefined ? undefined : sanitizeHarnessPayload(payload)
+    if (sanitizedPayload !== undefined) {
       hasPayload = true
     }
     const extracted = extractHarnessSourceAttestation(attestation)
@@ -52,19 +52,17 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
         ? {
             kind,
             name,
-            detail: redactHarnessDetail(detail),
-            ...(payload === undefined ? {} : { payload }),
+            ...(sanitizedPayload === undefined ? {} : { payload: sanitizedPayload }),
           }
         : {
             kind,
             name,
-            detail: redactHarnessDetail(detail),
             timestamp: extracted.timestamp,
             sourceEventId: extracted.sourceEventId,
             ...(extracted.parentSourceEventId === undefined
               ? {}
               : { parentSourceEventId: extracted.parentSourceEventId }),
-            ...(payload === undefined ? {} : { payload }),
+            ...(sanitizedPayload === undefined ? {} : { payload: sanitizedPayload }),
           }
     if (extracted !== undefined) {
       hasAttestation = true
@@ -119,7 +117,6 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
   emit(
     "session_start",
     session.sessionId,
-    `hermes model=${model} cwd=${sessionRow.cwd ?? "unknown"}`,
     undefined,
     hasAnyUsageField ? { usage: aggregateUsage } : undefined,
   )
@@ -128,7 +125,7 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
   const toolNamesByCallId = new Map<string, string>()
   const closeTurn = () => {
     if (turnCount > 0) {
-      emit("function_exit", `turn-${turnCount}`, "")
+      emit("function_exit", `turn-${turnCount}`)
     }
   }
 
@@ -139,8 +136,8 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
       emit(
         "function_enter",
         `turn-${turnCount}`,
-        decodeHermesContent(row.content),
         rowAttestation(row, `${namespace}:msg:${row.id}`),
+        { role: "user", content: decodeHermesContent(row.content) },
       )
       continue
     }
@@ -149,8 +146,8 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
       const llmEvent = emit(
         "llm_call",
         model,
-        decodeHermesContent(row.content),
         rowAttestation(row, `${namespace}:msg:${row.id}`),
+        { role: "assistant", content: decodeHermesContent(row.content) },
       )
       if (row.tool_calls !== null) {
         let parsedToolCalls: unknown
@@ -175,10 +172,13 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
             const toolEvent = emit(
               "tool_call",
               toolName,
-              summarizeArgumentsJson(parsed.data.function?.arguments),
               toolCallSourceEventId === undefined
                 ? undefined
                 : rowAttestation(row, toolCallSourceEventId, llmEvent.sourceEventId),
+              {
+                ...(nativeToolCallId === undefined ? {} : { toolUseId: nativeToolCallId }),
+                ...(parsed.data.function?.arguments === undefined ? {} : { input: parsed.data.function.arguments }),
+              },
             )
             if (nativeToolCallId !== undefined && toolEvent.sourceEventId !== undefined) {
               toolCallSourceByNativeId.set(nativeToolCallId, toolEvent.sourceEventId)
@@ -195,8 +195,11 @@ const convertHermesSession = (session: HarnessSessionInput): HarnessTraceDocumen
       emit(
         "tool_result",
         toolName,
-        decodeHermesContent(row.content),
         rowAttestation(row, `${namespace}:msg:${row.id}`, parentSourceEventId),
+        {
+          ...(row.tool_call_id === null ? {} : { toolUseId: row.tool_call_id }),
+          output: decodeHermesContent(row.content),
+        },
       )
     }
     // system rows (prompt scaffolding) are skipped on purpose.

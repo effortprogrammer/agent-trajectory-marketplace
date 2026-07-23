@@ -182,16 +182,17 @@ describe("Hermes native SQLite adapter", () => {
       reasoningOutputTokens: 13,
     });
     expect(trace.events[3]).toMatchObject({
-      detail: "bun test",
       sourceEventId: `hermes:${sessionId}:tcall:call-native-1`,
       parentSourceEventId: `hermes:${sessionId}:msg:3`,
+      payload: { toolUseId: "call-native-1", input: '{"command":"bun test"}' },
     });
     expect(trace.events[4]).toMatchObject({
-      detail: "tests passed",
       sourceEventId: `hermes:${sessionId}:msg:4`,
       parentSourceEventId: `hermes:${sessionId}:tcall:call-native-1`,
+      payload: { toolUseId: "call-native-1", output: "tests passed" },
     });
-    expect(trace.events[5]?.detail).toBe("complete");
+    expect(trace.events[5]?.payload).toMatchObject({ role: "assistant", content: "complete" });
+    expect(trace.events[0]).not.toHaveProperty("detail");
     expect(JSON.stringify(trace)).not.toContain("private system prompt");
     expect(JSON.stringify(trace)).not.toContain("rewound");
   });
@@ -207,7 +208,6 @@ describe("Hermes native SQLite adapter", () => {
     expect(trace.events[0]).toMatchObject({
       kind: "session_start",
       name: sessionId,
-      detail: "hermes model=hermes cwd=unknown",
     });
     expect(trace.events[0]?.payload).toBeUndefined();
     expect(trace.events.filter(({ kind }) => kind === "llm_call").map(({ name }) => name)).toEqual([

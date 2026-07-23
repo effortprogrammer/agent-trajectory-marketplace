@@ -102,6 +102,7 @@ describe("OpenCode native SQLite adapter", () => {
       "function_exit:turn-1",
     ]);
     expect(trace.events[1]?.payload).toMatchObject({ role: "user", content: "Inspect auth" });
+    expect(trace.events[1]).not.toHaveProperty("detail");
     expect(trace.events[2]?.payload).toMatchObject({
       role: "assistant",
       content: "Found it",

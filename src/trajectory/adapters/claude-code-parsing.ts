@@ -6,30 +6,6 @@ import {
   transcriptRecordSchema,
 } from "./claude-code-schema"
 
-const toolInputSummaryKeys = [
-  "command",
-  "file_path",
-  "path",
-  "description",
-  "prompt",
-  "query",
-  "pattern",
-  "url",
-] as const
-
-export const summarizeToolInput = (input: Readonly<Record<string, unknown>> | undefined): string => {
-  if (input === undefined) {
-    return ""
-  }
-  for (const key of toolInputSummaryKeys) {
-    const value = input[key]
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value
-    }
-  }
-  return JSON.stringify(input)
-}
-
 export const contentBlocks = (record: TranscriptRecord): readonly ContentBlock[] => {
   const content = record.message?.content
   return Array.isArray(content) ? content : []
