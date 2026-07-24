@@ -79,12 +79,29 @@ const nativeFixtures = (root: string): readonly NativeFixture[] => {
   opencode.query("INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)").run("opencode-text", "opencode-user", "opencode-session", 1_782_903_600_000, 1_782_903_600_000, JSON.stringify({ type: "text", text: "inspect" }));
   opencode.close();
 
+  const piFamilyFixtures: NativeFixture[] = [
+    { runtime: "oh-my-pi", configDir: ".omp" },
+    { runtime: "senpi", configDir: ".senpi" },
+    { runtime: "gajae-code", configDir: ".gjc" },
+  ].map(({ runtime, configDir }) => {
+    const source = join(root, configDir, "agent", "sessions");
+    const scopeDir = join(source, "-tmp-project");
+    mkdirSync(scopeDir, { recursive: true });
+    writeJsonl(join(scopeDir, `${runtime}-session.jsonl`), [
+      { type: "session", version: 3, id: `${runtime}-session`, timestamp: "2026-07-01T13:00:00.000Z", cwd: "/tmp" },
+      { type: "message", id: "u1", parentId: null, timestamp: "2026-07-01T13:00:01.000Z", message: { role: "user", content: "inspect" } },
+      { type: "message", id: "a1", parentId: "u1", timestamp: "2026-07-01T13:01:00.000Z", message: { role: "assistant", model: `${runtime}-test`, content: [{ type: "text", text: "done" }] } },
+    ]);
+    return { runtime, sessionId: `${runtime}-session`, sourceDir: source };
+  });
+
   return [
     { runtime: "claude-code", sessionId: "claude-session", sourceDir: claudeSource },
     { runtime: "codex", sessionId: "rollout-codex-session", sourceDir: join(root, "codex") },
     { runtime: "hermes", sessionId: "hermes-session", sourceDir: hermesSource },
     { runtime: "openclaw", sessionId: "openclaw-session", sourceDir: openclawSource },
     { runtime: "opencode", sessionId: "opencode-session", sourceDir: opencodeSource },
+    ...piFamilyFixtures,
   ];
 };
 
@@ -106,9 +123,11 @@ describe("native collector facade", () => {
       return { exported, listed };
     });
 
-    // Then: all five summaries contain native metadata but no trace body.
-    expect(listCollectRuntimes().map(({ runtime }) => runtime)).toEqual(["claude-code", "codex", "hermes", "openclaw", "opencode"]);
-    expect(results.map(({ listed }) => listed.sessionCount)).toEqual([1, 1, 1, 1, 1]);
+    // Then: every runtime summary contains native metadata but no trace body.
+    expect(listCollectRuntimes().map(({ runtime }) => runtime)).toEqual([
+      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "senpi",
+    ]);
+    expect(results.map(({ listed }) => listed.sessionCount)).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
     for (const { exported } of results) {
       expect(exported.status).toBe("collected");
       expect(exported.eventCount).toBeGreaterThan(0);

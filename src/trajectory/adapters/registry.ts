@@ -4,6 +4,7 @@ import { codexAdapter } from "./codex";
 import { hermesAdapter } from "./hermes";
 import { openclawAdapter } from "./openclaw";
 import { opencodeAdapter } from "./opencode";
+import { gajaeCodeAdapter, ohMyPiAdapter, senpiAdapter } from "./pi-family";
 
 const builtInAdapters: readonly HarnessAdapter[] = [
   claudeCodeAdapter,
@@ -11,6 +12,11 @@ const builtInAdapters: readonly HarnessAdapter[] = [
   hermesAdapter,
   openclawAdapter,
   opencodeAdapter,
+  // pi-family: three pi-mono-lineage forks sharing one session parser but
+  // registered as distinct runtimes so traces attribute the exact tool.
+  ohMyPiAdapter,
+  senpiAdapter,
+  gajaeCodeAdapter,
 ];
 
 const adaptersByRuntime = new Map(builtInAdapters.map((adapter) => [adapter.runtime, adapter]));

@@ -71,11 +71,26 @@ const writeAllRuntimeFixtures = (home: string, xdgDataHome: string): void => {
   opencode.query("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run("message-user", "opencode-native", 1_780_000_000_000, 1_780_000_000_000, JSON.stringify({ role: "user" }));
   opencode.query("INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)").run("part-user", "message-user", "opencode-native", 1_780_000_000_000, 1_780_000_000_000, JSON.stringify({ type: "text", text: "opencode prompt" }));
   opencode.close();
+
+  for (const [configDir, sessionId] of [
+    [".omp", "oh-my-pi-native"],
+    [".senpi", "senpi-native"],
+    [".gjc", "gajae-code-native"],
+  ] as const) {
+    const scopeDir = join(home, configDir, "agent", "sessions", "-repo");
+    mkdirSync(scopeDir, { recursive: true });
+    const path = join(scopeDir, `${sessionId}.jsonl`);
+    writeFileSync(path, [
+      JSON.stringify({ type: "session", version: 3, id: sessionId, timestamp: "2026-07-01T00:00:00.000Z", cwd: "/repo" }),
+      JSON.stringify({ type: "message", id: "m1", parentId: null, timestamp: "2026-07-01T00:00:01.000Z", message: { role: "user", content: `${sessionId} prompt` } }),
+    ].join("\n"), "utf8");
+    utimesSync(path, new Date("2026-07-01T00:00:00.000Z"), new Date("2026-07-01T00:00:00.000Z"));
+  }
 };
 
 describe("native multi-runtime collect watch", () => {
   test("collects every registered native runtime in one sweep", () => {
-    // Given: native JSONL and SQLite stores exist at isolated default paths for all five runtimes.
+    // Given: native JSONL and SQLite stores exist at isolated default paths for all registered runtimes.
     const home = temporaryRoot();
     const xdgDataHome = temporaryRoot();
     const outDir = temporaryRoot();
@@ -88,17 +103,22 @@ describe("native multi-runtime collect watch", () => {
       {
         "claude-code": join(home, ".claude", "projects"),
         codex: join(home, ".codex", "sessions"),
+        "gajae-code": join(home, ".gjc", "agent", "sessions"),
         hermes: join(home, ".hermes"),
+        "oh-my-pi": join(home, ".omp", "agent", "sessions"),
         openclaw: join(home, ".openclaw"),
         opencode: join(xdgDataHome, "opencode"),
+        senpi: join(home, ".senpi", "agent", "sessions"),
       },
     );
 
     // Then: each runtime exports its native session with valid Bun collector metadata.
-    expect(resolveCollectWatchRuntimes([])).toEqual(["claude-code", "codex", "hermes", "openclaw", "opencode"]);
-    expect(summary).toMatchObject({ exported: 5, failed: 0, missingSources: [] });
+    expect(resolveCollectWatchRuntimes([])).toEqual([
+      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "senpi",
+    ]);
+    expect(summary).toMatchObject({ exported: 8, failed: 0, missingSources: [] });
     expect(summary.exportedSessions.map(({ runtime }) => runtime).sort()).toEqual([
-      "claude-code", "codex", "hermes", "openclaw", "opencode",
+      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "senpi",
     ]);
     for (const exported of summary.exportedSessions) {
       const trace = JSON.parse(readFileSync(exported.exportPath, "utf8"));
