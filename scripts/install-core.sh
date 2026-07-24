@@ -216,6 +216,10 @@ atm_install_services() {
 atm_restore_legacy_service() {
   local legacy="$1"
   if [ -f "$legacy/dist/collector.js" ]; then
+    # The failed migration may have left its own service file behind; service
+    # install refuses to replace a differing file, so clear it first or the
+    # restore would silently strand a service pointing at the removed root.
+    (cd "$legacy" && bun dist/collector.js trajectory collect service uninstall >/dev/null 2>&1) || true
     (cd "$legacy" && bun dist/collector.js trajectory collect service install --out "$legacy/collected" >/dev/null 2>&1) || true
   fi
 }

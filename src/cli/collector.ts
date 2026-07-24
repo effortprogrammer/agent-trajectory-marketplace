@@ -218,7 +218,7 @@ export const runCollectorCli = (argumentsList: readonly string[]): CollectorCliR
     case "service": {
       switch (command.verb) {
         case "install": {
-          const requested = command.runtimes ?? [];
+          const requested = [...new Set(command.runtimes ?? [])];
           // Validates explicit runtime names; an empty list stays empty so the
           // service follows the adapter registry across updates instead of
           // pinning the set registered at install time.
@@ -228,7 +228,7 @@ export const runCollectorCli = (argumentsList: readonly string[]): CollectorCliR
             config: {
               ...sweep,
               intervalSeconds: command.intervalSeconds,
-              runtimes: [...requested],
+              runtimes: requested,
             },
             dryRun: command.dryRun,
           });
