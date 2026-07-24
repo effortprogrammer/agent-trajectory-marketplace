@@ -119,6 +119,60 @@ describe("install state persistence", () => {
     expect(readdirSync(root).filter((name) => name.includes(".tmp-"))).toEqual([]);
   });
 
+  test("reads a legacy full-registry runtime snapshot as all-runtimes", () => {
+    const root = temporaryRoot();
+    const paths = deriveInstallPaths(root, "1.2.3");
+    writeFileSync(
+      paths.stateFile,
+      JSON.stringify({
+        schemaVersion: 1,
+        installRoot: root,
+        outputDir: join(root, "collected"),
+        service: {
+          runtimes: ["claude-code", "codex", "hermes", "openclaw", "opencode"],
+          intervalSeconds: 30,
+          settleSeconds: 60,
+        },
+      }),
+      "utf8",
+    );
+
+    expect(readInstallState(paths).service.runtimes).toEqual([]);
+  });
+
+  test("preserves deliberate runtime selections and empty all-runtimes state", () => {
+    const root = temporaryRoot();
+    const paths = deriveInstallPaths(root, "1.2.3");
+    const base = stateFixture(root);
+    const deliberate: InstallState = {
+      ...base,
+      service: { ...base.service, sourceDir: undefined, runtimes: ["codex"] },
+    };
+    writeInstallState(paths, deliberate);
+    expect(readInstallState(paths).service.runtimes).toEqual(["codex"]);
+
+    // The legacy snapshot paired with a custom sourceDir was a deliberate
+    // configuration, not an installer default; it must survive as written.
+    const legacyWithSource: InstallState = {
+      ...base,
+      service: {
+        ...base.service,
+        runtimes: ["claude-code", "codex", "hermes", "openclaw", "opencode"],
+      },
+    };
+    writeInstallState(paths, legacyWithSource);
+    expect(readInstallState(paths).service.runtimes).toEqual(
+      legacyWithSource.service.runtimes,
+    );
+
+    const allRuntimes: InstallState = {
+      ...base,
+      service: { ...base.service, sourceDir: undefined, runtimes: [] },
+    };
+    writeInstallState(paths, allRuntimes);
+    expect(readInstallState(paths).service.runtimes).toEqual([]);
+  });
+
   test("leaves complete state after repeated atomic replacements", () => {
     const root = temporaryRoot();
     const paths = deriveInstallPaths(root, "1.2.3");

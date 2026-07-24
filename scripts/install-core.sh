@@ -187,7 +187,7 @@ atm_write_state() {
   local root="$1" output="$2" temporary="$1/install-state.json.tmp"
   bun -e '
     const [root,out]=process.argv.slice(1);
-    const state={schemaVersion:1,installRoot:root,outputDir:out,service:{runtimes:["claude-code","codex","hermes","openclaw","opencode"],intervalSeconds:30,settleSeconds:60}};
+    const state={schemaVersion:1,installRoot:root,outputDir:out,service:{runtimes:[],intervalSeconds:30,settleSeconds:60}};
     process.stdout.write(`${JSON.stringify(state,null,2)}\n`);
   ' "$root" "$output" >"$temporary"
   chmod 600 "$temporary"

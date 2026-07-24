@@ -83,6 +83,36 @@ describe("platform update service handover", () => {
 		expect(readFileSync(unitPath, "utf8")).toContain(`${state.installRoot}/current/dist/collector.js`);
 	});
 
+	test("rewrites an all-runtimes service without pinning runtime flags", async () => {
+		// Given: install state whose empty runtime list means "follow the registry".
+		const { home, state, unitPath } = fixture();
+		const allRuntimesState: InstallState = {
+			...state,
+			service: { ...state.service, runtimes: [] },
+		};
+		const handover = createPlatformUpdateServiceHandover({
+			home,
+			platform: "linux",
+			uid: 1000,
+			run: async () => true,
+			sleep: async () => undefined,
+		});
+
+		// When: an update activates the new release.
+		await handover.activate({
+			fromVersion: "1.0.0",
+			toVersion: "1.1.0",
+			installState: allRuntimesState,
+			signal: new AbortController().signal,
+		});
+
+		// Then: the rewritten unit carries no --runtime flags, so adapters shipped
+		// by this or any later release are collected after the restart.
+		const unit = readFileSync(unitPath, "utf8");
+		expect(unit).toContain("watch");
+		expect(unit).not.toContain("--runtime");
+	});
+
 	test("preserves every PostHog telemetry environment value in a rewritten systemd unit", async () => {
 		// Given: the installed collector has telemetry values that are unavailable to the updater process.
 		const { home, state, unitPath } = fixture();
