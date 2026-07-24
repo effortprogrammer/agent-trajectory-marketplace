@@ -36,7 +36,10 @@ export const collectServiceLabel = "com.agent-trajectory-marketplace-clean.colle
 const serviceConfigSchema = z.object({
   intervalSeconds: z.number().int().positive(),
   outDir: z.string().min(1),
-  runtimes: z.array(z.string().min(1)).min(1),
+  // Empty means "all registered runtimes": no --runtime flags are rendered, so
+  // the watch process expands the list per sweep and adapters added by a later
+  // release are collected without regenerating the service file.
+  runtimes: z.array(z.string().min(1)),
   settleSeconds: z.number().int().nonnegative(),
   sourceDir: z.string().min(1).optional(),
 }).strict().refine(

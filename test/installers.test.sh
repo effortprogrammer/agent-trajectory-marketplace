@@ -166,6 +166,7 @@ for installer in scripts/install.sh scripts/install-agent.sh; do
   ' "$destination/install-state.json" "$destination" || fail "$installer wrote invalid install state"
   [[ "$(<"$calls")" != *"git clone"* ]] || fail "$installer used git clone instead of the verified release archive"
   [[ "$(<"$calls")" == *"trajectory collect service install --out $destination/collected"* ]] || fail "$installer did not start the collector service"
+  [[ "$(<"$calls")" == *"trajectory collect service uninstall"*"trajectory collect service install --out $destination/collected"* ]] || fail "$installer did not reconcile the collector service before installing"
   [[ "$(<"$calls")" == *"trajectory update service install --state-root $destination"* ]] || fail "$installer did not enable the updater service"
   [[ "$(<"$calls")" != *$'trajectory update\n'* ]] || fail "$installer blocks on the updater's first network check"
   "$REAL_BUN" -e 'const value=JSON.parse(process.argv[1]);if(value.status!=="installed"||value.version!=="1.1.0")process.exit(1)' "${output##*$'\n'}" || fail "$installer completion is not short JSON"

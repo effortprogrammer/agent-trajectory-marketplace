@@ -187,7 +187,7 @@ atm_write_state() {
   local root="$1" output="$2" temporary="$1/install-state.json.tmp"
   bun -e '
     const [root,out]=process.argv.slice(1);
-    const state={schemaVersion:1,installRoot:root,outputDir:out,service:{runtimes:["claude-code","codex","hermes","openclaw","opencode"],intervalSeconds:30,settleSeconds:60}};
+    const state={schemaVersion:1,installRoot:root,outputDir:out,service:{runtimes:[],intervalSeconds:30,settleSeconds:60}};
     process.stdout.write(`${JSON.stringify(state,null,2)}\n`);
   ' "$root" "$output" >"$temporary"
   chmod 600 "$temporary"
@@ -207,6 +207,12 @@ atm_install_services() {
   local root="$1"
   (
     cd "$root/current"
+    # Reconcile drift instead of erroring on it: service install refuses to
+    # replace a differing service file, and installs from other releases can
+    # legitimately differ (telemetry environment, output dir, runtime flags).
+    # Install already restarts the service either way, so clearing the old
+    # file first costs nothing and keeps installer reruns idempotent.
+    bun dist/collector.js trajectory collect service uninstall >/dev/null 2>&1 || true
     bun dist/collector.js trajectory collect service install --out "$ATM_COLLECT_OUT" >/dev/null || return
     bun dist/collector.js trajectory update service install --state-root "$root" >/dev/null || return
     bun dist/collector.js trajectory collect telemetry installed --out "$ATM_COLLECT_OUT" >/dev/null 2>&1 &
@@ -216,6 +222,10 @@ atm_install_services() {
 atm_restore_legacy_service() {
   local legacy="$1"
   if [ -f "$legacy/dist/collector.js" ]; then
+    # The failed migration may have left its own service file behind; service
+    # install refuses to replace a differing file, so clear it first or the
+    # restore would silently strand a service pointing at the removed root.
+    (cd "$legacy" && bun dist/collector.js trajectory collect service uninstall >/dev/null 2>&1) || true
     (cd "$legacy" && bun dist/collector.js trajectory collect service install --out "$legacy/collected" >/dev/null 2>&1) || true
   fi
 }

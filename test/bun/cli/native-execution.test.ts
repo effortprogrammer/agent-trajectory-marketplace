@@ -153,6 +153,36 @@ describe("native collector CLI execution", () => {
     expect(result).toHaveProperty("plist");
   });
 
+  test("installs an unpinned service by default and dedupes repeated runtimes", () => {
+    // Given: one request relying on registry-following defaults, one repeating a runtime.
+    const outputDir = fixture().outputDir;
+    const preview = (runtimeArguments: readonly string[]): unknown =>
+      runCollectorCli([
+        "trajectory",
+        "collect",
+        "service",
+        "install",
+        "--dry-run",
+        "--out",
+        outputDir,
+        ...runtimeArguments,
+      ]);
+
+    // When: both service installations are previewed through the CLI.
+    const rendered = (result: unknown): string => {
+      const { plist, unit } = result as { plist?: string; unit?: string };
+      return plist ?? unit ?? "";
+    };
+    const unpinned = rendered(preview([]));
+    const repeated = rendered(preview(["--runtime", "codex", "codex"]));
+
+    // Then: the default renders no --runtime flags (the watch process follows
+    // the adapter registry), and explicit duplicates collapse to one flag.
+    expect(unpinned).toContain("watch");
+    expect(unpinned).not.toContain("--runtime");
+    expect(repeated.match(/--runtime/g)).toHaveLength(1);
+  });
+
   test("reports resident sweep failures as safe stderr JSON and exits nonzero", () => {
     // Given: the watch output path is an existing file, forcing a sweep-level
     // filesystem failure before any session data can be processed.
