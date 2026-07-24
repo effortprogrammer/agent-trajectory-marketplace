@@ -1,6 +1,6 @@
 # ATM (Agent Trajectory Marketplace)
 
-ATM collects local Claude Code, Codex, Hermes, OpenClaw, and OpenCode sessions and exports credential-redacted ATF datasets. Run it only after you consent to this local collection.
+ATM collects local Claude Code, Codex, Hermes, OpenClaw, OpenCode, and pi-family (oh-my-pi, senpi, gajae-code) sessions and exports credential-redacted ATF datasets. Run it only after you consent to this local collection.
 
 ```bash
 curl -fsSL https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/latest/download/install-agent.sh | bash -s -- --dir atm
