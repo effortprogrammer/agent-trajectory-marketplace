@@ -4,6 +4,7 @@ import { type HarnessAdapter, TrajectoryAdapterError } from "./contract"
 import { hermesAdapter } from "./hermes"
 import { openclawAdapter } from "./openclaw"
 import { opencodeAdapter } from "./opencode"
+import { gajaeCodeAdapter, ohMyPiAdapter, senpiAdapter } from "./pi-family"
 
 // Built-in adapter registry. Adding support for another harness means
 // implementing HarnessAdapter in its own module and appending it here — the
@@ -14,6 +15,11 @@ const builtInAdapters: readonly HarnessAdapter[] = [
   hermesAdapter,
   opencodeAdapter,
   openclawAdapter,
+  // pi-family: three pi-mono-lineage forks sharing one session parser but
+  // registered as distinct runtimes so traces attribute the exact tool.
+  ohMyPiAdapter,
+  senpiAdapter,
+  gajaeCodeAdapter,
 ]
 
 const adaptersByRuntime = new Map(builtInAdapters.map((adapter) => [adapter.runtime, adapter]))

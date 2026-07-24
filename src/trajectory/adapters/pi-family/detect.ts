@@ -1,0 +1,82 @@
+import { sep } from "node:path"
+
+import type { PiSessionFile } from "./session-file"
+import { type PiFamilyRuntime, piFamilyVariants } from "./variants"
+
+// Variant fingerprinting. The registered runtime already differentiates the
+// three tools when sessions come from their default log roots, but sellers can
+// point `collect export --session` at any copied file — so provenance is also
+// derived from evidence inside the file and its path, and a strong mismatch
+// fails closed instead of stamping the wrong tool onto a sold trajectory.
+//
+// Evidence tiers:
+// - strong: config-dir path segment (~/.omp vs ~/.senpi vs ~/.gjc), or
+//   gajae-only format features (header version >= 4, header_patch/entry_patch
+//   records, v5 tool-selection entry types, v2-<digest> scope dir).
+// - weak: entry types that split oh-my-pi/gajae from senpi lineage
+//   (session_init/mode_change/ttsr_injection vs senpi's session_info).
+export type PiFamilyDetection = Readonly<{
+  // Strongest single attribution, or undefined when nothing distinguishes.
+  runtime: PiFamilyRuntime | undefined
+  strong: boolean
+  evidence: readonly string[]
+}>
+
+const gajaeOnlyEntryTypes = ["mcp_tool_selection", "discovered_builtin_tool_selection"] as const
+const ompLineageEntryTypes = ["session_init", "mode_change", "ttsr_injection"] as const
+const gajaeScopeDirPattern = /(^|[/\\])v2-[a-z2-7]{40,64}([/\\]|$)/
+
+export const detectPiFamilyVariant = (
+  sessionPath: string,
+  file: PiSessionFile,
+): PiFamilyDetection => {
+  const strongEvidence: string[] = []
+  const weakEvidence: string[] = []
+  let strongRuntime: PiFamilyRuntime | undefined
+  let weakRuntime: PiFamilyRuntime | undefined
+
+  const claimStrong = (runtime: PiFamilyRuntime, reason: string) => {
+    strongEvidence.push(reason)
+    strongRuntime ??= runtime
+  }
+  const claimWeak = (runtime: PiFamilyRuntime, reason: string) => {
+    weakEvidence.push(reason)
+    weakRuntime ??= runtime
+  }
+
+  for (const variant of piFamilyVariants) {
+    if (sessionPath.split(/[/\\]/).includes(variant.configDirName)) {
+      claimStrong(variant.runtime, `path:${variant.configDirName}${sep}`)
+    }
+  }
+
+  const version = file.header.version ?? 1
+  if (version >= 4) {
+    claimStrong("gajae-code", `sessionVersion:${version}`)
+  }
+  if (file.patchRecordCount > 0) {
+    claimStrong("gajae-code", `patchRecords:${file.patchRecordCount}`)
+  }
+  for (const entryType of gajaeOnlyEntryTypes) {
+    if (file.rawRecordTypes.has(entryType)) {
+      claimStrong("gajae-code", `entryType:${entryType}`)
+    }
+  }
+  if (gajaeScopeDirPattern.test(sessionPath)) {
+    claimStrong("gajae-code", "path:v2-scope-digest")
+  }
+
+  for (const entryType of ompLineageEntryTypes) {
+    if (file.rawRecordTypes.has(entryType)) {
+      claimWeak("oh-my-pi", `entryType:${entryType}`)
+    }
+  }
+  if (file.rawRecordTypes.has("session_info")) {
+    claimWeak("senpi", "entryType:session_info")
+  }
+
+  if (strongRuntime !== undefined) {
+    return { runtime: strongRuntime, strong: true, evidence: strongEvidence }
+  }
+  return { runtime: weakRuntime, strong: false, evidence: weakEvidence }
+}

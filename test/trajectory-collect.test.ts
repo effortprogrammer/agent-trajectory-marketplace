@@ -217,9 +217,12 @@ describe("harness adapter registry", () => {
     expect(listHarnessAdapters().map((adapter) => adapter.runtime)).toEqual([
       "claude-code",
       "codex",
+      "gajae-code",
       "hermes",
+      "oh-my-pi",
       "openclaw",
       "opencode",
+      "senpi",
     ])
     expect(getHarnessAdapter("claude-code").displayName).toBe("Claude Code")
     expect(getHarnessAdapter("codex").displayName).toBe("Codex CLI")
