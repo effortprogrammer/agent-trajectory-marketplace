@@ -169,13 +169,18 @@ describe("native collector CLI execution", () => {
       ]);
 
     // When: both service installations are previewed through the CLI.
-    const unpinned = preview([]) as { plist: string };
-    const repeated = preview(["--runtime", "codex", "codex"]) as { plist: string };
+    const rendered = (result: unknown): string => {
+      const { plist, unit } = result as { plist?: string; unit?: string };
+      return plist ?? unit ?? "";
+    };
+    const unpinned = rendered(preview([]));
+    const repeated = rendered(preview(["--runtime", "codex", "codex"]));
 
     // Then: the default renders no --runtime flags (the watch process follows
     // the adapter registry), and explicit duplicates collapse to one flag.
-    expect(unpinned.plist).not.toContain("--runtime");
-    expect(repeated.plist.match(/<string>--runtime<\/string>/g)).toHaveLength(1);
+    expect(unpinned).toContain("watch");
+    expect(unpinned).not.toContain("--runtime");
+    expect(repeated.match(/--runtime/g)).toHaveLength(1);
   });
 
   test("reports resident sweep failures as safe stderr JSON and exits nonzero", () => {
