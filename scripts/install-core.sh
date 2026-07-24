@@ -207,6 +207,12 @@ atm_install_services() {
   local root="$1"
   (
     cd "$root/current"
+    # Reconcile drift instead of erroring on it: service install refuses to
+    # replace a differing service file, and installs from other releases can
+    # legitimately differ (telemetry environment, output dir, runtime flags).
+    # Install already restarts the service either way, so clearing the old
+    # file first costs nothing and keeps installer reruns idempotent.
+    bun dist/collector.js trajectory collect service uninstall >/dev/null 2>&1 || true
     bun dist/collector.js trajectory collect service install --out "$ATM_COLLECT_OUT" >/dev/null || return
     bun dist/collector.js trajectory update service install --state-root "$root" >/dev/null || return
     bun dist/collector.js trajectory collect telemetry installed --out "$ATM_COLLECT_OUT" >/dev/null 2>&1 &
