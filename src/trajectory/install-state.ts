@@ -24,12 +24,37 @@ const absolutePathSchema = z.string().min(1).refine(isAbsolute, "expected an abs
 
 const installServiceConfigSchema = z
   .object({
-    runtimes: z.array(z.string().min(1)).min(1),
+    // Empty means "all registered runtimes" — resolved by the watch process at
+    // sweep time, so adapters added by a later release are collected without a
+    // state migration.
+    runtimes: z.array(z.string().min(1)),
     sourceDir: absolutePathSchema.optional(),
     intervalSeconds: z.number().int().positive(),
     settleSeconds: z.number().int().nonnegative(),
   })
   .strict();
+
+// Installers prior to the empty-means-all convention snapshotted the full
+// adapter registry of their release into install-state.json, silently pinning
+// the service to that set forever. A state whose runtime list is exactly one
+// of those snapshots (and no custom sourceDir) was never a deliberate
+// selection, so it is read back as "all runtimes". In-memory only: the file is
+// left untouched so a rolled-back binary can still parse it.
+const legacyDefaultRuntimeSnapshots: readonly (readonly string[])[] = [
+  ["claude-code", "codex", "hermes", "openclaw", "opencode"],
+];
+
+const normalizeServiceRuntimes = (state: InstallState): InstallState => {
+  if (state.service.sourceDir !== undefined) return state;
+  const sorted = [...state.service.runtimes].sort();
+  const isLegacySnapshot = legacyDefaultRuntimeSnapshots.some(
+    (snapshot) =>
+      snapshot.length === sorted.length &&
+      [...snapshot].sort().every((runtime, index) => runtime === sorted[index]),
+  );
+  if (!isLegacySnapshot) return state;
+  return { ...state, service: { ...state.service, runtimes: [] } };
+};
 
 export const installStateSchema = z
   .object({
@@ -96,7 +121,9 @@ export const deriveInstallPaths = (stateRoot: string, version: string): InstallP
 
 export const readInstallState = (paths: InstallPaths): InstallState => {
   try {
-    return installStateSchema.parse(JSON.parse(readFileSync(paths.stateFile, "utf8")));
+    return normalizeServiceRuntimes(
+      installStateSchema.parse(JSON.parse(readFileSync(paths.stateFile, "utf8"))),
+    );
   } catch (caught: unknown) {
     throw new InstallStateParseError(paths.stateFile, { cause: caught });
   }

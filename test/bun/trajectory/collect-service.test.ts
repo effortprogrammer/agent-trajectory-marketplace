@@ -108,6 +108,32 @@ describe("safe launchd collector lifecycle", () => {
     expect(plist).not.toContain("/repo & source</string>");
   });
 
+  test("renders no runtime pinning for an all-runtimes service", () => {
+    // Given: a service configured to follow the adapter registry (empty list).
+    const home = temporaryHome();
+    const fake = fakeEnvironment(home);
+    const allRuntimesConfig = { ...config, runtimes: [] };
+
+    // When: both service managers render the watch invocation.
+    const launchdPreview = installCollectWatchService({
+      config: allRuntimesConfig,
+      dryRun: true,
+      environment: fake.environment,
+    });
+    const systemdPreview = installCollectWatchService({
+      config: allRuntimesConfig,
+      dryRun: true,
+      environment: fakeLinuxEnvironment(home).environment,
+    });
+
+    // Then: no --runtime flags are pinned, so the watch process resolves the
+    // registered adapters of whatever release is current at sweep time.
+    expect(launchdPreview).toHaveProperty("plist", expect.not.stringContaining("--runtime"));
+    expect(launchdPreview).toHaveProperty("plist", expect.stringContaining("<string>watch</string>"));
+    expect(systemdPreview).toHaveProperty("unit", expect.not.stringContaining("--runtime"));
+    expect(systemdPreview).toHaveProperty("unit", expect.stringContaining("watch"));
+  });
+
   test("persists the telemetry endpoint in the launchd service environment", () => {
     // Given: a service installation launched with the approved PostHog configuration.
     const home = temporaryHome();

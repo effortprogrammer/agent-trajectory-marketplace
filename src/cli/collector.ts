@@ -218,12 +218,17 @@ export const runCollectorCli = (argumentsList: readonly string[]): CollectorCliR
     case "service": {
       switch (command.verb) {
         case "install": {
-          const sweep = collectSweepConfig({ ...command, command: "watch", once: false, runtimes: command.runtimes ?? [] });
+          const requested = command.runtimes ?? [];
+          // Validates explicit runtime names; an empty list stays empty so the
+          // service follows the adapter registry across updates instead of
+          // pinning the set registered at install time.
+          resolveCollectWatchRuntimes(requested);
+          const sweep = collectSweepConfig({ ...command, command: "watch", once: false, runtimes: requested });
           return installCollectWatchService({
             config: {
               ...sweep,
               intervalSeconds: command.intervalSeconds,
-              runtimes: [...resolveCollectWatchRuntimes(sweep.runtimes)],
+              runtimes: [...requested],
             },
             dryRun: command.dryRun,
           });
