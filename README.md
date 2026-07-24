@@ -10,8 +10,8 @@ ATM collects your local coding-agent sessions and exports credential-redacted AT
 |---------|:---------:|
 | [Claude Code](https://claude.com/claude-code) | ✅ |
 | [Codex CLI](https://github.com/openai/codex) | ✅ |
-| Hermes Agent | ✅ |
-| OpenClaw | ✅ |
+| [Hermes Agent](https://github.com/nousresearch/hermes-agent) | ✅ |
+| [OpenClaw](https://github.com/openclaw/openclaw) | ✅ |
 | [OpenCode](https://github.com/sst/opencode) | ✅ |
 | [Oh My Pi](https://github.com/can1357/oh-my-pi) | ✅ |
 | [Senpi](https://github.com/code-yeongyu/senpi) | ✅ |
