@@ -1,15 +1,30 @@
 # ATM (Agent Trajectory Marketplace)
 
-ATM collects local Claude Code, Codex, Hermes, OpenClaw, OpenCode, and pi-family (oh-my-pi, senpi, gajae-code) sessions and exports credential-redacted ATF datasets. Run it only after you consent to this local collection.
+ATM collects your local coding-agent sessions and exports credential-redacted ATF datasets.
+
+> **Consent notice:** ATM reads coding-agent session logs on this machine. Run it only after you consent to this local collection.
+
+## Supported agents
+
+| Harness | Supported |
+|---------|:---------:|
+| [Claude Code](https://claude.com/claude-code) | ✅ |
+| [Codex CLI](https://github.com/openai/codex) | ✅ |
+| Hermes Agent | ✅ |
+| OpenClaw | ✅ |
+| [OpenCode](https://github.com/sst/opencode) | ✅ |
+| [Oh My Pi](https://github.com/can1357/oh-my-pi) | ✅ |
+| [Senpi](https://github.com/code-yeongyu/senpi) | ✅ |
+| [Gajae Code](https://github.com/Yeachan-Heo/gajae-code) | ✅ |
+
+New agent support ships with releases and reaches installed collectors automatically — no reinstall needed.
+
+## Quick start
 
 ```bash
 curl -fsSL https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/latest/download/install-agent.sh | bash -s -- --dir atm
 ```
 
-The installer requires Git, Bun 1.3+, and either macOS launchd or Linux systemd `--user`. It starts collection immediately and checks immutable stable GitHub Releases every six hours. Updates never pull mutable `main`; a failed service handover rolls back to the previous release while preserving `collected/` and watch state.
+Requires **Git** and **Bun 1.3+**.
 
-```bash
-bun atm/current/dist/collector.js trajectory collect service status
-bun atm/current/dist/collector.js trajectory update status
-bun atm/current/dist/collector.js trajectory update
-```
+The installer starts collection immediately and checks immutable stable GitHub Releases every six hours.
