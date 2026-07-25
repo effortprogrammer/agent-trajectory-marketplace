@@ -6,30 +6,70 @@ import { join } from "node:path";
 
 const roots: string[] = [];
 const decoder = new TextDecoder();
+// allow: SIZE_OK — one embedded PTY lifecycle driver stays beside its process-boundary cases.
 const pythonPtyDriver = `
-import base64, os, pty, select, sys
+import base64, errno, os, pty, select, signal, sys, time
+initial, marker = [base64.b64decode(value) for value in sys.argv[1:3]]
+signal_name = sys.argv[3]
 pid, descriptor = pty.fork()
 if pid == 0:
-    os.execvp(sys.argv[2], sys.argv[2:])
-os.write(descriptor, base64.b64decode(sys.argv[1]))
+    os.execvp(sys.argv[4], sys.argv[4:])
+os.write(descriptor, initial)
+captured = b""
+sent = False
+terminal_closed = False
 finished = 0
 status = 0
-while True:
-    readable, _, _ = select.select([descriptor], [], [], 0.1)
-    if readable:
-        try:
-            data = os.read(descriptor, 4096)
-        except OSError:
-            break
-        if data:
-            os.write(1, data)
+deadline = time.monotonic() + 5
+while time.monotonic() < deadline:
+    if terminal_closed:
+        select.select([], [], [], 0.01)
+    else:
+        readable, _, _ = select.select([descriptor], [], [], 0.1)
+        if readable:
+            try:
+                data = os.read(descriptor, 4096)
+            except OSError as error:
+                if error.errno == errno.EIO:
+                    terminal_closed = True
+                else:
+                    raise
+            else:
+                if not data:
+                    terminal_closed = True
+                else:
+                    captured += data
+                    os.write(1, data)
+    if signal_name and not sent and marker in captured:
+        os.kill(pid, getattr(signal, signal_name))
+        sent = True
     finished, status = os.waitpid(pid, os.WNOHANG)
     if finished != 0:
         break
 if finished == 0:
+    finished, status = os.waitpid(pid, os.WNOHANG)
+if finished == 0:
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
     _, status = os.waitpid(pid, 0)
+    raise SystemExit(124)
 raise SystemExit(os.waitstatus_to_exitcode(status))
 `;
+
+type PtySignal = "SIGINT" | "SIGTERM";
+
+type PtyInteraction = Readonly<{
+  readonly initialInput: string;
+  readonly marker?: string;
+  readonly signal?: PtySignal;
+}>;
+
+type PtyCommand = Readonly<{
+  readonly argumentsList: readonly string[];
+  readonly executable: string;
+}>;
 
 const fixtureRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "trajectory-bundle-cli-"));
@@ -53,12 +93,20 @@ const runCli = (argumentsList: readonly string[]) => Bun.spawnSync(
   { cwd: process.cwd(), stderr: "pipe", stdin: "ignore", stdout: "pipe" },
 );
 
-const runPtyCli = (argumentsList: readonly string[], input: string) => Bun.spawnSync(
+const runPtyProcess = (command: PtyCommand, interaction: PtyInteraction) => Bun.spawnSync(
   [
-    "python3", "-c", pythonPtyDriver, Buffer.from(input).toString("base64"),
-    process.execPath, "src/cli/index.ts", ...argumentsList,
+    "python3", "-c", pythonPtyDriver,
+    Buffer.from(interaction.initialInput).toString("base64"),
+    Buffer.from(interaction.marker ?? "").toString("base64"),
+    interaction.signal ?? "",
+    command.executable, ...command.argumentsList,
   ],
   { cwd: process.cwd(), stderr: "pipe", stdout: "pipe" },
+);
+
+const runPtyCli = (argumentsList: readonly string[], input: string | PtyInteraction) => runPtyProcess(
+  { executable: process.execPath, argumentsList: ["src/cli/index.ts", ...argumentsList] },
+  typeof input === "string" ? { initialInput: input } : input,
 );
 
 afterEach(() => {
@@ -269,4 +317,39 @@ describe("marketplace candidate bundle process boundary", () => {
     expect(readFileSync(output, "utf8")).toBe("preserve-user-bytes");
     expect(Array.from(new Bun.Glob("*.trajectory-tmp-*").scanSync({ cwd: root }))).toEqual([]);
   });
+
+  test.each(["SIGINT", "SIGTERM"] as const)("cancels marketplace review on %s", (signal) => {
+    // Given
+    const root = fixtureRoot();
+    writeFileSync(join(root, "selected.atf.json"), traceBytes("codex", "selected"));
+    const output = join(root, `${signal.toLowerCase()}.zip`);
+    const selector = selectorFor("selected.atf.json");
+
+    // When
+    const result = runPtyCli(
+      ["marketplace", "seller", "candidate", "bundle", "--root", root, "--out", output],
+      { initialInput: "included\n", marker: `included: ${selector}`, signal },
+    );
+
+    // Then
+    expect(result.exitCode).toBe(0);
+    expect(decoder.decode(result.stdout)).toContain('{"status":"cancelled"}');
+    expect(existsSync(output)).toBe(false);
+    expect(Array.from(new Bun.Glob("*.trajectory-tmp-*").scanSync({ cwd: root }))).toEqual([]);
+  });
+
+  test("Given an unresponsive child, When the PTY deadline expires, Then it is killed and reaped", () => {
+    // Given
+    const startedAt = performance.now();
+
+    // When
+    const result = runPtyProcess(
+      { executable: "python3", argumentsList: ["-c", "import time; time.sleep(30)"] },
+      { initialInput: "" },
+    );
+
+    // Then
+    expect(result.exitCode).toBe(124);
+    expect(performance.now() - startedAt).toBeLessThan(6_000);
+  }, { timeout: 6_000 });
 });
