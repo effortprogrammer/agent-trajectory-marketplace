@@ -32,6 +32,10 @@ type SanitizerFrame =
     }>
   | Readonly<{ kind: "exit"; value: object }>;
 
+type BoundsFrame =
+  | Readonly<{ kind: "enter"; value: unknown; depth: number }>
+  | Readonly<{ kind: "exit"; value: object }>;
+
 export type SanitizedPayloadValue = Readonly<{ value: unknown; truncated: boolean }>;
 
 const redactCredentialSpans = (value: string): string => {
@@ -58,6 +62,36 @@ const arrayIndexes = (value: readonly unknown[]): readonly number[] =>
       ? [index]
       : [];
   });
+
+export const isPayloadStructureBounded = (input: unknown): boolean => {
+  let visitedValues = 0;
+  const ancestors = new Set<object>();
+  const stack: BoundsFrame[] = [{ kind: "enter", value: input, depth: -1 }];
+  while (stack.length > 0) {
+    const frame = stack.pop();
+    if (frame === undefined) continue;
+    if (frame.kind === "exit") {
+      ancestors.delete(frame.value);
+      continue;
+    }
+    if (frame.depth >= 0) visitedValues += 1;
+    if (visitedValues > maxVisitedValues || frame.depth > maxPayloadDepth) return false;
+    if (frame.value === null || typeof frame.value !== "object") continue;
+    const value = frame.value;
+    if (ancestors.has(value)) return false;
+    ancestors.add(value);
+    stack.push({ kind: "exit", value });
+    const children = Array.isArray(value)
+      ? arrayIndexes(value).map((index) => value[index])
+      : Object.values(value);
+    const childCount = Array.isArray(value) ? value.length : children.length;
+    if (visitedValues + childCount > maxVisitedValues) return false;
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      stack.push({ kind: "enter", value: children[index], depth: frame.depth + 1 });
+    }
+  }
+  return true;
+};
 
 export const boundedRedactedString = (
   value: string,

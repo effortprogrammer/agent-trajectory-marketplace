@@ -5,7 +5,8 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { openSqliteSnapshot } from "../../../src/trajectory/adapters/sqlite-snapshot";
+import { openSqliteSnapshot, SqliteSnapshotError } from "../../../src/trajectory/adapters/sqlite-snapshot";
+import type { SqliteSnapshot } from "../../../src/trajectory/adapters/sqlite-snapshot";
 
 const manifest = (directory: string): readonly string[] =>
   readdirSync(directory).sort().map((name) => {
@@ -62,6 +63,41 @@ test("SQLite snapshots read live WAL rows without changing source sidecars", () 
     // Then: live data is visible and every native source byte is unchanged.
     expect(rows).toEqual([{ id: "checkpointed" }, { id: "live-wal" }]);
     expect(manifest(directory)).toEqual(before);
+  } finally {
+    writer.close();
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test("SQLite snapshots reject a checkpoint between database and WAL copies", () => {
+  // Given: a live WAL row that can be checkpointed after the base database copy.
+  const directory = mkdtempSync(join(tmpdir(), "atm-bun-sqlite-race-"));
+  const databasePath = join(directory, "sessions.db");
+  const writer = new Database(databasePath, { create: true, strict: true });
+  let snapshot: SqliteSnapshot | undefined;
+  let caught: unknown;
+  try {
+    writer.exec("PRAGMA journal_mode = WAL");
+    writer.exec("CREATE TABLE sessions (id TEXT PRIMARY KEY)");
+    writer.query("INSERT INTO sessions (id) VALUES (?)").run("checkpointed");
+    writer.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    writer.query("INSERT INTO sessions (id) VALUES (?)").run("live-wal");
+
+    // When: the writer checkpoints between the two filesystem copies.
+    try {
+      snapshot = openSqliteSnapshot(databasePath, {
+        afterDatabaseCopy: () => writer.exec("PRAGMA wal_checkpoint(TRUNCATE)"),
+      });
+    } catch (error) {
+      if (error instanceof SqliteSnapshotError) caught = error;
+      else throw error;
+    }
+    snapshot?.close();
+
+    // Then: the mixed source moments are rejected rather than opened.
+    expect(caught).toBeInstanceOf(SqliteSnapshotError);
+    if (!(caught instanceof SqliteSnapshotError)) throw new Error("expected SqliteSnapshotError");
+    expect(caught.message).toBe("sqlite_source_changed");
   } finally {
     writer.close();
     rmSync(directory, { force: true, recursive: true });
