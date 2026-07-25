@@ -9,6 +9,9 @@ import type { CollectSweepSummary } from "./collect-watch";
 
 export const collectorTelemetryStateFileName = "collector-telemetry-state.json";
 
+const collectorTelemetryProxyHost =
+  "https://atm-telemetry-country-proxy.yhjhoward7.workers.dev";
+
 const telemetryConfigurationSchema = z.object({
   apiKey: z.string().trim().min(1),
   host: z.string().trim().url(),
@@ -108,9 +111,16 @@ export const resolveCollectorTelemetryConfig = (
 ): CollectorTelemetryConfig | undefined => {
   const apiKey = environment.ATM_POSTHOG_API_KEY?.trim();
   if (apiKey === undefined || apiKey.length === 0) return undefined;
+  const configuredHost = environment.ATM_POSTHOG_HOST?.trim();
+  const host = configuredHost === undefined
+    || configuredHost.length === 0
+    || configuredHost === "https://us.i.posthog.com"
+    || configuredHost === "https://eu.i.posthog.com"
+    ? collectorTelemetryProxyHost
+    : configuredHost;
   const parsed = telemetryConfigurationSchema.safeParse({
     apiKey,
-    host: environment.ATM_POSTHOG_HOST?.trim() || "https://us.i.posthog.com",
+    host,
   });
   return parsed.success ? parsed.data : undefined;
 };
