@@ -21,6 +21,10 @@ import {
 	UPDATE_TIMEOUTS,
 } from "./update-transaction-runtime";
 import {
+	reconcileCurrentUpdateService,
+	rollbackUpdateService,
+} from "./update-service-recovery";
+import {
 	runReleaseRetention,
 	type UpdateRetention,
 } from "./update-retention";
@@ -138,11 +142,19 @@ export const runUpdateTransaction = async (
 		if (resolution.kind === "up_to_date") {
 			if (resolution.version !== currentVersion)
 				throw new UpdateTransactionError();
-			await runBoundedUpdate(
-				UPDATE_TIMEOUTS.serviceHandoverMs,
-				request.signal,
-				(signal) => request.service.activate({ fromVersion: currentVersion, toVersion: currentVersion, installState, signal }),
-			);
+			const rolledBack = await reconcileCurrentUpdateService({
+				currentVersion,
+				installState,
+				service: request.service,
+				...(request.signal === undefined ? {} : { signal: request.signal }),
+			});
+			if (rolledBack !== undefined) {
+				return {
+					status: "update_failed",
+					currentVersion,
+					rolledBack,
+				};
+			}
 			return { status: "up_to_date", currentVersion };
 		}
 
@@ -198,24 +210,13 @@ export const runUpdateTransaction = async (
 				previousPointer: currentPaths.previousPointer,
 				previousTarget: oldPrevious,
 			});
-			let serviceRestored = false;
-			try {
-				if (readPointerTarget(currentPaths.currentPointer) === oldCurrent) {
-					await runBoundedUpdate(
-						UPDATE_TIMEOUTS.serviceHandoverMs,
-						undefined,
-						(signal) => request.service.rollback({
-							fromVersion: resolution.version,
-							toVersion: currentVersion,
-							installState,
-							signal,
-						}),
-					);
-					serviceRestored = true;
-				}
-			} catch (rollbackError: unknown) {
-				if (!(rollbackError instanceof Error)) throw rollbackError;
-			}
+			const serviceRestored = readPointerTarget(currentPaths.currentPointer) === oldCurrent
+				&& await rollbackUpdateService({
+					fromVersion: resolution.version,
+					toVersion: currentVersion,
+					installState,
+					service: request.service,
+				});
 			removeReleaseIfInactive(
 				currentPaths.currentPointer,
 				currentPaths.previousPointer,

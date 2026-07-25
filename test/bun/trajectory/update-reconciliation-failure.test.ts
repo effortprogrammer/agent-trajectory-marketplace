@@ -47,11 +47,16 @@ describe("same-version reconciliation retryability", () => {
 		writeFileSync(paths.plistPath, staleService);
 		symlinkSync(installPaths.releaseDir, installPaths.currentPointer);
 		roots.push(root);
+		const commands: string[][] = [];
+		const responses = [true, false, true, true, true, true];
 		const runtime: UpdateServiceRuntime = {
 			home,
 			platform: "darwin",
 			uid: 501,
-			run: async (command) => command[1] !== "bootstrap",
+			run: async (command) => {
+				commands.push([...command]);
+				return responses.shift() ?? true;
+			},
 			sleep: async () => undefined,
 		};
 
@@ -63,12 +68,20 @@ describe("same-version reconciliation retryability", () => {
 			service: createPlatformUpdateServiceHandover(runtime),
 		});
 
-		// Then: failure is reported and the stale bytes remain retryable for the next check.
+		// Then: a fresh rollback restarts the stale service and reports the recovered failure.
 		expect(result).toEqual({
 			status: "update_failed",
 			currentVersion: "1.0.2",
-			rolledBack: false,
+			rolledBack: true,
 		});
 		expect(readFileSync(paths.plistPath, "utf8")).toBe(staleService);
+		expect(commands).toEqual([
+			["launchctl", "bootout", "gui/501/com.agent-trajectory-marketplace-clean.collect-watch"],
+			["launchctl", "bootstrap", "gui/501", paths.plistPath],
+			["launchctl", "bootout", "gui/501/com.agent-trajectory-marketplace-clean.collect-watch"],
+			["launchctl", "bootstrap", "gui/501", paths.plistPath],
+			["launchctl", "print", "gui/501/com.agent-trajectory-marketplace-clean.collect-watch"],
+			["launchctl", "print", "gui/501/com.agent-trajectory-marketplace-clean.collect-watch"],
+		]);
 	});
 });

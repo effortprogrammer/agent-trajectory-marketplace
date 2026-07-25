@@ -201,6 +201,7 @@ export const createPlatformUpdateServiceHandover = (
 			priorService = existsSync(service.path)
 				? { path: service.path, content: readFileSync(service.path, "utf8") }
 				: undefined;
+			if (fromVersion === toVersion && priorService === undefined) return;
 			const nextService = renderServiceFile(
 				installState,
 				runtime,
