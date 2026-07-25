@@ -196,11 +196,12 @@ export const createPlatformUpdateServiceHandover = (
 ): UpdateServiceHandover => {
 	let priorService: ServiceFile | undefined;
 	return {
-		activate: async ({ installState, signal }) => {
+		activate: async ({ fromVersion, installState, signal, toVersion }) => {
 			const service = renderServiceFile(installState, runtime);
 			priorService = existsSync(service.path)
 				? { path: service.path, content: readFileSync(service.path, "utf8") }
 				: undefined;
+			if (fromVersion === toVersion && priorService === undefined) return;
 			const nextService = renderServiceFile(
 				installState,
 				runtime,
@@ -208,8 +209,16 @@ export const createPlatformUpdateServiceHandover = (
 					? {}
 					: telemetryEnvironmentFromService(priorService.content, runtime.platform),
 			);
+			if (fromVersion === toVersion && priorService?.content === nextService.content)
+				return;
 			replaceServiceFile(nextService);
-			await restartAndCheck(runtime, nextService.path, signal);
+			try {
+				await restartAndCheck(runtime, nextService.path, signal);
+			} catch (caught: unknown) {
+				if (fromVersion === toVersion && priorService !== undefined)
+					replaceServiceFile(priorService);
+				throw caught;
+			}
 		},
 		rollback: async ({ installState, signal }) => {
 			const currentService = renderServiceFile(installState, runtime);
