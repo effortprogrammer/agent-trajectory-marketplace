@@ -64,7 +64,8 @@ const readStdinLine = async (): Promise<string> => {
   }
 };
 
-const readHiddenTtyLine = (): Promise<string> => {
+const readHiddenTtyLine = (signal: AbortSignal): Promise<string> => {
+  if (signal.aborted) throw new AuthCliError("auth_code_interrupted");
   const input = process.stdin;
   if (input.isTTY !== true || typeof input.setRawMode !== "function") {
     throw new AuthCliError("auth_code_required");
@@ -74,15 +75,22 @@ const readHiddenTtyLine = (): Promise<string> => {
   input.resume();
   return new Promise((resolve, reject) => {
     let value = "";
-    const finish = (result: string | AuthCliError): void => {
+    let settled = false;
+    function finish(result: string | AuthCliError): void {
+      if (settled) return;
+      settled = true;
       input.removeListener("data", onData);
+      signal.removeEventListener("abort", onAbort);
       input.setRawMode(false);
       input.pause();
       process.stderr.write("\n");
       if (result instanceof AuthCliError) reject(result);
       else resolve(result);
-    };
-    const onData = (chunk: Buffer | string): void => {
+    }
+    function onAbort(): void {
+      finish(new AuthCliError("auth_code_interrupted"));
+    }
+    function onData(chunk: Buffer | string): void {
       for (const character of chunk.toString("utf8")) {
         if (character === "\u0003" || character === "\u0004") {
           finish(new AuthCliError("auth_code_interrupted"));
@@ -102,8 +110,9 @@ const readHiddenTtyLine = (): Promise<string> => {
           }
         }
       }
-    };
+    }
     input.on("data", onData);
+    signal.addEventListener("abort", onAbort);
   });
 };
 
@@ -123,7 +132,7 @@ export const isAuthInvocation = (argumentsList: readonly string[]): boolean =>
   argumentsList[0] === "auth" ||
   (argumentsList[0] === "trajectory" && argumentsList[1] === "auth");
 
-export const runAuthCli = async (argumentsList: readonly string[]): Promise<void> => {
+export const runAuthCli = async (argumentsList: readonly string[], signal: AbortSignal): Promise<void> => {
   const command = parseAuthCommand(argumentsList, process.stdin.isTTY === true);
   switch (command.command) {
     case "invalid_auth_command":
@@ -146,7 +155,7 @@ export const runAuthCli = async (argumentsList: readonly string[]): Promise<void
       const server = normalizeAuthServerUrl(command.server);
       const challenge = authChallengeIdSchema.safeParse(command.challenge);
       if (!challenge.success) return invalidCommand();
-      const code = parseOtp(command.codeSource === "stdin" ? await readStdinLine() : await readHiddenTtyLine());
+      const code = parseOtp(command.codeSource === "stdin" ? await readStdinLine() : await readHiddenTtyLine(signal));
       const verified = await createAuthClient(server).verify({ challengeId: challenge.data, code });
       writeStoredAuthSession({
         accessToken: verified.accessToken,

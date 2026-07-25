@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -12,34 +12,53 @@ const accountId = "acct-0123456789abcdef";
 const challengeId = "chal-0123456789abcdef";
 const expiresAt = "2099-07-25T00:00:00.000Z";
 const pythonPtyDriver = `
-import base64, os, pty, select, signal, sys, time
-secret, marker = [base64.b64decode(value) for value in sys.argv[1:3]]
+import base64, errno, os, pty, select, signal, sys, time
+secret, marker, signal_name = [base64.b64decode(value) for value in sys.argv[1:4]]
 pid, descriptor = pty.fork()
 if pid == 0:
-    os.execvp(sys.argv[3], sys.argv[3:])
+    os.execvp(sys.argv[4], sys.argv[4:])
 captured = b""
 sent = False
+closed = False
 finished = 0
 status = 0
 deadline = time.monotonic() + 5
 while time.monotonic() < deadline:
-    readable, _, _ = select.select([descriptor], [], [], 0.1)
-    if readable:
-        try:
-            data = os.read(descriptor, 4096)
-        except OSError:
-            break
-        captured += data
-        os.write(1, data)
+    if closed:
+        time.sleep(0.1)
+    else:
+        readable, _, _ = select.select([descriptor], [], [], 0.1)
+        if readable:
+            try:
+                if os.environ.get("TRAJECTORY_TEST_PTY_NON_EIO") == "1":
+                    raise OSError(errno.EBADF, "injected PTY read failure")
+                if os.environ.get("TRAJECTORY_TEST_PTY_EIO") == "1":
+                    raise OSError(errno.EIO, "injected PTY EOF")
+                data = os.read(descriptor, 4096)
+            except OSError as error:
+                if error.errno != errno.EIO:
+                    raise
+                closed = True
+            else:
+                captured += data
+                os.write(1, data)
     if not sent and marker in captured:
-        os.write(descriptor, secret)
+        if signal_name:
+            os.kill(pid, getattr(signal, signal_name.decode("ascii")))
+        else:
+            os.write(descriptor, secret)
         sent = True
     finished, status = os.waitpid(pid, os.WNOHANG)
     if finished != 0:
         break
 if finished == 0:
-    os.kill(pid, signal.SIGKILL)
-    _, status = os.waitpid(pid, 0)
+    finished, status = os.waitpid(pid, os.WNOHANG)
+if finished == 0:
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    finished, status = os.waitpid(pid, 0)
     raise SystemExit(124)
 raise SystemExit(os.waitstatus_to_exitcode(status))
 `;
@@ -86,13 +105,24 @@ const parseBody = async (request: Request): Promise<unknown> => {
   return body.length === 0 ? {} : JSON.parse(body);
 };
 
-const runPtyCli = async (root: string, argumentsList: readonly string[], secret: string): Promise<CliResult> => {
+const runPtyProcess = async (
+  command: readonly string[],
+  secret: string,
+  options: Readonly<{ readonly eio?: boolean; readonly marker?: string; readonly nonEio?: boolean; readonly root?: string; readonly signal?: "SIGTERM" }> = {},
+): Promise<CliResult> => {
   const child = Bun.spawn([
     "python3", "-c", pythonPtyDriver,
-    Buffer.from(secret).toString("base64"), Buffer.from("Verification code: ").toString("base64"),
-    process.execPath, "src/cli/index.ts", ...argumentsList,
+    Buffer.from(secret).toString("base64"), Buffer.from(options.marker ?? "Verification code: ").toString("base64"),
+    Buffer.from(options.signal ?? "").toString("base64"),
+    ...command,
   ], {
-    cwd: process.cwd(), env: { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root },
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      ...(options.root === undefined ? {} : { TRAJECTORY_MARKETPLACE_CONFIG_HOME: options.root }),
+      ...(options.eio === true ? { TRAJECTORY_TEST_PTY_EIO: "1" } : {}),
+      ...(options.nonEio === true ? { TRAJECTORY_TEST_PTY_NON_EIO: "1" } : {}),
+    },
     stderr: "pipe", stdout: "pipe",
   });
   const [exitCode, stderr, stdout] = await Promise.all([
@@ -100,6 +130,12 @@ const runPtyCli = async (root: string, argumentsList: readonly string[], secret:
   ]);
   return { exitCode, stderr, stdout };
 };
+
+const runPtyCli = async (root: string, argumentsList: readonly string[], secret: string): Promise<CliResult> =>
+  runPtyProcess([process.execPath, "src/cli/index.ts", ...argumentsList], secret, {
+    marker: "Verification code: ",
+    root,
+  });
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true);
@@ -237,6 +273,52 @@ describe("auth real CLI process boundary", () => {
     expect(await runCli(linkedRoot, ["auth", "status", "--server", origin])).toEqual({ exitCode: 1, stdout: "", stderr: `${JSON.stringify({ error: "unsafe_auth_store_path" })}\n` });
     expect(readFileSync(storePath(malformedRoot), "utf8")).toBe("{not-json");
   });
+
+  test("reaps the hidden TTY child after PTY EOF", async () => {
+    const command = ["python3", "-c", "import os; os.write(1, b'pty-eof\\n')"];
+    const closed = await runPtyProcess(command, "", { marker: "never-seen", nonEio: false });
+    const injectedEio = await runPtyProcess(
+      ["python3", "-c", "pass"],
+      "",
+      { eio: true, marker: "never-seen" },
+    );
+    const injected = await runPtyProcess(command, "", { marker: "never-seen", nonEio: true });
+
+    expect(closed.exitCode).toBe(0);
+    expect(closed.stdout).toContain("pty-eof");
+    expect(closed.stderr).not.toContain("Traceback");
+    expect(injectedEio.exitCode).toBe(0);
+    expect(injectedEio.stderr).not.toContain("ChildProcessError");
+    expect(injected.exitCode).not.toBe(0);
+    expect(injected.stderr).toContain("injected PTY read failure");
+  });
+
+  test("interrupts hidden TTY verification on SIGTERM", async () => {
+    const root = fixtureRoot();
+    let hits = 0;
+    const server = Bun.serve({ port: 0, fetch() {
+      hits += 1;
+      return json({ ok: true, accessToken: token, tokenType: "Bearer", expiresAt, accountId });
+    } });
+    servers.push(server);
+    const origin = `http://127.0.0.1:${server.port}`;
+
+    const result = await runPtyProcess(
+      [process.execPath, "src/cli/index.ts", "auth", "verify", "--server", origin, "--challenge", challengeId],
+      "654321\n",
+      { marker: "Verification code: ", root, signal: "SIGTERM" },
+    );
+
+    const expectedError = JSON.stringify({ error: "auth_code_interrupted" });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Verification code: ");
+    expect(result.stdout.match(new RegExp(expectedError, "g"))?.length).toBe(1);
+    expect(result.stdout).not.toContain("654321");
+    expect(result.stdout).not.toContain(token);
+    expect(hits).toBe(0);
+    expect(existsSync(storePath(root))).toBe(false);
+  }, { timeout: 6_000 });
 
   test("reads a bounded OTP from a hidden real TTY without echoing or printing secrets", async () => {
     const root = fixtureRoot();
