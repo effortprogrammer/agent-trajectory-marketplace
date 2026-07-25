@@ -3,6 +3,8 @@ import { existsSync, statSync } from "node:fs"
 import { join } from "node:path"
 
 import { TrajectoryAdapterError } from "../contract"
+import { openSqliteSnapshot } from "../sqlite-snapshot"
+import type { SqliteSnapshot } from "../sqlite-snapshot"
 
 export type HermesSessionRow = {
   readonly session_id: string
@@ -44,13 +46,11 @@ export type HermesSessionData = Readonly<{
 export const resolveHermesDbPath = (sourceDirOrDb: string): string =>
   sourceDirOrDb.endsWith(".db") ? sourceDirOrDb : join(sourceDirOrDb, "state.db")
 
-export const openHermesDatabase = (dbPath: string): Database => {
+export const openHermesDatabase = (dbPath: string): SqliteSnapshot => {
   if (!existsSync(dbPath) || !statSync(dbPath).isFile()) {
     throw new TrajectoryAdapterError("missing_source_dir", `missing_source_dir: ${dbPath}`)
   }
-  // A native readonly connection can consume an existing WAL and its sidecars,
-  // but cannot create, migrate, checkpoint, or otherwise mutate the source.
-  return new Database(dbPath, { readonly: true, strict: true })
+  return openSqliteSnapshot(dbPath)
 }
 
 export const epochToIso = (epochSeconds: number | null): string =>
@@ -69,7 +69,8 @@ export const readHermesSession = (
   sessionId: string,
 ): HermesSessionData => {
   const dbPath = resolveHermesDbPath(sourceDirOrDb)
-  const sqlite = openHermesDatabase(dbPath)
+  const snapshot = openHermesDatabase(dbPath)
+  const sqlite = snapshot.database
   try {
     const sessionsColumns = sqlite
       .query<{ readonly name: string }, []>("PRAGMA table_info(sessions)")
@@ -101,6 +102,6 @@ export const readHermesSession = (
       .all(sessionId)
     return { dbPath, session, messages }
   } finally {
-    sqlite.close()
+    snapshot.close()
   }
 }

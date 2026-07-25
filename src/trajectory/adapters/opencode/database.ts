@@ -4,6 +4,8 @@ import { basename, join } from "node:path";
 
 import type { HarnessSessionRef } from "../contract";
 import { TrajectoryAdapterError } from "../contract";
+import { openSqliteSnapshot } from "../sqlite-snapshot";
+import type { SqliteSnapshot } from "../sqlite-snapshot";
 
 export type OpenCodeSessionRow = Readonly<{
   id: string;
@@ -55,20 +57,11 @@ export const listOpenCodeDbFiles = (sourceDir: string): readonly string[] => {
     .sort();
 };
 
-export const openOpenCodeDatabase = (dbPath: string): Database => {
+export const openOpenCodeDatabase = (dbPath: string): SqliteSnapshot => {
   if (!existsSync(dbPath) || !statSync(dbPath).isFile()) {
     throw new TrajectoryAdapterError("missing_source_dir", `missing_source_dir: ${dbPath}`);
   }
-  let readonlyDatabase: Database | undefined;
-  try {
-    readonlyDatabase = new Database(dbPath, { readonly: true, strict: true });
-    readonlyDatabase.query("SELECT 1").get();
-    return readonlyDatabase;
-  } catch (error: unknown) {
-    readonlyDatabase?.close();
-    if (!(error instanceof Error)) throw error;
-    return new Database(dbPath, { strict: true });
-  }
+  return openSqliteSnapshot(dbPath);
 };
 
 export const resolveOpenCodeDbPath = (sessionPath: string): string => {
@@ -108,7 +101,8 @@ export const listOpenCodeSessions = (sourceDir: string): readonly HarnessSession
   }
   const sessions: HarnessSessionRef[] = [];
   for (const dbPath of dbPaths) {
-    const sqlite = openOpenCodeDatabase(dbPath);
+    const snapshot = openOpenCodeDatabase(dbPath);
+    const sqlite = snapshot.database;
     try {
       const rows = sqlite.query<OpenCodeSessionListRow, []>(
         `SELECT s.id, s.time_created, s.time_updated, COALESCE(m.msg_count, 0) AS msg_count
@@ -127,7 +121,7 @@ export const listOpenCodeSessions = (sourceDir: string): readonly HarnessSession
         });
       }
     } finally {
-      sqlite.close();
+      snapshot.close();
     }
   }
   return sessions.sort((left, right) =>

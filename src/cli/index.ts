@@ -12,6 +12,8 @@ import { runUpdateCli } from "@/trajectory/update-cli";
 import { installUpdateServiceSchedule } from "@/trajectory/update-service-schedule";
 
 import { parseCollectorCommand, runCollectorCli, runCollectorResidentCli, type CollectorCommand } from "./collector";
+import { isAuthInvocation, runAuthCli } from "./auth";
+import { isMarketplaceInvocation, runMarketplaceCli } from "./marketplace";
 
 const collectorErrorCode = (error: unknown): string => {
   if (error instanceof Error && "code" in error && typeof error.code === "string") return error.code;
@@ -76,10 +78,12 @@ const captureTelemetryInstallation = async (command: CollectorCommand): Promise<
 
 const main = async (): Promise<void> => {
   const argumentsList = process.argv.slice(2);
+  const authAbortController = new AbortController();
   let running = true;
   let command: CollectorCommand | undefined;
   const stop = (): void => {
     running = false;
+    if (!authAbortController.signal.aborted) authAbortController.abort();
   };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
@@ -102,6 +106,14 @@ const main = async (): Promise<void> => {
       (argumentsList[0] === "trajectory" && argumentsList[1] === "update");
     if (updateInvocation) {
       console.log(JSON.stringify(await runUpdateCli(argumentsList)));
+      return;
+    }
+    if (isAuthInvocation(argumentsList)) {
+      await runAuthCli(argumentsList, authAbortController.signal);
+      return;
+    }
+    if (isMarketplaceInvocation(argumentsList)) {
+      await runMarketplaceCli(argumentsList);
       return;
     }
     command = parseCollectorCommand(argumentsList);
@@ -131,6 +143,9 @@ const main = async (): Promise<void> => {
     await captureTelemetryError(command, errorCode);
     console.error(JSON.stringify({ error: errorCode }));
     process.exitCode = 1;
+  } finally {
+    process.removeListener("SIGINT", stop);
+    process.removeListener("SIGTERM", stop);
   }
 };
 
