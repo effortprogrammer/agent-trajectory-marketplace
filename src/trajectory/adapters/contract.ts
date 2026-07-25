@@ -215,8 +215,13 @@ export const boundedRedactedString = (
 export const sanitizeHarnessPayload = (
   payload: HarnessEventPayload,
 ): HarnessEventPayload | undefined => {
-  const sanitizedValue = sanitizePayloadValue(payload, harnessPayloadPolicy.maxStringBytes);
+  const sanitizedValue = sanitizePayloadValue(
+    payload,
+    harnessPayloadPolicy.maxStringBytes,
+    harnessPayloadPolicy.maxSerializedBytes,
+  );
   if (sanitizedValue === undefined) return undefined;
+  if (sanitizedValue.serializedLimitExceeded) return { truncated: true };
   const parsed = harnessEventPayloadSchema.safeParse(sanitizedValue.value);
   if (!parsed.success) return undefined;
   const sanitized = sanitizedValue.truncated ? { ...parsed.data, truncated: true } : parsed.data;
