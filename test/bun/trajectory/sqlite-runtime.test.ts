@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -100,6 +100,40 @@ test("SQLite snapshots reject a checkpoint between database and WAL copies", () 
     expect(caught.message).toBe("sqlite_source_changed");
   } finally {
     writer.close();
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test("SQLite snapshots normalize source disappearance between version check and copy", () => {
+  // Given: a closed database removed immediately after its stable pre-copy version check.
+  const directory = mkdtempSync(join(tmpdir(), "atm-bun-sqlite-copy-race-"));
+  const databasePath = join(directory, "sessions.db");
+  const writer = new Database(databasePath, { create: true, strict: true });
+  writer.exec("CREATE TABLE sessions (id TEXT PRIMARY KEY)");
+  writer.close();
+  let snapshot: SqliteSnapshot | undefined;
+  let caught: unknown;
+  const raceOptions = {
+    afterDatabaseCopy: (): void => {},
+    afterSourceVersionCheck: (source: string): void => {
+      if (source === databasePath) unlinkSync(source);
+    },
+  };
+  try {
+    // When: the source disappears in the stat-to-copy race window.
+    try {
+      snapshot = openSqliteSnapshot(databasePath, raceOptions);
+    } catch (error) {
+      if (error instanceof SqliteSnapshotError) caught = error;
+      else throw error;
+    }
+    snapshot?.close();
+
+    // Then: callers receive the stable typed drift error rather than raw ENOENT.
+    expect(caught).toBeInstanceOf(SqliteSnapshotError);
+    if (!(caught instanceof SqliteSnapshotError)) throw new Error("expected SqliteSnapshotError");
+    expect(caught.message).toBe("sqlite_source_changed");
+  } finally {
     rmSync(directory, { force: true, recursive: true });
   }
 });

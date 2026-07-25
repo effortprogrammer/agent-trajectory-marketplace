@@ -15,6 +15,7 @@ export type SqliteSnapshot = Readonly<{
 
 export type SqliteSnapshotOptions = Readonly<{
   readonly afterDatabaseCopy?: () => void;
+  readonly afterSourceVersionCheck?: (source: string) => void;
 }>;
 
 type SourceVersion = Readonly<{
@@ -23,6 +24,13 @@ type SourceVersion = Readonly<{
   ino: bigint;
   mtimeNs: bigint;
   size: bigint;
+}>;
+
+type StableCopyRequest = Readonly<{
+  source: string;
+  target: string;
+  expected: SourceVersion;
+  afterSourceVersionCheck: SqliteSnapshotOptions["afterSourceVersionCheck"];
 }>;
 
 const sourceVersion = (status: BigIntStats): SourceVersion => ({
@@ -50,14 +58,22 @@ const readSourceVersion = (source: string): SourceVersion | undefined => {
   }
 };
 
-const copyStableFile = (source: string, target: string, expected: SourceVersion): void => {
-  const before = readSourceVersion(source);
-  if (before === undefined || !sameVersion(expected, before)) {
+const copyStableFile = (request: StableCopyRequest): void => {
+  const before = readSourceVersion(request.source);
+  if (before === undefined || !sameVersion(request.expected, before)) {
     throw new SqliteSnapshotError("sqlite_source_changed");
   }
-  copyFileSync(source, target, constants.COPYFILE_EXCL);
-  const after = readSourceVersion(source);
-  if (after === undefined || !sameVersion(expected, after)) {
+  request.afterSourceVersionCheck?.(request.source);
+  try {
+    copyFileSync(request.source, request.target, constants.COPYFILE_EXCL);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      throw new SqliteSnapshotError("sqlite_source_changed");
+    }
+    throw error;
+  }
+  const after = readSourceVersion(request.source);
+  if (after === undefined || !sameVersion(request.expected, after)) {
     throw new SqliteSnapshotError("sqlite_source_changed");
   }
 };
@@ -77,15 +93,21 @@ export const openSqliteSnapshot = (
     }));
     const databaseSource = sourceFiles[0];
     if (databaseSource?.version === undefined) throw new SqliteSnapshotError("unsafe_sqlite_source");
-    copyStableFile(databaseSource.source, databasePath, databaseSource.version);
+    copyStableFile({
+      source: databaseSource.source,
+      target: databasePath,
+      expected: databaseSource.version,
+      afterSourceVersionCheck: options.afterSourceVersionCheck,
+    });
     options.afterDatabaseCopy?.();
     for (const sourceFile of sourceFiles.slice(1)) {
       if (sourceFile.version !== undefined && sourceFile.suffix !== "-shm") {
-        copyStableFile(
-          sourceFile.source,
-          `${databasePath}${sourceFile.suffix}`,
-          sourceFile.version,
-        );
+        copyStableFile({
+          source: sourceFile.source,
+          target: `${databasePath}${sourceFile.suffix}`,
+          expected: sourceFile.version,
+          afterSourceVersionCheck: options.afterSourceVersionCheck,
+        });
       }
     }
     if (sourceFiles.some((sourceFile) => {
