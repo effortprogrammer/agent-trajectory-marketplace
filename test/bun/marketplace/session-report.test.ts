@@ -97,10 +97,17 @@ describe("bounded session reports", () => {
 
   test("redacts inline and nested credential values from list and inspection evidence", () => {
     // Given: a schema-valid direct ATF whose strings and sensitive object keys bypassed native redaction.
-    const secret = "super-secret-token-123456";
-    const nestedSecret = "plain-password-value-123456";
+    const inlineSecrets = ["h7", "q9", "v5"] as const;
+    const nestedSecret = "n3";
     const trace = validated([
-      attested({ kind: "function_enter", name: "turn-1", payload: { role: "user", content: `review TOKEN=${secret}` } }, 0),
+      attested({
+        kind: "function_enter",
+        name: "turn-1",
+        payload: {
+          role: "user",
+          content: `review password=${inlineSecrets[0]} TOKEN="${inlineSecrets[1]}" client-secret:${inlineSecrets[2]}`,
+        },
+      }, 0),
       attested({ kind: "tool_call", name: "terminal", payload: { input: { password: nestedSecret } } }, 1),
       attested({ kind: "tool_result", name: "terminal", payload: { output: { token: nestedSecret } } }, 2),
     ]);
@@ -110,9 +117,11 @@ describe("bounded session reports", () => {
     const rendered = `${renderSessionList([buildSessionListItem(trace)])}\n${renderSessionReport(report)}`;
 
     // Then: the secret never crosses the output boundary and redaction stays visible.
-    expect(JSON.stringify({ report, rendered })).not.toContain(secret);
+    for (const secret of inlineSecrets) expect(JSON.stringify({ report, rendered })).not.toContain(secret);
     expect(JSON.stringify({ report, rendered })).not.toContain(nestedSecret);
-    expect(rendered).toContain("review [redacted]");
+    expect(rendered).toContain("review [redacted] [redacted] [redacted]");
+    expect(report.items[1]?.text).toContain('{"password":"[redacted]"}');
+    expect(report.items[2]?.text).toContain('{"token":"[redacted]"}');
     expect(report.markers.filter((marker) => marker.kind === "redacted")).toHaveLength(3);
   });
 

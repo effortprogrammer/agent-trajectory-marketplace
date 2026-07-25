@@ -93,7 +93,7 @@ function freezeTrace(relativePath: string, bytes: Uint8Array, metadata: TraceMet
   });
 }
 
-function buildSnapshot(root: string, files: readonly ConfinedFile[]): SessionSnapshot {
+function buildSnapshot(root: CanonicalRoot, files: readonly ConfinedFile[]): SessionSnapshot {
   const traces: FrozenTrace[] = [];
   let totalByteCount = 0;
   for (const { relativePath, bytes } of files) {
@@ -102,14 +102,20 @@ function buildSnapshot(root: string, files: readonly ConfinedFile[]): SessionSna
     totalByteCount += trace.byteCount;
   }
   traces.sort((left, right) => left.selector.localeCompare(right.selector));
-  return Object.freeze({ root, traces: Object.freeze(traces), totalByteCount });
+  return Object.freeze({
+    root: root.path,
+    rootDevice: root.device,
+    rootInode: root.inode,
+    traces: Object.freeze(traces),
+    totalByteCount,
+  });
 }
 
 export function scanSessionSnapshot(root: string,
   options: SnapshotReadOptions = {}): SessionSnapshot {
   const canonical = canonicalRoot(root);
   const maxBytes = retainedLimit(options);
-  return buildSnapshot(canonical.path, discoverConfinedFiles({
+  return buildSnapshot(canonical, discoverConfinedFiles({
     root: canonical.path, rootDevice: canonical.device, rootInode: canonical.inode, maxBytes, options,
   }));
 }
@@ -127,7 +133,7 @@ export function readExplicitTraces(root: string, paths: readonly string[],
     maxBytes, options, relativePaths: normalized,
     errorCode: options.afterInitialStat === undefined ? "unsafe_trace_path" : "trace_drift",
   });
-  return buildSnapshot(canonical.path, files);
+  return buildSnapshot(canonical, files);
 }
 
 function retainedLimit(options: SnapshotReadOptions): number {
@@ -150,6 +156,11 @@ export function assertTracesUnchanged(snapshot: SessionSnapshot,
   selected: readonly FrozenTrace[]): readonly FrozenTrace[] {
   const seen = new Set<FullSelector>();
   const currentRoot = canonicalRoot(snapshot.root);
+  if (
+    currentRoot.path !== snapshot.root ||
+    currentRoot.device !== snapshot.rootDevice ||
+    currentRoot.inode !== snapshot.rootInode
+  ) throw new MarketplaceError("trace_drift");
   return selected.map((trace) => {
     if (seen.has(trace.selector)) throw new MarketplaceError("duplicate_trace");
     seen.add(trace.selector);
@@ -170,8 +181,8 @@ export function assertTracesUnchanged(snapshot: SessionSnapshot,
     }
     const current = readConfinedFiles({
       root: currentRoot.path,
-      rootDevice: currentRoot.device,
-      rootInode: currentRoot.inode,
+      rootDevice: snapshot.rootDevice,
+      rootInode: snapshot.rootInode,
       relativePaths: [original.relativePath],
       maxBytes: original.byteCount,
       errorCode: "trace_drift",
