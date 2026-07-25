@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { isAbsolute } from "node:path";
 
 import { harnessTraceDocumentSchema } from "../trajectory/adapters/contract";
+import { isPayloadStructureBounded } from "../trajectory/adapters/payload-sanitizer";
 import { discoverConfinedFiles, readConfinedFiles } from "./confined-reader";
 import type { ConfinedFile, ConfinementOptions } from "./confined-reader";
 import { MarketplaceError } from "./error";
@@ -64,6 +65,10 @@ function validateBytes(bytes: Uint8Array): TraceMetadata {
   }
   const parsed = harnessTraceDocumentSchema.safeParse(value);
   if (!parsed.success) throw new MarketplaceError("invalid_trace");
+  if (parsed.data.events.some((event) =>
+    event.payload !== undefined && !isPayloadStructureBounded(event.payload))) {
+    throw new MarketplaceError("invalid_trace");
+  }
   let earliestTimestamp: string | "unknown" = "unknown";
   let earliestTime = Number.POSITIVE_INFINITY;
   for (const event of parsed.data.events) {

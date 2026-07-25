@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
-import { constants, copyFileSync, existsSync, lstatSync, mkdtempSync, rmSync } from "node:fs";
-import type { Stats } from "node:fs";
+import { constants, copyFileSync, lstatSync, mkdtempSync, rmSync } from "node:fs";
+import type { BigIntStats } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,52 +13,87 @@ export type SqliteSnapshot = Readonly<{
   database: Database;
 }>;
 
-type SourceVersion = Readonly<{
-  ctimeMs: number;
-  dev: number;
-  ino: number;
-  mtimeMs: number;
-  size: number;
+export type SqliteSnapshotOptions = Readonly<{
+  readonly afterDatabaseCopy?: () => void;
 }>;
 
-const sourceVersion = (status: Stats): SourceVersion => ({
-  ctimeMs: status.ctimeMs,
+type SourceVersion = Readonly<{
+  ctimeNs: bigint;
+  dev: bigint;
+  ino: bigint;
+  mtimeNs: bigint;
+  size: bigint;
+}>;
+
+const sourceVersion = (status: BigIntStats): SourceVersion => ({
+  ctimeNs: status.ctimeNs,
   dev: status.dev,
   ino: status.ino,
-  mtimeMs: status.mtimeMs,
+  mtimeNs: status.mtimeNs,
   size: status.size,
 });
 
 const sameVersion = (left: SourceVersion, right: SourceVersion): boolean =>
   left.dev === right.dev && left.ino === right.ino && left.size === right.size &&
-  left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
+  left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
 
-const copyStableFile = (source: string, target: string): void => {
-  const beforeStatus = lstatSync(source);
-  if (!beforeStatus.isFile() || beforeStatus.isSymbolicLink()) {
-    throw new SqliteSnapshotError("unsafe_sqlite_source");
+const readSourceVersion = (source: string): SourceVersion | undefined => {
+  try {
+    const status = lstatSync(source, { bigint: true });
+    if (!status.isFile() || status.isSymbolicLink()) {
+      throw new SqliteSnapshotError("unsafe_sqlite_source");
+    }
+    return sourceVersion(status);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
   }
-  const before = sourceVersion(beforeStatus);
+};
+
+const copyStableFile = (source: string, target: string, expected: SourceVersion): void => {
+  const before = readSourceVersion(source);
+  if (before === undefined || !sameVersion(expected, before)) {
+    throw new SqliteSnapshotError("sqlite_source_changed");
+  }
   copyFileSync(source, target, constants.COPYFILE_EXCL);
-  if (!sameVersion(before, sourceVersion(lstatSync(source)))) {
+  const after = readSourceVersion(source);
+  if (after === undefined || !sameVersion(expected, after)) {
     throw new SqliteSnapshotError("sqlite_source_changed");
   }
 };
 
-export const openSqliteSnapshot = (sourcePath: string): SqliteSnapshot => {
+export const openSqliteSnapshot = (
+  sourcePath: string,
+  options: SqliteSnapshotOptions = {},
+): SqliteSnapshot => {
   const temporaryRoot = mkdtempSync(join(tmpdir(), "trajectory-sqlite-snapshot-"));
   const databasePath = join(temporaryRoot, "source.db");
-  const sidecarSuffixes = ["-wal", "-shm", "-journal"] as const;
-  const sidecarsBefore = sidecarSuffixes.map((suffix) => existsSync(`${sourcePath}${suffix}`));
+  const suffixes = ["", "-wal", "-shm", "-journal"] as const;
   try {
-    copyStableFile(sourcePath, databasePath);
-    for (const [index, suffix] of sidecarSuffixes.entries()) {
-      if (sidecarsBefore[index] === true && suffix !== "-shm") {
-        copyStableFile(`${sourcePath}${suffix}`, `${databasePath}${suffix}`);
+    const sourceFiles = suffixes.map((suffix) => ({
+      source: `${sourcePath}${suffix}`,
+      suffix,
+      version: readSourceVersion(`${sourcePath}${suffix}`),
+    }));
+    const databaseSource = sourceFiles[0];
+    if (databaseSource?.version === undefined) throw new SqliteSnapshotError("unsafe_sqlite_source");
+    copyStableFile(databaseSource.source, databasePath, databaseSource.version);
+    options.afterDatabaseCopy?.();
+    for (const sourceFile of sourceFiles.slice(1)) {
+      if (sourceFile.version !== undefined && sourceFile.suffix !== "-shm") {
+        copyStableFile(
+          sourceFile.source,
+          `${databasePath}${sourceFile.suffix}`,
+          sourceFile.version,
+        );
       }
     }
-    const sidecarsAfter = sidecarSuffixes.map((suffix) => existsSync(`${sourcePath}${suffix}`));
-    if (sidecarsBefore.some((present, index) => present !== sidecarsAfter[index])) {
+    if (sourceFiles.some((sourceFile) => {
+      const current = readSourceVersion(sourceFile.source);
+      return sourceFile.version === undefined
+        ? current !== undefined
+        : current === undefined || !sameVersion(sourceFile.version, current);
+    })) {
       throw new SqliteSnapshotError("sqlite_source_changed");
     }
     const database = new Database(databasePath, { readwrite: true, strict: true });

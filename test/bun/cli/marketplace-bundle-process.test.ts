@@ -216,11 +216,12 @@ describe("marketplace candidate bundle process boundary", () => {
     const root = fixtureRoot();
     writeFileSync(join(root, "available.atf.json"), traceBytes("codex", "available"));
     const output = join(root, "aborted.zip");
+    const selector = selectorFor("available.atf.json");
 
     // When
     const result = runPtyCli(
       ["marketplace", "seller", "candidate", "bundle", "--root", root, "--out", output],
-      "abort\n",
+      { afterMarker: "abort\n", initialInput: "included\n", marker: `included: ${selector}` },
     );
 
     // Then
@@ -231,7 +232,7 @@ describe("marketplace candidate bundle process boundary", () => {
     }).toMatchObject({ exitCode: 0 });
     expect(existsSync(output)).toBe(false);
     expect(Array.from(new Bun.Glob("*.trajectory-tmp-*").scanSync({ cwd: root }))).toEqual([]);
-  });
+  }, { timeout: 6_000 });
 
   test("Given every trace is excluded, When write is requested then review aborts, Then empty selection is recoverable and writes nothing", () => {
     // Given
