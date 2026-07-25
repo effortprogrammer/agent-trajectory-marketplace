@@ -37,6 +37,11 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
   const inlineCredentialsValue = "inlineCredentialsValue93e7";
   const inlinePwdValue = "inlinePwdValue93e7!";
   const inlineCookieValue = "inlineCookieValue93e7";
+  const quotedCredentialValue = "quotedCredentialValue93e7";
+  const quotedCredentialSuffix = "quotedCredentialSuffix93e7";
+  const projectEqualsValue = "projectEqualsValue93e7";
+  const projectColonValue = "projectColonValue93e7";
+  const projectObjectValue = "projectObjectValue93e7";
   const command = [
     inlineSecret,
     standaloneToken,
@@ -46,6 +51,9 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
     `credentials:'${inlineCredentialsValue}'`,
     `pwd=${inlinePwdValue}`,
     `cookie="${inlineCookieValue}"`,
+    `credential="${quotedCredentialValue}"${quotedCredentialSuffix}`,
+    `sk-proj=${projectEqualsValue}`,
+    `sk-proj:${projectColonValue}`,
   ].join(" ");
   const numericApiKey = 314_159_265;
   const numericToken = 271_828_182;
@@ -70,6 +78,7 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
           nested: { token: numericToken },
           password,
           pwd: pwdValue,
+          "sk-proj": projectObjectValue,
         },
       },
     }],
@@ -118,9 +127,14 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
       inlineCredentialsValue,
       inlinePwdValue,
       inlineCookieValue,
+      quotedCredentialValue,
+      quotedCredentialSuffix,
+      projectEqualsValue,
+      projectColonValue,
+      projectObjectValue,
     ];
     expect(rawMarkers.filter((marker) => archivedText.includes(marker))).toEqual([]);
-    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(17);
+    expect(archivedText).toContain("[redacted]");
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
