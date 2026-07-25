@@ -36,18 +36,32 @@ const summary = (): CollectSweepSummary => ({
 });
 
 describe("collector telemetry", () => {
-  test("uses only the configured PostHog key and host", () => {
-    // Given: a process environment with the approved telemetry configuration.
-    const environment = {
+  test.each([
+    [undefined],
+    ["https://us.i.posthog.com"],
+    ["https://eu.i.posthog.com"],
+  ])("routes the absent or official PostHog host through the country proxy", (host) => {
+    const configuration = resolveCollectorTelemetryConfig({
       ATM_POSTHOG_API_KEY: "phc_test",
-      ATM_POSTHOG_HOST: "https://eu.i.posthog.com",
-    };
+      ATM_POSTHOG_HOST: host,
+    });
 
-    // When: the collector resolves its telemetry configuration.
-    const configuration = resolveCollectorTelemetryConfig(environment);
+    expect(configuration).toEqual({
+      apiKey: "phc_test",
+      host: "https://atm-telemetry-country-proxy.yhjhoward7.workers.dev",
+    });
+  });
 
-    // Then: the approved endpoint values are available without unrelated environment data.
-    expect(configuration).toEqual({ apiKey: "phc_test", host: "https://eu.i.posthog.com" });
+  test.each([
+    ["http://localhost:43210"],
+    ["https://telemetry.example.com"],
+  ])("preserves the explicit custom telemetry host %s", (host) => {
+    const configuration = resolveCollectorTelemetryConfig({
+      ATM_POSTHOG_API_KEY: "phc_test",
+      ATM_POSTHOG_HOST: host,
+    });
+
+    expect(configuration).toEqual({ apiKey: "phc_test", host });
   });
 
   test("captures one daily heartbeat with only the approved collection signals", async () => {
