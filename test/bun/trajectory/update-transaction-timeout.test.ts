@@ -66,7 +66,7 @@ test("times out a hung build and leaves the active release unchanged", async () 
 	});
 });
 
-test("bounds a hung service handover and rollback before restoring the active release", async () => {
+test("does not roll back a version change until a hung activation drain times out", async () => {
 	// Given
 	jest.useFakeTimers();
 	const root = join(tmpdir(), `atm-update-handover-timeout-${crypto.randomUUID()}`);
@@ -81,7 +81,7 @@ test("bounds a hung service handover and rollback before restoring the active re
 		service: { runtimes: ["codex"], intervalSeconds: 30, settleSeconds: 60 },
 	});
 	const activationStarted = Promise.withResolvers<void>();
-	const rollbackStarted = Promise.withResolvers<void>();
+	let rollbackCalls = 0;
 	const transaction = runUpdateTransaction({
 		stateRoot: root,
 		source: {
@@ -101,9 +101,8 @@ test("bounds a hung service handover and rollback before restoring the active re
 				activationStarted.resolve();
 				return new Promise(() => undefined);
 			},
-			rollback: () => {
-				rollbackStarted.resolve();
-				return new Promise(() => undefined);
+			rollback: async () => {
+				rollbackCalls += 1;
 			},
 		},
 	});
@@ -111,7 +110,8 @@ test("bounds a hung service handover and rollback before restoring the active re
 
 	// When
 	jest.advanceTimersByTime(60_000);
-	await rollbackStarted.promise;
+	await Promise.resolve();
+	expect(rollbackCalls).toBe(0);
 	jest.advanceTimersByTime(60_000);
 
 	// Then
@@ -121,4 +121,5 @@ test("bounds a hung service handover and rollback before restoring the active re
 		attemptedVersion: "1.1.0",
 		rolledBack: false,
 	});
+	expect(rollbackCalls).toBe(0);
 });

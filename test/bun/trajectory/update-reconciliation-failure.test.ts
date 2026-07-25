@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import {
 	mkdirSync,
 	readFileSync,
@@ -19,15 +19,113 @@ import {
 	createPlatformUpdateServiceHandover,
 	type UpdateServiceRuntime,
 } from "../../../src/trajectory/update-service-handover";
-import { runUpdateTransaction } from "../../../src/trajectory/update-transaction";
+import {
+	runUpdateTransaction,
+	type UpdateServiceHandover,
+} from "../../../src/trajectory/update-transaction";
 
 const roots: string[] = [];
 
 afterEach(() => {
+	jest.useRealTimers();
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 describe("same-version reconciliation retryability", () => {
+	test("waits for an aborted activation to settle before starting rollback", async () => {
+		jest.useFakeTimers();
+		const root = join(tmpdir(), `atm-reconcile-quiescence-${crypto.randomUUID()}`);
+		const currentRelease = join(root, "releases", "1.0.0");
+		roots.push(root);
+		mkdirSync(currentRelease, { recursive: true });
+		symlinkSync(currentRelease, join(root, "current"));
+		writeInstallState(deriveInstallPaths(root, "1.0.0"), {
+			schemaVersion: 1,
+			installRoot: root,
+			outputDir: join(root, "collected"),
+			service: { runtimes: [], intervalSeconds: 30, settleSeconds: 60 },
+		});
+		const activationStarted = Promise.withResolvers<void>();
+		let serviceState = "initial";
+		let rollbackCalls = 0;
+		const service: UpdateServiceHandover = {
+			activate: ({ signal }) => {
+				const settled = Promise.withResolvers<void>();
+				activationStarted.resolve();
+				signal.addEventListener("abort", () => {
+					setTimeout(() => {
+						serviceState = "activation";
+						settled.resolve();
+					}, 1_000);
+				}, { once: true });
+				return settled.promise;
+			},
+			rollback: async () => {
+				rollbackCalls += 1;
+				serviceState = "rollback";
+			},
+		};
+		const transaction = runUpdateTransaction({
+			stateRoot: root,
+			source: { resolve: async () => ({ kind: "up_to_date", version: "1.0.0" }) },
+			builder: { stage: async () => undefined },
+			service,
+		});
+		await activationStarted.promise;
+
+		jest.advanceTimersByTime(60_000);
+		await Promise.resolve();
+		expect(rollbackCalls).toBe(0);
+		expect(serviceState).toBe("initial");
+
+		jest.advanceTimersByTime(1_000);
+		await expect(transaction).resolves.toEqual({
+			status: "update_failed",
+			currentVersion: "1.0.0",
+			rolledBack: true,
+		});
+		expect(rollbackCalls).toBe(1);
+		expect(serviceState).toBe("rollback");
+	});
+
+	test("reports rollback failure after an immediate activation error", async () => {
+		const root = join(tmpdir(), `atm-reconcile-rollback-failure-${crypto.randomUUID()}`);
+		const currentRelease = join(root, "releases", "1.0.0");
+		roots.push(root);
+		mkdirSync(currentRelease, { recursive: true });
+		symlinkSync(currentRelease, join(root, "current"));
+		writeInstallState(deriveInstallPaths(root, "1.0.0"), {
+			schemaVersion: 1,
+			installRoot: root,
+			outputDir: join(root, "collected"),
+			service: { runtimes: [], intervalSeconds: 30, settleSeconds: 60 },
+		});
+		const rollbackRequests: Array<Readonly<{ fromVersion: string; toVersion: string }>> = [];
+		const result = await runUpdateTransaction({
+			stateRoot: root,
+			source: { resolve: async () => ({ kind: "up_to_date", version: "1.0.0" }) },
+			builder: { stage: async () => undefined },
+			service: {
+				activate: async () => {
+					throw new Error("activation failed");
+				},
+				rollback: async ({ fromVersion, toVersion }) => {
+					rollbackRequests.push({ fromVersion, toVersion });
+					throw new Error("rollback failed");
+				},
+			},
+		});
+
+		expect(result).toEqual({
+			status: "update_failed",
+			currentVersion: "1.0.0",
+			rolledBack: false,
+		});
+		expect(rollbackRequests).toEqual([
+			{ fromVersion: "1.0.0", toVersion: "1.0.0" },
+		]);
+	});
+
 	test("restores stale launchd bytes when bootstrap fails", async () => {
 		// Given: a stale launchd service and a bootstrap failure after successful bootout.
 		const root = join(tmpdir(), `atm-reconcile-retry-${crypto.randomUUID()}`);
