@@ -98,20 +98,24 @@ describe("session snapshot", () => {
     expect(snapshot.traces.map((trace) => trace.relativePath)).toEqual(["nested/inside.atf.json"]);
   });
 
-  test("Given the approved root is swapped after resolution, When scanned, Then acquisition fails closed", () => {
+  test("Given the approved root is replaced after validation, When scanned, Then traversal stays on the acquired root", () => {
     const container = fixtureRoot();
-    const outside = fixtureRoot();
     const root = join(container, "approved");
+    const replacement = join(container, "replacement");
     mkdirSync(root);
+    mkdirSync(replacement);
     writeFileSync(join(root, "inside.atf.json"), validAtf("inside"));
-    writeFileSync(join(outside, "outside.atf.json"), validAtf("outside"));
+    writeFileSync(join(replacement, "outside.atf.json"), validAtf("outside"));
 
-    expectCode(() => scanSessionSnapshot(root, {
+    const snapshot = scanSessionSnapshot(root, {
       afterRootPathResolved: (resolvedRoot: string) => {
         renameSync(resolvedRoot, join(container, "parked"));
-        symlinkSync(outside, resolvedRoot);
+        renameSync(replacement, resolvedRoot);
       },
-    }), "invalid_root");
+    });
+
+    expect(snapshot.traces.map((trace) => trace.runtime)).toEqual(["inside"]);
+    expect(snapshot.traces.map((trace) => trace.relativePath)).toEqual(["inside.atf.json"]);
   });
 
   test("Given native descriptor traversal is unavailable, When scanned, Then it fails closed", () => {

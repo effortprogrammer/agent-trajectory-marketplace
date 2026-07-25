@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { isAbsolute } from "node:path";
 
@@ -21,14 +21,18 @@ type TraceMetadata = Readonly<{
   readonly earliestTimestamp: string | "unknown";
 }>;
 
+type CanonicalRoot = Readonly<{ readonly path: string; readonly device: number; readonly inode: number }>;
+
 function digest(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function canonicalRoot(root: string): string {
+function canonicalRoot(root: string): CanonicalRoot {
   if (!isAbsolute(root)) throw new MarketplaceError("invalid_root");
   try {
-    return realpathSync(root);
+    const status = statSync(root);
+    if (!status.isDirectory()) throw new MarketplaceError("invalid_root");
+    return { path: realpathSync(root), device: status.dev, inode: status.ino };
   } catch (error) {
     if (error instanceof MarketplaceError) throw error;
     throw new MarketplaceError("invalid_root");
@@ -105,7 +109,9 @@ export function scanSessionSnapshot(root: string,
   options: SnapshotReadOptions = {}): SessionSnapshot {
   const canonical = canonicalRoot(root);
   const maxBytes = retainedLimit(options);
-  return buildSnapshot(canonical, discoverConfinedFiles({ root: canonical, maxBytes, options }));
+  return buildSnapshot(canonical.path, discoverConfinedFiles({
+    root: canonical.path, rootDevice: canonical.device, rootInode: canonical.inode, maxBytes, options,
+  }));
 }
 
 export function readExplicitTraces(root: string, paths: readonly string[],
@@ -117,10 +123,11 @@ export function readExplicitTraces(root: string, paths: readonly string[],
   }
   const maxBytes = retainedLimit(options);
   const files = readConfinedFiles({
-    root: canonical, maxBytes, options, relativePaths: normalized,
+    root: canonical.path, rootDevice: canonical.device, rootInode: canonical.inode,
+    maxBytes, options, relativePaths: normalized,
     errorCode: options.afterInitialStat === undefined ? "unsafe_trace_path" : "trace_drift",
   });
-  return buildSnapshot(canonical, files);
+  return buildSnapshot(canonical.path, files);
 }
 
 function retainedLimit(options: SnapshotReadOptions): number {
@@ -142,6 +149,7 @@ export function resolveTraceSelector(snapshot: SessionSnapshot, selector: string
 export function assertTracesUnchanged(snapshot: SessionSnapshot,
   selected: readonly FrozenTrace[]): readonly FrozenTrace[] {
   const seen = new Set<FullSelector>();
+  const currentRoot = canonicalRoot(snapshot.root);
   return selected.map((trace) => {
     if (seen.has(trace.selector)) throw new MarketplaceError("duplicate_trace");
     seen.add(trace.selector);
@@ -161,7 +169,9 @@ export function assertTracesUnchanged(snapshot: SessionSnapshot,
       throw new MarketplaceError("trace_drift");
     }
     const current = readConfinedFiles({
-      root: snapshot.root,
+      root: currentRoot.path,
+      rootDevice: currentRoot.device,
+      rootInode: currentRoot.inode,
       relativePaths: [original.relativePath],
       maxBytes: original.byteCount,
       errorCode: "trace_drift",

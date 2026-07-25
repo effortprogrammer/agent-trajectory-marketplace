@@ -1,4 +1,8 @@
-import { boundedRedactedString, type HarnessTraceEvent } from "../trajectory/adapters/contract";
+import {
+  boundedRedactedString,
+  sanitizeHarnessPayload,
+  type HarnessTraceEvent,
+} from "../trajectory/adapters/contract";
 import type {
   SessionList,
   SessionListItem,
@@ -143,22 +147,25 @@ const resultText = (event: HarnessTraceEvent): readonly [SafeText, readonly Safe
 };
 
 const itemForEvent = (event: HarnessTraceEvent, eventIndex: number): SessionWorkItem | undefined => {
-  const payload = event.payload;
+  const visibleEvent: HarnessTraceEvent = event.payload === undefined
+    ? event
+    : { ...event, payload: sanitizeHarnessPayload(event.payload) ?? { truncated: true } };
+  const payload = visibleEvent.payload;
   if (event.kind === "function_enter" && payload?.role === "user" && payload.content !== undefined) {
     const text = storedValue(payload.content);
-    return { kind: "request", eventIndex, ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }), text: text.text, markers: eventMarkers(event, eventIndex, [text]) };
+    return { kind: "request", eventIndex, ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }), text: text.text, markers: eventMarkers(visibleEvent, eventIndex, [text]) };
   }
   if (event.kind === "tool_call") {
-    const [text, fields] = actionText(event);
-    return { kind: "action", eventIndex, ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }), text: text.text, markers: eventMarkers(event, eventIndex, fields) };
+    const [text, fields] = actionText(visibleEvent);
+    return { kind: "action", eventIndex, ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }), text: text.text, markers: eventMarkers(visibleEvent, eventIndex, fields) };
   }
   if (event.kind === "llm_call" && payload?.role === "assistant" && payload.content !== undefined) {
     const text = storedValue(payload.content);
-    return { kind: "result", eventIndex, ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }), text: text.text, markers: eventMarkers(event, eventIndex, [text]) };
+    return { kind: "result", eventIndex, ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }), text: text.text, markers: eventMarkers(visibleEvent, eventIndex, [text]) };
   }
   if (event.kind === "tool_result") {
-    const [text, fields] = resultText(event);
-    return { kind: payload?.isError === true ? "error" : "result", eventIndex, ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }), text: text.text, markers: eventMarkers(event, eventIndex, fields) };
+    const [text, fields] = resultText(visibleEvent);
+    return { kind: payload?.isError === true ? "error" : "result", eventIndex, ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }), text: text.text, markers: eventMarkers(visibleEvent, eventIndex, fields) };
   }
   return undefined;
 };

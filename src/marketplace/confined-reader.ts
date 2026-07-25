@@ -28,6 +28,8 @@ export type ConfinedFile = Readonly<{
 
 type BatchRequest = Readonly<{
   readonly root: string;
+  readonly rootDevice: number;
+  readonly rootInode: number;
   readonly maxBytes: number;
   readonly options: ConfinementOptions;
 }>;
@@ -250,9 +252,10 @@ function withReader<T>(request: BatchRequest, action: (reader: OpenAtReader) => 
   let descriptor: number | undefined;
   try {
     const root = request.root;
-    request.options.afterRootPathResolved?.(root);
     descriptor = openAbsoluteDirectory(library, root);
-    if (!fstatSync(descriptor).isDirectory()) throw new MarketplaceError("invalid_root");
+    const rootStatus = fstatSync(descriptor);
+    if (!rootStatus.isDirectory() || rootStatus.dev !== request.rootDevice || rootStatus.ino !== request.rootInode) throw new MarketplaceError("invalid_root");
+    request.options.afterRootPathResolved?.(root);
     return action(new OpenAtReader({ library, root, rootDescriptor: descriptor, options: request.options }));
   } catch (error) {
     if (error instanceof MarketplaceError) throw error;
