@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { writeCandidateBundle } from "../../../src/marketplace/bundle-service";
+import { datasetManifestSchema } from "../../../src/marketplace/archive-contract";
 import { buildDatasetArchive } from "../../../src/marketplace/dataset-archive";
 import { MarketplaceError } from "../../../src/marketplace/error";
 import { fullSelectorSchema, traceHashSchema } from "../../../src/marketplace/session-contract";
@@ -64,8 +65,8 @@ const localEntries = (archive: Uint8Array): ReadonlyMap<string, Uint8Array> => {
 describe("selected trace dataset archive", () => {
   test("preserves exact bytes in opaque selector paths when input order differs", () => {
     // Given: selected frozen traces supplied in reverse selector order.
-    const first = frozenTrace("1", "{\"trace\":\"first\"}\n");
-    const second = frozenTrace("2", "{\"trace\":\"second\"}\n");
+    const first = frozenTrace("1", new TextDecoder().decode(validAtf("codex")));
+    const second = frozenTrace("2", new TextDecoder().decode(validAtf("opencode")));
 
     // When: the deterministic dataset archive is assembled.
     const archive = buildDatasetArchive([second, first]);
@@ -84,8 +85,8 @@ describe("selected trace dataset archive", () => {
 
   test("produces byte-identical archives for equivalent selected membership", () => {
     // Given: the same two frozen traces in opposite orders.
-    const first = frozenTrace("3", "{\"stable\":1}\n");
-    const second = frozenTrace("4", "{\"stable\":2}\n");
+    const first = frozenTrace("3", new TextDecoder().decode(validAtf("codex")));
+    const second = frozenTrace("4", new TextDecoder().decode(validAtf("opencode")));
 
     // When: each membership is independently assembled.
     const forward = buildDatasetArchive([first, second]);
@@ -95,9 +96,43 @@ describe("selected trace dataset archive", () => {
     expect(forward).toEqual(reverse);
   });
 
+  test("removes credentials from archived traces before hashing the manifest", () => {
+    // Given: a schema-valid reviewed trace that still contains credentials.
+    const bearer = "Bearer verySensitiveCredentialValue123456";
+    const password = "short-password";
+    const trace = frozenTrace("7", JSON.stringify({
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 1,
+      events: [{
+        kind: "tool_call",
+        name: "terminal",
+        payload: { input: { authorization: bearer, password } },
+      }],
+    }));
+
+    // When: the reviewed trace becomes a candidate dataset archive.
+    const entries = localEntries(buildDatasetArchive([trace]));
+    const traceBytes = entries.get(`traces/${trace.selector}.atf.json`);
+    const manifestBytes = entries.get("dataset-manifest.json");
+    if (traceBytes === undefined || manifestBytes === undefined) {
+      throw new Error("expected candidate archive entries");
+    }
+    const archivedText = new TextDecoder().decode(traceBytes);
+    const manifest = datasetManifestSchema.parse(JSON.parse(new TextDecoder().decode(manifestBytes)));
+
+    // Then: the ZIP contains only redacted ATF bytes and hashes those exact bytes.
+    expect(archivedText).not.toContain(bearer);
+    expect(archivedText).not.toContain(password);
+    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(2);
+    expect(manifest.artifacts[0]?.sha256).toBe(digest(traceBytes));
+    expect(manifest.artifacts[0]?.byteCount).toBe(traceBytes.byteLength);
+  });
+
   test("rejects empty, duplicate, and mutated frozen selections", () => {
     // Given: empty, duplicate, post-freeze mismatch, zero-byte, and over-limit memberships.
-    const original = frozenTrace("5", "{\"reviewed\":true}\n");
+    const original = frozenTrace("5", new TextDecoder().decode(validAtf("codex")));
     const mutable = original.bytes;
     mutable[0] = 0;
     const mismatched = Object.freeze({ ...original, bytes: mutable });

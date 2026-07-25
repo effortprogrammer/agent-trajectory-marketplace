@@ -63,6 +63,19 @@ const arrayIndexes = (value: readonly unknown[]): readonly number[] =>
       : [];
   });
 
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const boundedEnumerableKeys = (value: object, maximum: number): readonly string[] | undefined => {
+  const keys: string[] = [];
+  for (const key in value) {
+    if (!Object.hasOwn(value, key)) continue;
+    keys.push(key);
+    if (keys.length > maximum) return undefined;
+  }
+  return keys;
+};
+
 export const isPayloadStructureBounded = (input: unknown): boolean => {
   let visitedValues = 0;
   const ancestors = new Set<object>();
@@ -81,13 +94,23 @@ export const isPayloadStructureBounded = (input: unknown): boolean => {
     if (ancestors.has(value)) return false;
     ancestors.add(value);
     stack.push({ kind: "exit", value });
-    const children = Array.isArray(value)
-      ? arrayIndexes(value).map((index) => value[index])
-      : Object.values(value);
-    const childCount = Array.isArray(value) ? value.length : children.length;
-    if (visitedValues + childCount > maxVisitedValues) return false;
-    for (let index = children.length - 1; index >= 0; index -= 1) {
-      stack.push({ kind: "enter", value: children[index], depth: frame.depth + 1 });
+    if (Array.isArray(value)) {
+      if (visitedValues + value.length > maxVisitedValues) return false;
+      const indexes = arrayIndexes(value);
+      for (let index = indexes.length - 1; index >= 0; index -= 1) {
+        const childIndex = indexes[index];
+        if (childIndex === undefined) continue;
+        stack.push({ kind: "enter", value: value[childIndex], depth: frame.depth + 1 });
+      }
+      continue;
+    }
+    if (!isRecord(value)) return false;
+    const keys = boundedEnumerableKeys(value, maxVisitedValues - visitedValues);
+    if (keys === undefined) return false;
+    for (let index = keys.length - 1; index >= 0; index -= 1) {
+      const key = keys[index];
+      if (key === undefined) continue;
+      stack.push({ kind: "enter", value: value[key], depth: frame.depth + 1 });
     }
   }
   return true;
@@ -178,17 +201,17 @@ export const sanitizePayloadValue = (
       }
       continue;
     }
-    const entries = Object.entries(frame.value);
-    if (state.visitedValues + entries.length > maxVisitedValues) return undefined;
+    if (!isRecord(frame.value)) return undefined;
+    const keys = boundedEnumerableKeys(frame.value, maxVisitedValues - state.visitedValues);
+    if (keys === undefined) return undefined;
     const output: Record<string, unknown> = {};
     frame.assign(output);
-    for (let index = entries.length - 1; index >= 0; index -= 1) {
-      const entry = entries[index];
-      if (entry === undefined) continue;
-      const [key, value] = entry;
+    for (let index = keys.length - 1; index >= 0; index -= 1) {
+      const key = keys[index];
+      if (key === undefined) continue;
       stack.push({
         kind: "enter",
-        value,
+        value: frame.value[key],
         sensitiveContext: frame.sensitiveContext || isSensitiveObjectKey(key),
         depth: frame.depth + 1,
         assign: (sanitized) => {
