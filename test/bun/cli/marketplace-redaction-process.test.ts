@@ -1,9 +1,14 @@
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const localEntryText = (archive: Uint8Array, suffix: string): string => {
+import { datasetManifestSchema } from "../../../src/marketplace/archive-contract";
+
+const digest = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+
+const localEntryBytes = (archive: Uint8Array, suffix: string): Uint8Array => {
   const view = Buffer.from(archive);
   let offset = 0;
   while (view.readUInt32LE(offset) === 0x04034b50) {
@@ -12,7 +17,7 @@ const localEntryText = (archive: Uint8Array, suffix: string): string => {
     const extraLength = view.readUInt16LE(offset + 28);
     const dataStart = offset + 30 + nameLength + extraLength;
     const name = view.subarray(offset + 30, offset + 30 + nameLength).toString("utf8");
-    if (name.endsWith(suffix)) return view.subarray(dataStart, dataStart + size).toString("utf8");
+    if (name.endsWith(suffix)) return new Uint8Array(view.subarray(dataStart, dataStart + size));
     offset = dataStart + size;
   }
   throw new Error(`missing ZIP entry ending in ${suffix}`);
@@ -42,6 +47,14 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
   const projectEqualsValue = "projectEqualsValue93e7";
   const projectColonValue = "projectColonValue93e7";
   const projectObjectValue = "projectObjectValue93e7";
+  const quotedJsonCredentialValue = "quotedJsonCredentialValueFinal9d7c4";
+  const quotedJsonProjectValue = "quotedJsonProjectValueFinal9e8b5";
+  const harmlessNeighborValue = "harmlessNeighborValueFinal9f9a6";
+  const escapedJsonCredentialHead = "escapedJsonCredentialHeadFinal9a0b7";
+  const escapedJsonCredentialTail = "escapedJsonCredentialTailFinal9b1c8";
+  const escapedNeighborValue = "escapedNeighborValueFinal9c2d9";
+  const escapedOuterCredentialValue = "escapedOuterCredentialValueFinal9d3e0";
+  const escapedOuterProjectValue = "escapedOuterProjectValueFinal9e4f1";
   const command = [
     inlineSecret,
     standaloneToken,
@@ -54,6 +67,10 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
     `credential="${quotedCredentialValue}"${quotedCredentialSuffix}`,
     `sk-proj=${projectEqualsValue}`,
     `sk-proj:${projectColonValue}`,
+    `{"credential":"${quotedJsonCredentialValue}","harmlessNeighbor":"${harmlessNeighborValue}"}`,
+    `{'sk-proj':'${quotedJsonProjectValue}','harmlessNeighbor':'${harmlessNeighborValue}'}`,
+    `{"credential":"${escapedJsonCredentialHead}\\\"${escapedJsonCredentialTail}","escapedNeighbor":"${escapedNeighborValue}"}`,
+    `{\\"credential\\":\\"${escapedOuterCredentialValue}\\",\\"sk-proj\\":\\"${escapedOuterProjectValue}\\",\\"harmlessNeighbor\\":\\"${harmlessNeighborValue}\\"}`,
   ].join(" ");
   const numericApiKey = 314_159_265;
   const numericToken = 271_828_182;
@@ -108,7 +125,11 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
     // Then: the command succeeds and its trace entry contains only redacted values.
     expect(result.exitCode).toBe(0);
     expect(result.stderr.toString()).toBe("");
-    const archivedText = localEntryText(readFileSync(output), ".atf.json");
+    const archive = readFileSync(output);
+    const traceBytes = localEntryBytes(archive, ".atf.json");
+    const archivedText = new TextDecoder().decode(traceBytes);
+    const manifestBytes = localEntryBytes(archive, "dataset-manifest.json");
+    const manifest = datasetManifestSchema.parse(JSON.parse(new TextDecoder().decode(manifestBytes)));
     const rawMarkers = [
       bearer,
       password,
@@ -132,9 +153,20 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
       projectEqualsValue,
       projectColonValue,
       projectObjectValue,
+      quotedJsonCredentialValue,
+      quotedJsonProjectValue,
+      escapedJsonCredentialHead,
+      escapedJsonCredentialTail,
+      escapedOuterCredentialValue,
+      escapedOuterProjectValue,
     ];
     expect(rawMarkers.filter((marker) => archivedText.includes(marker))).toEqual([]);
+    expect(archivedText).toContain(`\\"harmlessNeighbor\\":\\"${harmlessNeighborValue}\\"`);
+    expect(archivedText).toContain(`'harmlessNeighbor':'${harmlessNeighborValue}'`);
+    expect(archivedText).toContain(escapedNeighborValue);
     expect(archivedText).toContain("[redacted]");
+    expect(manifest.artifacts[0]?.sha256).toBe(digest(traceBytes));
+    expect(manifest.artifacts[0]?.byteCount).toBe(traceBytes.byteLength);
   } finally {
     rmSync(root, { force: true, recursive: true });
   }

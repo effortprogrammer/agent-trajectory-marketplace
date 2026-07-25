@@ -119,6 +119,14 @@ describe("selected trace dataset archive", () => {
     const projectEqualsValue = "projectEqualsValue93e7";
     const projectColonValue = "projectColonValue93e7";
     const projectObjectValue = "projectObjectValue93e7";
+    const quotedJsonCredentialValue = "quotedJsonCredentialValueFinal9a4f1";
+    const quotedJsonProjectValue = "quotedJsonProjectValueFinal9b5e2";
+    const harmlessNeighborValue = "harmlessNeighborValueFinal9c6d3";
+    const escapedJsonCredentialHead = "escapedJsonCredentialHeadFinal9d7e4";
+    const escapedJsonCredentialTail = "escapedJsonCredentialTailFinal9e8f5";
+    const escapedNeighborValue = "escapedNeighborValueFinal9f9a6";
+    const escapedOuterCredentialValue = "escapedOuterCredentialValueFinal9a0b7";
+    const escapedOuterProjectValue = "escapedOuterProjectValueFinal9b1c8";
     const command = [
       inlineSecret,
       standaloneToken,
@@ -131,6 +139,10 @@ describe("selected trace dataset archive", () => {
       `credential="${quotedCredentialValue}"${quotedCredentialSuffix}`,
       `sk-proj=${projectEqualsValue}`,
       `sk-proj:${projectColonValue}`,
+      `{"credential":"${quotedJsonCredentialValue}","harmlessNeighbor":"${harmlessNeighborValue}"}`,
+      `{'sk-proj':'${quotedJsonProjectValue}','harmlessNeighbor':'${harmlessNeighborValue}'}`,
+      `{"credential":"${escapedJsonCredentialHead}\\\"${escapedJsonCredentialTail}","escapedNeighbor":"${escapedNeighborValue}"}`,
+      `{\\"credential\\":\\"${escapedOuterCredentialValue}\\",\\"sk-proj\\":\\"${escapedOuterProjectValue}\\",\\"harmlessNeighbor\\":\\"${harmlessNeighborValue}\\"}`,
     ].join(" ");
     const numericApiKey = 314_159_265;
     const numericToken = 271_828_182;
@@ -194,8 +206,17 @@ describe("selected trace dataset archive", () => {
       projectEqualsValue,
       projectColonValue,
       projectObjectValue,
+      quotedJsonCredentialValue,
+      quotedJsonProjectValue,
+      escapedJsonCredentialHead,
+      escapedJsonCredentialTail,
+      escapedOuterCredentialValue,
+      escapedOuterProjectValue,
     ];
     expect(rawMarkers.filter((marker) => archivedText.includes(marker))).toEqual([]);
+    expect(archivedText).toContain(`\\"harmlessNeighbor\\":\\"${harmlessNeighborValue}\\"`);
+    expect(archivedText).toContain(`'harmlessNeighbor':'${harmlessNeighborValue}'`);
+    expect(archivedText).toContain(escapedNeighborValue);
     expect(archivedText).toContain("[redacted]");
     expect(manifest.artifacts[0]?.sha256).toBe(digest(traceBytes));
     expect(manifest.artifacts[0]?.byteCount).toBe(traceBytes.byteLength);
