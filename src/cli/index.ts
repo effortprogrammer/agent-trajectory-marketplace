@@ -12,6 +12,8 @@ import { runUpdateCli } from "@/trajectory/update-cli";
 import { installUpdateServiceSchedule } from "@/trajectory/update-service-schedule";
 
 import { parseCollectorCommand, runCollectorCli, runCollectorResidentCli, type CollectorCommand } from "./collector";
+import { isAuthInvocation, runAuthCli } from "./auth";
+import { isMarketplaceInvocation, runMarketplaceCli } from "./marketplace";
 
 const collectorErrorCode = (error: unknown): string => {
   if (error instanceof Error && "code" in error && typeof error.code === "string") return error.code;
@@ -102,6 +104,14 @@ const main = async (): Promise<void> => {
       (argumentsList[0] === "trajectory" && argumentsList[1] === "update");
     if (updateInvocation) {
       console.log(JSON.stringify(await runUpdateCli(argumentsList)));
+      return;
+    }
+    if (isAuthInvocation(argumentsList)) {
+      await runAuthCli(argumentsList);
+      return;
+    }
+    if (isMarketplaceInvocation(argumentsList)) {
+      await runMarketplaceCli(argumentsList);
       return;
     }
     command = parseCollectorCommand(argumentsList);
