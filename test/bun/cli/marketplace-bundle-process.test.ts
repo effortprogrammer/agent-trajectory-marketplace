@@ -9,12 +9,13 @@ const decoder = new TextDecoder();
 // allow: SIZE_OK — one embedded PTY lifecycle driver stays beside its process-boundary cases.
 const pythonPtyDriver = `
 import base64, errno, os, pty, select, signal, sys, time
-initial, marker = [base64.b64decode(value) for value in sys.argv[1:3]]
-signal_name = sys.argv[3]
+initial, marker, delayed = [base64.b64decode(value) for value in sys.argv[1:4]]
+signal_name = sys.argv[4]
 pid, descriptor = pty.fork()
 if pid == 0:
-    os.execvp(sys.argv[4], sys.argv[4:])
-os.write(descriptor, initial)
+    os.execvp(sys.argv[5], sys.argv[5:])
+if initial:
+    os.write(descriptor, initial)
 captured = b""
 sent = False
 terminal_closed = False
@@ -40,8 +41,11 @@ while time.monotonic() < deadline:
                 else:
                     captured += data
                     os.write(1, data)
-    if signal_name and not sent and marker in captured:
-        os.kill(pid, getattr(signal, signal_name))
+    if marker and not sent and marker in captured:
+        if signal_name:
+            os.kill(pid, getattr(signal, signal_name))
+        elif delayed:
+            os.write(descriptor, delayed)
         sent = True
     finished, status = os.waitpid(pid, os.WNOHANG)
     if finished != 0:
@@ -61,6 +65,7 @@ raise SystemExit(os.waitstatus_to_exitcode(status))
 type PtySignal = "SIGINT" | "SIGTERM";
 
 type PtyInteraction = Readonly<{
+  readonly afterMarker?: string;
   readonly initialInput: string;
   readonly marker?: string;
   readonly signal?: PtySignal;
@@ -98,6 +103,7 @@ const runPtyProcess = (command: PtyCommand, interaction: PtyInteraction) => Bun.
     "python3", "-c", pythonPtyDriver,
     Buffer.from(interaction.initialInput).toString("base64"),
     Buffer.from(interaction.marker ?? "").toString("base64"),
+    Buffer.from(interaction.afterMarker ?? "").toString("base64"),
     interaction.signal ?? "",
     command.executable, ...command.argumentsList,
   ],
@@ -254,9 +260,14 @@ describe("marketplace candidate bundle process boundary", () => {
     // Given
     const root = fixtureRoot();
     writeFileSync(join(root, "available.atf.json"), traceBytes("codex", "available"));
+    const selector = selectorFor("available.atf.json");
     const cases = [
       { name: "declined", input: "write\nno\n", marker: '"status":"declined"' },
-      { name: "eof", input: "\u0004", marker: '"status":"eof"' },
+      {
+        name: "eof",
+        input: { afterMarker: "\u0004", initialInput: "included\n", marker: `included: ${selector}` },
+        marker: '"status":"eof"',
+      },
       { name: "invalid", input: "not-a-command\nabort\n", marker: "error: invalid_review_command" },
     ] as const;
 

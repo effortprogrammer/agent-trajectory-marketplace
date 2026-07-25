@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -160,6 +160,8 @@ describe("atomic access-token store", () => {
     const storePath = join(directory, "auth.json")
     writeStoredAuthSession(session("https://auth.example.test"), { storePath })
     const before = readFileSync(storePath)
+    const foreignPath = join(directory, "foreign-replacement")
+    writeFileSync(foreignPath, "foreign", { mode: 0o600 })
     let temporaryPath: string | undefined
     const operations: AuthStoreOperations = {
       ...nodeAuthStoreOperations,
@@ -171,7 +173,7 @@ describe("atomic access-token store", () => {
         nodeAuthStoreOperations.close(descriptor)
         if (temporaryPath === undefined) throw new AuthStoreError("auth_store_write_failed")
         rmSync(temporaryPath)
-        writeFileSync(temporaryPath, "foreign", { mode: 0o600 })
+        renameSync(foreignPath, temporaryPath)
       },
     }
     expect(() => writeStoredAuthSession(session("https://auth.example.test", tokenTwo), { operations, storePath })).toThrow(new AuthStoreError("unsafe_auth_store_path"))
@@ -207,6 +209,7 @@ describe("atomic access-token store", () => {
   test("rejects an intermediate user-owned symlink before canonical ancestor validation", () => {
     const outside = fixtureRoot("trajectory-auth-alias-target-")
     const root = fixtureRoot("trajectory-auth-alias-parent-")
+    if (typeof process.getuid === "function" && process.getuid() === 0) chmodSync(root, 0o1777)
     const alias = join(root, "alias")
     symlinkSync(outside, alias, "dir")
     expect(() => writeStoredAuthSession(session("https://auth.example.test"), { storePath: join(alias, "private-config", "agent-trajectory-marketplace", "auth.json") })).toThrow(new AuthStoreError("unsafe_auth_store_path"))

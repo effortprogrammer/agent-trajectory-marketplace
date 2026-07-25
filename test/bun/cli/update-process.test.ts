@@ -44,9 +44,11 @@ describe("built collector update", () => {
 		expect(readCurrentVersion(fixture.root)).toBe("1.1.0");
 		expect(readlinkSync(join(fixture.root, "previous"))).toBe(fixture.oldRelease);
 		expect(readFileSync(fixture.outputSentinel, "utf8")).toBe("preserve");
-		const commands = readFileSync(fixture.launchctlLog, "utf8");
-		expect(commands.match(/^bootstrap /gm)?.length).toBe(1);
-		expect(commands.match(/^print /gm)?.length).toBe(2);
+		const commands = readFileSync(fixture.serviceLog, "utf8");
+		const activation = process.platform === "linux" ? /^--user restart /gm : /^bootstrap /gm;
+		const health = process.platform === "linux" ? /^--user is-active /gm : /^print /gm;
+		expect(commands.match(activation)?.length).toBe(1);
+		expect(commands.match(health)?.length).toBe(2);
 	}, 30_000);
 
 	test("rejects a corrupt verified-release archive before build or handover", () => {
@@ -60,7 +62,7 @@ describe("built collector update", () => {
 		// Then
 		expect(output).toMatchObject({ status: "update_failed", currentVersion: "1.0.0" });
 		expect(readCurrentVersion(fixture.root)).toBe("1.0.0");
-		expect(existsSync(fixture.launchctlLog)).toBe(false);
+		expect(existsSync(fixture.serviceLog)).toBe(false);
 		expect(readFileSync(fixture.outputSentinel, "utf8")).toBe("preserve");
 	}, 30_000);
 
@@ -80,7 +82,7 @@ describe("built collector update", () => {
 			rolledBack: false,
 		});
 		expect(readCurrentVersion(fixture.root)).toBe("1.0.0");
-		expect(existsSync(fixture.launchctlLog)).toBe(false);
+		expect(existsSync(fixture.serviceLog)).toBe(false);
 	}, 30_000);
 
 	test("restores pointers and the prior service after health failure", () => {
