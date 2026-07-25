@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -61,6 +61,46 @@ describe("atomic local bundle output", () => {
     // Then: the competitor is untouched and only the owned temporary file is removed.
     expect(action).toThrow(new MarketplaceError("output_exists"));
     expect(readFileSync(output)).toEqual(competitor);
+    expect(tempResidue(directory)).toEqual([]);
+  });
+
+  test("rejects a replaced temporary without publishing or deleting the foreign replacement", () => {
+    // Given: a peer replaces the owned temporary after close and immediately before link.
+    const directory = fixtureRoot("trajectory-temp-race-");
+    const output = join(directory, "candidate.zip");
+    const foreign = Buffer.from("foreign replacement");
+    const operations: BundleOutputOperations = {
+      ...nodeBundleOutputOperations,
+      link: (temporaryPath, outputPath): void => {
+        rmSync(temporaryPath);
+        writeFileSync(temporaryPath, foreign, { flag: "wx", mode: 0o600 });
+        nodeBundleOutputOperations.link(temporaryPath, outputPath);
+      },
+    };
+
+    // When: publication reaches the pathname-based commit boundary.
+    const action = (): void => writeBundleOutput(output, Buffer.from("trusted archive"), operations);
+
+    // Then: foreign bytes are neither published nor deleted as owned cleanup.
+    expect(action).toThrow(new MarketplaceError("invalid_bundle_request"));
+    expect(existsSync(output)).toBe(false);
+    const residue = tempResidue(directory);
+    expect(residue).toHaveLength(1);
+    expect(readFileSync(join(directory, residue[0] ?? "missing"))).toEqual(foreign);
+  });
+
+  test("rejects a shared-writable output directory before creating a temporary", () => {
+    // Given: an output directory where a peer can replace publication pathnames.
+    const directory = fixtureRoot("trajectory-shared-output-");
+    chmodSync(directory, 0o777);
+    const output = join(directory, "candidate.zip");
+
+    // When: bundle output validates the publication boundary.
+    const action = (): void => writeBundleOutput(output, Buffer.from("trusted archive"));
+
+    // Then: it fails before creating either the target or a temporary file.
+    expect(action).toThrow(new MarketplaceError("invalid_bundle_request"));
+    expect(existsSync(output)).toBe(false);
     expect(tempResidue(directory)).toEqual([]);
   });
 
