@@ -95,11 +95,14 @@ describe("bounded session reports", () => {
     expect(dangerousCodePoint.test(human.replaceAll("\n", ""))).toBe(false);
   });
 
-  test("redacts credential-shaped values from list and inspection evidence", () => {
-    // Given: a schema-valid direct ATF whose request bypassed native collector redaction.
+  test("redacts inline and nested credential values from list and inspection evidence", () => {
+    // Given: a schema-valid direct ATF whose strings and sensitive object keys bypassed native redaction.
     const secret = "super-secret-token-123456";
+    const nestedSecret = "plain-password-value-123456";
     const trace = validated([
       attested({ kind: "function_enter", name: "turn-1", payload: { role: "user", content: `review TOKEN=${secret}` } }, 0),
+      attested({ kind: "tool_call", name: "terminal", payload: { input: { password: nestedSecret } } }, 1),
+      attested({ kind: "tool_result", name: "terminal", payload: { output: { token: nestedSecret } } }, 2),
     ]);
 
     // When: both user-facing session summaries are produced.
@@ -108,8 +111,9 @@ describe("bounded session reports", () => {
 
     // Then: the secret never crosses the output boundary and redaction stays visible.
     expect(JSON.stringify({ report, rendered })).not.toContain(secret);
+    expect(JSON.stringify({ report, rendered })).not.toContain(nestedSecret);
     expect(rendered).toContain("review [redacted]");
-    expect(report.markers.map((marker) => marker.kind)).toContain("redacted");
+    expect(report.markers.filter((marker) => marker.kind === "redacted")).toHaveLength(3);
   });
 
   test("bounds Unicode-safe excerpts and declares evidence omitted after the two-hundredth item", () => {
