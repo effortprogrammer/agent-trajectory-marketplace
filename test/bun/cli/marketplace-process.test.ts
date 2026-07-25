@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,6 +50,13 @@ const writeEvidenceTrace = (root: string): string => {
   return "s-7303a2074a8304f60e6036ab9b3635aee7705b101f0d4ba68497d60bd46b14d4";
 };
 
+const writeExcessivelyDeepTrace = (root: string): string => {
+  const input = `${'{"nested":'.repeat(100_000)}"leaf"${"}".repeat(100_000)}`;
+  const trace = `{"runtime":"codex","status":"collected","formatVersion":2,"eventCount":1,"events":[{"kind":"tool_call","name":"terminal","payload":{"input":${input}},"sourceEventId":"deep","timestamp":"2026-07-24T09:00:00.000Z"}]}`;
+  writeFileSync(join(root, "deep.atf.json"), trace);
+  return `s-${createHash("sha256").update("deep.atf.json").digest("hex")}`;
+};
+
 const runCli = (argumentsList: readonly string[]) => Bun.spawnSync(
   [process.execPath, "src/cli/index.ts", ...argumentsList],
   { cwd: process.cwd(), stderr: "pipe", stdout: "pipe" },
@@ -59,6 +67,27 @@ afterEach(() => {
 });
 
 describe("marketplace sessions process boundary", () => {
+  test("rejects excessively deep payloads as invalid_trace", () => {
+    // Given: a raw JSON ATF with 100,000 nested input objects, without JSON.stringify recursion.
+    const root = fixtureRoot();
+    const selector = writeExcessivelyDeepTrace(root);
+    const commands = [
+      ["marketplace", "seller", "sessions", "list", "--root", root, "--json"],
+      ["marketplace", "seller", "sessions", "inspect", selector, "--root", root, "--json"],
+    ] as const;
+
+    // When: the real list and inspect process boundaries parse the schema-valid trace.
+    const results = commands.map((argumentsList) => runCli(argumentsList));
+
+    // Then: both commands fail closed without output or a raw JavaScript exception.
+    expect(results.map((result) => result.exitCode)).toEqual([1, 1]);
+    expect(results.map((result) => decoder.decode(result.stdout))).toEqual(["", ""]);
+    expect(results.map((result) => decoder.decode(result.stderr))).toEqual([
+      '{"error":"invalid_trace"}\n',
+      '{"error":"invalid_trace"}\n',
+    ]);
+  });
+
   test("Given two valid ATFs, When list JSON runs, Then the real CLI returns sorted stored evidence", () => {
     // Given
     const root = fixtureRoot();
