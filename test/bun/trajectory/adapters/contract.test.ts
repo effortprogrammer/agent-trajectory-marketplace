@@ -188,6 +188,70 @@ describe("harnessTraceEventSchema source attestation", () => {
 });
 
 describe("collector redaction and payload bounds", () => {
+  test("rejects pathological payload graphs without recursion", () => {
+    // Given: deeply nested, cyclic, and shared-reference values from an adapter payload.
+    let deeplyNested: unknown = "leaf";
+    for (let depth = 0; depth < 100_000; depth += 1) {
+      deeplyNested = { child: deeplyNested };
+    }
+    const cyclicObject: { self?: unknown } = {};
+    cyclicObject.self = cyclicObject;
+    const cyclicArray: unknown[] = [];
+    cyclicArray.push(cyclicArray);
+    const sharedReference = { diagnostic: "keep me" };
+
+    // When: every graph crosses the collection-time sanitizer.
+    const results = [
+      sanitizeHarnessPayload({ input: deeplyNested }),
+      sanitizeHarnessPayload({ input: cyclicObject }),
+      sanitizeHarnessPayload({ input: cyclicArray }),
+      sanitizeHarnessPayload({ input: [sharedReference, sharedReference] }),
+    ];
+
+    // Then: unsafe graphs fail closed while a non-cyclic DAG remains valid.
+    expect(results[0]).toBeUndefined();
+    expect(results[1]).toBeUndefined();
+    expect(results[2]).toBeUndefined();
+    expect(results[3]).toEqual({
+      input: [{ diagnostic: "keep me" }, { diagnostic: "keep me" }],
+    });
+  });
+
+  test("accepts depth 256 and rejects depth 257 payload values", () => {
+    // Given: iteratively constructed values at the traversal boundary.
+    let accepted: unknown = "leaf";
+    let rejected: unknown = "leaf";
+    for (let depth = 0; depth < 257; depth += 1) {
+      if (depth < 256) accepted = { child: accepted };
+      rejected = { child: rejected };
+    }
+
+    // When: both values cross the collection-time sanitizer.
+    const acceptedResult = sanitizeHarnessPayload({ input: accepted });
+    const rejectedResult = sanitizeHarnessPayload({ input: rejected });
+
+    // Then: the documented depth limit is inclusive at 256.
+    expect(acceptedResult).toBeDefined();
+    expect(rejectedResult).toBeUndefined();
+  });
+
+  test("accepts 65,536 and rejects 65,537 traversed payload values", () => {
+    // Given: payload values exactly at and immediately beyond the traversal budget.
+    const accepted = Array.from({ length: 65_535 }, () => "value");
+    const rejected = Array.from({ length: 65_536 }, () => "value");
+    const sparseRejected = new Array<unknown>(65_536);
+
+    // When: both values cross the collection-time sanitizer.
+    const acceptedResult = sanitizeHarnessPayload({ input: accepted });
+    const rejectedResult = sanitizeHarnessPayload({ input: rejected });
+    const sparseRejectedResult = sanitizeHarnessPayload({ input: sparseRejected });
+
+    // Then: the schema envelope does not consume arbitrary-value traversal budget.
+    expect(acceptedResult).toEqual({ truncated: true });
+    expect(rejectedResult).toBeUndefined();
+    expect(sparseRejectedResult).toBeUndefined();
+  });
+
   test("redacts credential-shaped strings at every nested payload leaf", () => {
     // Given: secrets spread across content, object, array, and assistant-block leaves.
     const payload = {
