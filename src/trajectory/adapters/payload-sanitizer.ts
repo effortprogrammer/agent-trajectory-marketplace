@@ -208,6 +208,11 @@ export const sanitizePayloadValue = (
       if (key === undefined) continue;
       const child = ownEnumerableDataValue(frame.value, key);
       if (child === undefined) return undefined;
+      if (
+        child.value === undefined ||
+        typeof child.value === "function" ||
+        typeof child.value === "symbol"
+      ) continue;
       const rawKeyBytes = Buffer.byteLength(key, "utf8");
       if (!consumeSerializedBytes(rawKeyBytes)) return serializedLimitResult;
       const encodedKeyBytes = Buffer.byteLength(JSON.stringify(key), "utf8");
