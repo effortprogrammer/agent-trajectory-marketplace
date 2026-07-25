@@ -4,7 +4,7 @@ const maxVisitedValues = 65_536;
 const credentialPatterns = [
   /\bBearer\s+[A-Za-z0-9._~+/-]+={0,2}/gi,
   /\b(?:auth|authorization|api[_-]?key|bearer|key|pass|password|passwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/gi,
-  /\b(?:sk-|gh[pousr]_)[A-Za-z0-9]{20,}/g,
+  /\bsk-[A-Za-z0-9_-]{20,}/g, /\bgh[pousr]_[A-Za-z0-9]{20,}/g,
   /\bxox[baprs]-[A-Za-z0-9-]{10,}/g, /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, /\bAIza[A-Za-z0-9_-]{20,}/g,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g,
   /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----/g,
@@ -76,6 +76,12 @@ const boundedEnumerableKeys = (value: object, maximum: number): readonly string[
   return keys;
 };
 
+const ownEnumerableDataValue = (value: object, key: string): Readonly<{ value: unknown }> | undefined => {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (descriptor === undefined || descriptor.enumerable !== true || !("value" in descriptor)) return undefined;
+  return { value: descriptor.value };
+};
+
 export const isPayloadStructureBounded = (input: unknown): boolean => {
   let visitedValues = 0;
   const ancestors = new Set<object>();
@@ -100,7 +106,9 @@ export const isPayloadStructureBounded = (input: unknown): boolean => {
       for (let index = indexes.length - 1; index >= 0; index -= 1) {
         const childIndex = indexes[index];
         if (childIndex === undefined) continue;
-        stack.push({ kind: "enter", value: value[childIndex], depth: frame.depth + 1 });
+        const child = ownEnumerableDataValue(value, childIndex.toString());
+        if (child === undefined) return false;
+        stack.push({ kind: "enter", value: child.value, depth: frame.depth + 1 });
       }
       continue;
     }
@@ -110,7 +118,9 @@ export const isPayloadStructureBounded = (input: unknown): boolean => {
     for (let index = keys.length - 1; index >= 0; index -= 1) {
       const key = keys[index];
       if (key === undefined) continue;
-      stack.push({ kind: "enter", value: value[key], depth: frame.depth + 1 });
+      const child = ownEnumerableDataValue(value, key);
+      if (child === undefined) return false;
+      stack.push({ kind: "enter", value: child.value, depth: frame.depth + 1 });
     }
   }
   return true;
@@ -126,7 +136,9 @@ export const boundedRedactedString = (
   }
   const marker = "…[truncated]";
   const buffer = Buffer.from(redacted, "utf8");
-  let end = maxStringBytes - Buffer.byteLength(marker, "utf8");
+  const markerBytes = Buffer.byteLength(marker, "utf8");
+  if (maxStringBytes < markerBytes) return { text: "", truncated: true };
+  let end = maxStringBytes - markerBytes;
   while (end > 0 && (buffer[end] ?? 0) >> 6 === 0b10) end -= 1;
   return { text: `${buffer.subarray(0, end).toString("utf8")}${marker}`, truncated: true };
 };
@@ -189,9 +201,11 @@ export const sanitizePayloadValue = (
       for (let position = indexes.length - 1; position >= 0; position -= 1) {
         const index = indexes[position];
         if (index === undefined) continue;
+        const child = ownEnumerableDataValue(frame.value, index.toString());
+        if (child === undefined) return undefined;
         stack.push({
           kind: "enter",
-          value: frame.value[index],
+          value: child.value,
           sensitiveContext: frame.sensitiveContext,
           depth: frame.depth + 1,
           assign: (value) => {
@@ -209,9 +223,11 @@ export const sanitizePayloadValue = (
     for (let index = keys.length - 1; index >= 0; index -= 1) {
       const key = keys[index];
       if (key === undefined) continue;
+      const child = ownEnumerableDataValue(frame.value, key);
+      if (child === undefined) return undefined;
       stack.push({
         kind: "enter",
-        value: frame.value[key],
+        value: child.value,
         sensitiveContext: frame.sensitiveContext || isSensitiveObjectKey(key),
         depth: frame.depth + 1,
         assign: (sanitized) => {
