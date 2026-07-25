@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  boundedRedactedString as boundPayloadString,
+  sanitizePayloadValue,
+} from "./payload-sanitizer";
+
 export const harnessCollectedStatus = "collected" as const;
 
 const maxSourceEventIdChars = 256;
@@ -202,84 +207,19 @@ export class TrajectoryAdapterError extends Error {
   }
 }
 
-const credentialPatterns = [
-  /\bBearer\s+[A-Za-z0-9._~+/-]{16,}={0,2}/gi,
-  /\b(?:authorization|api[_-]?key|secret|password|passwd|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*["']?[A-Za-z0-9._~+/-]{12,}={0,2}/gi,
-  /\b(?:sk-|gh[pousr]_)[A-Za-z0-9]{20,}/g,
-  /\bxox[baprs]-[A-Za-z0-9-]{10,}/g, /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, /\bAIza[A-Za-z0-9_-]{20,}/g,
-  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g,
-  /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----/g,
-] as const;
-const sensitiveKeyMarkers = new Set([
-  "password", "passwd", "pass", "auth", "authorization", "token", "key", "secret",
-]);
-const sensitiveKeyCompounds = new Set([
-  "apikey", "accesstoken", "refreshtoken", "authtoken", "clientsecret", "privatekey", "bearer",
-]);
-
-const redactCredentialSpans = (value: string): string => {
-  let redacted = value;
-  for (const pattern of credentialPatterns) redacted = redacted.replace(pattern, "[redacted]");
-  return redacted;
-};
-
-const isSensitiveObjectKey = (key: string): boolean => {
-  const normalized = key
-    .replaceAll(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .replaceAll(/[^a-zA-Z0-9]+/g, "_")
-    .toLowerCase();
-  return (
-    normalized.split("_").some((part) => sensitiveKeyMarkers.has(part)) ||
-    sensitiveKeyCompounds.has(normalized.replaceAll("_", ""))
-  );
-};
-
 export const boundedRedactedString = (
   value: string,
-): Readonly<{ text: string; truncated: boolean }> => {
-  const redacted = redactCredentialSpans(value);
-  if (Buffer.byteLength(redacted, "utf8") <= harnessPayloadPolicy.maxStringBytes) {
-    return { text: redacted, truncated: false };
-  }
-  const marker = "…[truncated]";
-  const buffer = Buffer.from(redacted, "utf8");
-  let end = harnessPayloadPolicy.maxStringBytes - Buffer.byteLength(marker, "utf8");
-  while (end > 0 && (buffer[end] ?? 0) >> 6 === 0b10) end -= 1;
-  return { text: `${buffer.subarray(0, end).toString("utf8")}${marker}`, truncated: true };
-};
-
-const sanitizePayloadValue = (
-  value: unknown,
-  state: { truncated: boolean },
-  sensitiveContext = false,
-): unknown => {
-  if (typeof value === "string") {
-    if (sensitiveContext) return "[redacted]";
-    const bounded = boundedRedactedString(value);
-    if (bounded.truncated) state.truncated = true;
-    return bounded.text;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizePayloadValue(item, state, sensitiveContext));
-  }
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [
-        key,
-        sanitizePayloadValue(item, state, sensitiveContext || isSensitiveObjectKey(key)),
-      ]),
-    );
-  }
-  return value;
-};
+): Readonly<{ text: string; truncated: boolean }> =>
+  boundPayloadString(value, harnessPayloadPolicy.maxStringBytes);
 
 export const sanitizeHarnessPayload = (
   payload: HarnessEventPayload,
 ): HarnessEventPayload | undefined => {
-  const state = { truncated: false };
-  const parsed = harnessEventPayloadSchema.safeParse(sanitizePayloadValue(payload, state));
+  const sanitizedValue = sanitizePayloadValue(payload, harnessPayloadPolicy.maxStringBytes);
+  if (sanitizedValue === undefined) return undefined;
+  const parsed = harnessEventPayloadSchema.safeParse(sanitizedValue.value);
   if (!parsed.success) return undefined;
-  const sanitized = state.truncated ? { ...parsed.data, truncated: true } : parsed.data;
+  const sanitized = sanitizedValue.truncated ? { ...parsed.data, truncated: true } : parsed.data;
   if (
     Buffer.byteLength(JSON.stringify(sanitized), "utf8") >
     harnessPayloadPolicy.maxSerializedBytes
