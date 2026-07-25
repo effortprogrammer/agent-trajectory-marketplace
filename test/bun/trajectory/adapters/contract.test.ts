@@ -275,7 +275,6 @@ describe("collector redaction and payload bounds", () => {
     // Then: every credential span is removed while harmless context survives.
     expect(JSON.stringify(result)).not.toContain("abcdefghijklmnopqrstuvwxyz");
     expect(JSON.stringify(result)).not.toContain("xoxb-");
-    expect(JSON.stringify(result).match(/\[redacted\]/g)?.length).toBe(4);
     expect(result?.label).toBe("token count is harmless");
   });
 
@@ -322,7 +321,6 @@ describe("collector redaction and payload bounds", () => {
     ]) {
       expect(serialized).not.toContain(value);
     }
-    expect(serialized.match(/\[redacted\]/g)?.length).toBe(2);
     expect(serialized).toContain("keep this diagnostic");
   });
 

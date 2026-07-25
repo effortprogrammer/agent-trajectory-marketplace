@@ -6,6 +6,8 @@ const credentialPatterns = [
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g,
   /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----/g,
 ] as const;
+const escapedQuotedCredentialPattern = /((?:[\\])(["'])(?:auth|authorization|api[_-]?key|bearer|cookie|credentials?|key|pass|password|passwd|pwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key|sk-proj)(?:[\\])\2\s*[:=]\s*)((?:[\\])(["']))(?:[\\][\\].|(?![\\]\4)[^\r\n])*[\\]\4/gi;
+const quotedCredentialPattern = /((["'])(?:auth|authorization|api[_-]?key|bearer|cookie|credentials?|key|pass|password|passwd|pwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key|sk-proj)\2\s*[:=]\s*)(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^\s,}\]]+)/gi;
 const sensitiveKeyMarkers = new Set([
   "password", "passwd", "pass", "pwd", "auth", "authorization", "token", "key", "secret",
   "credential", "credentials", "cookie",
@@ -15,7 +17,15 @@ const sensitiveKeyCompounds = new Set([
 ]);
 
 const redactCredentialSpans = (value: string): string => {
-  let redacted = value;
+  let redacted = value.replace(escapedQuotedCredentialPattern, (_match, prefix: string, _keyQuote: string, valueOpen: string) =>
+    `${prefix}${valueOpen}[redacted]${valueOpen}`,
+  );
+  redacted = redacted.replace(quotedCredentialPattern, (match, prefix: string) => {
+    const valueQuote = match[prefix.length];
+    return valueQuote === '"' || valueQuote === "'"
+      ? `${prefix}${valueQuote}[redacted]${valueQuote}`
+      : `${prefix}[redacted]`;
+  });
   for (const pattern of credentialPatterns) redacted = redacted.replace(pattern, "[redacted]");
   return redacted;
 };
