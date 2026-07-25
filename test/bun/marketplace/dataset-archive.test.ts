@@ -100,6 +100,7 @@ describe("selected trace dataset archive", () => {
     // Given: a schema-valid reviewed trace that still contains credentials.
     const bearer = "Bearer verySensitiveCredentialValue123456";
     const password = "short-password";
+    const inlineSecret = "API_KEY=short7";
     const trace = frozenTrace("7", JSON.stringify({
       runtime: "codex",
       status: "collected",
@@ -108,7 +109,7 @@ describe("selected trace dataset archive", () => {
       events: [{
         kind: "tool_call",
         name: "terminal",
-        payload: { input: { authorization: bearer, password } },
+        payload: { input: { authorization: bearer, command: inlineSecret, password } },
       }],
     }));
 
@@ -125,7 +126,8 @@ describe("selected trace dataset archive", () => {
     // Then: the ZIP contains only redacted ATF bytes and hashes those exact bytes.
     expect(archivedText).not.toContain(bearer);
     expect(archivedText).not.toContain(password);
-    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(2);
+    expect(archivedText).not.toContain(inlineSecret);
+    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(3);
     expect(manifest.artifacts[0]?.sha256).toBe(digest(traceBytes));
     expect(manifest.artifacts[0]?.byteCount).toBe(traceBytes.byteLength);
   });

@@ -3,7 +3,7 @@ const maxVisitedValues = 65_536;
 
 const credentialPatterns = [
   /\bBearer\s+[A-Za-z0-9._~+/-]{16,}={0,2}/gi,
-  /\b(?:authorization|api[_-]?key|secret|password|passwd|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*["']?[A-Za-z0-9._~+/-]{12,}={0,2}/gi,
+  /\b(?:authorization|api[_-]?key|secret|password|passwd|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*["']?[A-Za-z0-9._~+/-]+={0,2}/gi,
   /\b(?:sk-|gh[pousr]_)[A-Za-z0-9]{20,}/g,
   /\bxox[baprs]-[A-Za-z0-9-]{10,}/g, /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, /\bAIza[A-Za-z0-9_-]{20,}/g,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g,

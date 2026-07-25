@@ -23,6 +23,7 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
   const root = mkdtempSync(join(tmpdir(), "trajectory-cli-redaction-"));
   const bearer = "Bearer verySensitiveCredentialValue123456";
   const password = "short-password";
+  const inlineSecret = "API_KEY=short7";
   const output = join(root, "candidate.zip");
   writeFileSync(join(root, "session.atf.json"), JSON.stringify({
     runtime: "codex",
@@ -32,7 +33,7 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
     events: [{
       kind: "tool_call",
       name: "terminal",
-      payload: { input: { authorization: bearer, password } },
+      payload: { input: { authorization: bearer, command: inlineSecret, password } },
     }],
   }));
   try {
@@ -63,7 +64,8 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
     const archivedText = localEntryText(readFileSync(output), ".atf.json");
     expect(archivedText).not.toContain(bearer);
     expect(archivedText).not.toContain(password);
-    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(2);
+    expect(archivedText).not.toContain(inlineSecret);
+    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(3);
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
