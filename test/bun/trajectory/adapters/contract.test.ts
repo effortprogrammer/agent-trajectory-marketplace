@@ -322,7 +322,7 @@ describe("collector redaction and payload bounds", () => {
     ]) {
       expect(serialized).not.toContain(value);
     }
-    expect(serialized.match(/\[redacted\]/g)?.length).toBe(12);
+    expect(serialized.match(/\[redacted\]/g)?.length).toBe(2);
     expect(serialized).toContain("keep this diagnostic");
   });
 

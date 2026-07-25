@@ -26,6 +26,11 @@ type BoundsFrame =
   | Readonly<{ kind: "enter"; value: unknown; depth: number }>
   | Readonly<{ kind: "exit"; value: object }>;
 
+type ArrayShape = Readonly<{
+  indexes: readonly number[];
+  length: number;
+}>;
+
 export type SanitizedPayloadValue = Readonly<{
   value: unknown;
   truncated: boolean;
@@ -36,32 +41,46 @@ const serializedLimitResult: SanitizedPayloadValue = {
   value: undefined, truncated: true, serializedLimitExceeded: true,
 };
 
-const arrayIndexes = (value: readonly unknown[]): readonly number[] =>
-  Object.keys(value).flatMap((key) => {
-    const index = Number(key);
-    return Number.isInteger(index) && index >= 0 && index < value.length && String(index) === key
-      ? [index]
-      : [];
+const failClosedReflect = <Value>(operation: () => Value): Value | undefined => {
+  try {
+    return operation();
+  } catch {
+    return undefined;
+  }
+};
+
+const asArray = (value: object): readonly unknown[] | false | undefined =>
+  failClosedReflect(() => Array.isArray(value) ? value : false);
+
+const arrayShape = (value: readonly unknown[]): ArrayShape | undefined =>
+  failClosedReflect(() => {
+    const length = value.length;
+    const indexes = Object.keys(value).flatMap((key) => {
+      const index = Number(key);
+      return Number.isInteger(index) && index >= 0 && index < length && String(index) === key
+        ? [index]
+        : [];
+    });
+    return { indexes, length };
   });
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
+const boundedEnumerableKeys = (value: object, maximum: number): readonly string[] | undefined =>
+  failClosedReflect(() => {
+    const keys: string[] = [];
+    for (const key in value) {
+      if (!Object.hasOwn(value, key)) continue;
+      keys.push(key);
+      if (keys.length > maximum) return undefined;
+    }
+    return keys;
+  });
 
-const boundedEnumerableKeys = (value: object, maximum: number): readonly string[] | undefined => {
-  const keys: string[] = [];
-  for (const key in value) {
-    if (!Object.hasOwn(value, key)) continue;
-    keys.push(key);
-    if (keys.length > maximum) return undefined;
-  }
-  return keys;
-};
-
-const ownEnumerableDataValue = (value: object, key: string): Readonly<{ value: unknown }> | undefined => {
-  const descriptor = Object.getOwnPropertyDescriptor(value, key);
-  if (descriptor === undefined || descriptor.enumerable !== true || !("value" in descriptor)) return undefined;
-  return { value: descriptor.value };
-};
+const ownEnumerableDataValue = (value: object, key: string): Readonly<{ value: unknown }> | undefined =>
+  failClosedReflect(() => {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || descriptor.enumerable !== true || !("value" in descriptor)) return undefined;
+    return { value: descriptor.value };
+  });
 
 export const isPayloadStructureBounded = (input: unknown): boolean => {
   let visitedValues = 0;
@@ -81,19 +100,20 @@ export const isPayloadStructureBounded = (input: unknown): boolean => {
     if (ancestors.has(value)) return false;
     ancestors.add(value);
     stack.push({ kind: "exit", value });
-    if (Array.isArray(value)) {
-      if (visitedValues + value.length > maxVisitedValues) return false;
-      const indexes = arrayIndexes(value);
-      for (let index = indexes.length - 1; index >= 0; index -= 1) {
-        const childIndex = indexes[index];
+    const array = asArray(value);
+    if (array === undefined) return false;
+    if (array !== false) {
+      const shape = arrayShape(array);
+      if (shape === undefined || visitedValues + shape.length > maxVisitedValues) return false;
+      for (let index = shape.indexes.length - 1; index >= 0; index -= 1) {
+        const childIndex = shape.indexes[index];
         if (childIndex === undefined) continue;
-        const child = ownEnumerableDataValue(value, childIndex.toString());
+        const child = ownEnumerableDataValue(array, childIndex.toString());
         if (child === undefined) return false;
         stack.push({ kind: "enter", value: child.value, depth: frame.depth + 1 });
       }
       continue;
     }
-    if (!isRecord(value)) return false;
     const keys = boundedEnumerableKeys(value, maxVisitedValues - visitedValues);
     if (keys === undefined) return false;
     for (let index = keys.length - 1; index >= 0; index -= 1) {
@@ -173,17 +193,19 @@ export const sanitizePayloadValue = (
     if (!consumeSerializedBytes(2)) return serializedLimitResult;
     state.ancestors.add(frame.value);
     stack.push({ kind: "exit", value: frame.value });
-    if (Array.isArray(frame.value)) {
-      if (state.visitedValues + frame.value.length > maxVisitedValues) return undefined;
-      const indexes = arrayIndexes(frame.value);
-      const arrayOverhead = Math.max(0, frame.value.length - 1) + (frame.value.length - indexes.length) * 4;
+    const array = asArray(frame.value);
+    if (array === undefined) return undefined;
+    if (array !== false) {
+      const shape = arrayShape(array);
+      if (shape === undefined || state.visitedValues + shape.length > maxVisitedValues) return undefined;
+      const arrayOverhead = Math.max(0, shape.length - 1) + (shape.length - shape.indexes.length) * 4;
       if (!consumeSerializedBytes(arrayOverhead)) return serializedLimitResult;
-      const output = new Array<unknown>(frame.value.length);
+      const output = new Array<unknown>(shape.length);
       frame.assign(output);
-      for (let position = indexes.length - 1; position >= 0; position -= 1) {
-        const index = indexes[position];
+      for (let position = shape.indexes.length - 1; position >= 0; position -= 1) {
+        const index = shape.indexes[position];
         if (index === undefined) continue;
-        const child = ownEnumerableDataValue(frame.value, index.toString());
+        const child = ownEnumerableDataValue(array, index.toString());
         if (child === undefined) return undefined;
         stack.push({
           kind: "enter",
@@ -197,7 +219,6 @@ export const sanitizePayloadValue = (
       }
       continue;
     }
-    if (!isRecord(frame.value)) return undefined;
     const keys = boundedEnumerableKeys(frame.value, maxVisitedValues - state.visitedValues);
     if (keys === undefined) return undefined;
     const output: Record<string, unknown> = {};

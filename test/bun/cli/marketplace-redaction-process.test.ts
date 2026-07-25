@@ -29,7 +29,24 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
   const shortBearer = `Authorization: Bearer ${shortBearerValue}`;
   const punctuationSuffix = "unctuationTail9!";
   const punctuatedPassword = `password=p@${punctuationSuffix}`;
-  const command = [inlineSecret, standaloneToken, shortBearer, punctuatedPassword].join(" ");
+  const credentialValue = "credentialObjectValue93e7";
+  const credentialsValue = "credentialsObjectValue93e7";
+  const pwdValue = "pwdObjectValue93e7";
+  const cookieValue = "cookieObjectValue93e7";
+  const inlineCredentialValue = "inlineCredentialValue93e7";
+  const inlineCredentialsValue = "inlineCredentialsValue93e7";
+  const inlinePwdValue = "inlinePwdValue93e7!";
+  const inlineCookieValue = "inlineCookieValue93e7";
+  const command = [
+    inlineSecret,
+    standaloneToken,
+    shortBearer,
+    punctuatedPassword,
+    `credential=${inlineCredentialValue}`,
+    `credentials:'${inlineCredentialsValue}'`,
+    `pwd=${inlinePwdValue}`,
+    `cookie="${inlineCookieValue}"`,
+  ].join(" ");
   const numericApiKey = 314_159_265;
   const numericToken = 271_828_182;
   const projectApiKey = "sk-proj-abcdefghijklmnopqrstuvwx";
@@ -47,8 +64,12 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
           apiKey: numericApiKey,
           authorization: bearer,
           command: `${command} ${projectApiKey}`,
+          cookie: cookieValue,
+          credential: credentialValue,
+          credentials: credentialsValue,
           nested: { token: numericToken },
           password,
+          pwd: pwdValue,
         },
       },
     }],
@@ -89,9 +110,17 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
       numericApiKey.toString(),
       numericToken.toString(),
       projectApiKey,
+      credentialValue,
+      credentialsValue,
+      pwdValue,
+      cookieValue,
+      inlineCredentialValue,
+      inlineCredentialsValue,
+      inlinePwdValue,
+      inlineCookieValue,
     ];
     expect(rawMarkers.filter((marker) => archivedText.includes(marker))).toEqual([]);
-    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(9);
+    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(17);
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
