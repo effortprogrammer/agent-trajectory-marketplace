@@ -1,0 +1,194 @@
+import { describe, expect, test } from "bun:test";
+
+import {
+  buildSessionListItem,
+  buildSessionReport,
+  renderSessionList,
+  renderSessionReport,
+} from "../../../src/marketplace/session-report";
+import {
+  fullSelectorSchema,
+  traceHashSchema,
+  type SessionList,
+  type SessionReport,
+  type ValidatedTrace,
+} from "../../../src/marketplace/session-contract";
+import { harnessTraceDocumentSchema } from "../../../src/trajectory/adapters/contract";
+
+const selector = fullSelectorSchema.parse(`s-${"a".repeat(64)}`);
+const timestamp = "2026-07-24T12:34:56.000Z";
+
+const validated = (events: readonly object[], runtime = "codex"): ValidatedTrace => ({
+  frozenTrace: {
+    selector,
+    relativePath: "traces/adversarial.atf.json",
+    hash: traceHashSchema.parse("b".repeat(64)),
+    byteCount: 2,
+    runtime,
+    eventCount: events.length,
+    earliestTimestamp: events.length === 0 ? "unknown" : timestamp,
+    bytes: new Uint8Array([123, 125]),
+  },
+  document: harnessTraceDocumentSchema.parse({
+    runtime,
+    status: "collected",
+    formatVersion: 2,
+    eventCount: events.length,
+    events,
+  }),
+});
+
+const attested = (event: object, index: number): object => ({
+  ...event,
+  timestamp: new Date(Date.parse(timestamp) + index * 1_000).toISOString(),
+  sourceEventId: `event-${index}`,
+});
+
+const dangerousCodePoint = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u;
+
+describe("bounded session reports", () => {
+  test("preserves actual source indices and categorizes request action result and error evidence", () => {
+    // Given: a current-schema trace with stored user, tool, assistant, and failing tool-result events.
+    const trace = validated([
+      attested({ kind: "session_start", name: "session" }, 0),
+      attested({ kind: "function_enter", name: "turn-1", payload: { role: "user", content: "review this" } }, 1),
+      attested({ kind: "tool_call", name: "terminal", payload: { input: { command: "bun test" } } }, 2),
+      attested({ kind: "llm_call", name: "model", payload: { role: "assistant", content: "I ran it." } }, 3),
+      attested({ kind: "tool_result", name: "terminal", payload: { output: "exit 1", isError: true } }, 4),
+    ]);
+
+    // When: bounded inspection evidence is derived from the validated trace.
+    const report = buildSessionReport(trace);
+    const listed = buildSessionListItem(trace);
+
+    // Then: every category points to its real zero-based source event rather than an inferred summary.
+    expect(report.items.map((item) => [item.kind, item.eventIndex])).toEqual([
+      ["request", 1], ["action", 2], ["result", 3], ["error", 4],
+    ]);
+    expect(report.items[1]?.text).toContain("terminal");
+    expect(listed.firstRequestExcerpt).toBe("review this");
+    expect(listed.earliestTimestamp).toBe(timestamp);
+  });
+
+  test("reports stored redaction truncation unknown events and terminal sanitization without raw controls", () => {
+    // Given: representative runtime payloads containing collection markers and hostile terminal controls.
+    const trace = validated([
+      attested({ kind: "function_enter", name: "turn-1", payload: { role: "user", content: "[redacted] \u001b]8;;https://attacker.invalid\u0007click\u001b]8;;\u0007\u202E" } }, 0),
+      attested({ kind: "tool_call", name: "terminal", payload: { input: { truncated: true } } }, 1),
+      attested({ kind: "llm_call", name: "unknown", payload: { role: "assistant", content: `tail…[truncated]\u009b31m` } }, 2),
+      attested({ kind: "future_event", name: "future", payload: { output: "ignored" } }, 3),
+    ], "openclaw");
+
+    // When: safe structured and human forms are created from the same stored event values.
+    const report = buildSessionReport(trace);
+    const human = renderSessionReport(report);
+    const serialized = JSON.stringify(report);
+
+    // Then: marker states remain explicit and no terminal-control code point survives either output surface.
+    expect(report.markers.map((marker) => marker.kind)).toEqual([
+      "redacted", "sanitized", "truncated", "truncated", "sanitized", "unknown_event_kind", "unknown_event_kind",
+    ]);
+    expect(report.markers.map((marker) => marker.eventIndex)).toEqual([0, 0, 1, 2, 2, 2, 3]);
+    expect(serialized).toContain("[control:U+001B]");
+    expect(serialized).toContain("[bidi:U+202E]");
+    expect(dangerousCodePoint.test(serialized)).toBe(false);
+    expect(dangerousCodePoint.test(human.replaceAll("\n", ""))).toBe(false);
+  });
+
+  test("bounds Unicode-safe excerpts and declares evidence omitted after the two-hundredth item", () => {
+    // Given: 201 actual user events, with the first ending immediately after a surrogate-pair boundary.
+    const veryLongRequest = `${"x".repeat(999)}😀more`;
+    const events = Array.from({ length: 201 }, (_, index) => attested({
+      kind: "function_enter",
+      name: `turn-${index}`,
+      payload: { role: "user", content: index === 0 ? veryLongRequest : `request-${index}` },
+    }, index));
+
+    // When: report generation applies the fixed text and evidence limits.
+    const report = buildSessionReport(validated(events));
+
+    // Then: the boundary is valid Unicode and the unrendered source item is declared explicitly.
+    expect(report.items).toHaveLength(200);
+    expect(report.omittedItemCount).toBe(1);
+    expect(Array.from(report.items[0]?.text ?? "")).toHaveLength(1_000);
+    expect(report.items[0]?.text).toEndWith("…[truncated]");
+  });
+
+  test("renders inspection structure as separate logical lines without splitting CJK evidence", () => {
+    // Given: a safe inspection report whose CJK request and terminal marker must remain intact.
+    const report = {
+      selector,
+      runtime: "openclaw",
+      items: [
+        { kind: "request", eventIndex: 7, timestamp, text: "안녕하세요!", markers: [] },
+        { kind: "error", eventIndex: 8, text: "실행 \u001b[31m완료", markers: [] },
+      ],
+      omittedItemCount: 1,
+      markers: [{ kind: "sanitized", eventIndex: 8 }],
+    } satisfies SessionReport;
+
+    // When: the human inspection renderer formats its bounded report.
+    const human = renderSessionReport(report);
+
+    // Then: every structural record occupies one logical line and no unsafe control survives.
+    expect(human.split("\n")).toEqual([
+      `selector: ${selector}`,
+      "runtime: openclaw",
+      `[7] ${timestamp} request: 안녕하세요!`,
+      "[8] unknown error: 실행 [control:U+001B][31m완료",
+      "omitted: 1",
+      "markers: sanitized@8",
+    ]);
+    expect(human).not.toContain(" | ");
+    expect(dangerousCodePoint.test(human.replaceAll("\n", ""))).toBe(false);
+  });
+
+  test("renders each session list record as logical lines without splitting CJK requests", () => {
+    // Given: two safe list records with full opaque selectors, a Korean request, and stored sanitization markers.
+    const secondSelector = fullSelectorSchema.parse(`s-${"c".repeat(64)}`);
+    const listed = [
+      {
+        selector,
+        runtime: "openclaw",
+        earliestTimestamp: timestamp,
+        eventCount: 7,
+        byteCount: 512,
+        firstRequestExcerpt: "현재 디렉토리의 파일 목록 알려줘",
+        markers: [{ kind: "sanitized", eventIndex: 1 }],
+      },
+      {
+        selector: secondSelector,
+        runtime: "codex",
+        earliestTimestamp: "unknown" as const,
+        eventCount: 0,
+        byteCount: 0,
+        firstRequestExcerpt: "[redacted] \u001b[31m",
+        markers: [{ kind: "redacted", eventIndex: 0 }, { kind: "sanitized", eventIndex: 0 }],
+      },
+    ] satisfies SessionList;
+
+    // When: the human list renderer formats the stored session records.
+    const human = renderSessionList(listed);
+
+    // Then: fields stay complete on logical lines and sessions have an explicit blank-line boundary.
+    expect(human.split("\n")).toEqual([
+      `selector: ${selector}`,
+      "runtime: openclaw",
+      `earliest: ${timestamp}`,
+      "events: 7",
+      "bytes: 512",
+      "request: 현재 디렉토리의 파일 목록 알려줘",
+      "markers: sanitized@1",
+      "",
+      `selector: ${secondSelector}`,
+      "runtime: codex",
+      "earliest: unknown",
+      "events: 0",
+      "bytes: 0",
+      "request: [redacted] [control:U+001B][31m",
+      "markers: redacted@0, sanitized@0",
+    ]);
+    expect(human).not.toContain(" | ");
+    expect(dangerousCodePoint.test(human.replaceAll("\n", ""))).toBe(false);
+  });
+});
