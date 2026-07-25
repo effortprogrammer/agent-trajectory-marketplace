@@ -21,6 +21,7 @@ import {
 	UPDATE_TIMEOUTS,
 } from "./update-transaction-runtime";
 import {
+	activateUpdateService,
 	reconcileCurrentUpdateService,
 	rollbackUpdateService,
 } from "./update-service-recovery";
@@ -191,26 +192,22 @@ export const runUpdateTransaction = async (
 			previousPointer: currentPaths.previousPointer,
 			previousTarget: oldPrevious,
 		});
-		try {
-			await runBoundedUpdate(
-				UPDATE_TIMEOUTS.serviceHandoverMs,
-				request.signal,
-				(signal) => request.service.activate({
-					fromVersion: currentVersion,
-					toVersion: resolution.version,
-					installState,
-					signal,
-				}),
-			);
-		} catch (activationError: unknown) {
-			if (!(activationError instanceof Error)) throw activationError;
+		const activationFailure = await activateUpdateService({
+			fromVersion: currentVersion,
+			toVersion: resolution.version,
+			installState,
+			service: request.service,
+			...(request.signal === undefined ? {} : { signal: request.signal }),
+		});
+		if (activationFailure !== undefined) {
 			const pointerRestore = restorePointerPair({
 				currentPointer: currentPaths.currentPointer,
 				currentTarget: oldCurrent,
 				previousPointer: currentPaths.previousPointer,
 				previousTarget: oldPrevious,
 			});
-			const serviceRestored = readPointerTarget(currentPaths.currentPointer) === oldCurrent
+			const serviceRestored = activationFailure.canRollback
+				&& readPointerTarget(currentPaths.currentPointer) === oldCurrent
 				&& await rollbackUpdateService({
 					fromVersion: resolution.version,
 					toVersion: currentVersion,
