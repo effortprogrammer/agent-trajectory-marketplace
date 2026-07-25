@@ -138,6 +138,11 @@ export const runUpdateTransaction = async (
 		if (resolution.kind === "up_to_date") {
 			if (resolution.version !== currentVersion)
 				throw new UpdateTransactionError();
+			await runBoundedUpdate(
+				UPDATE_TIMEOUTS.serviceHandoverMs,
+				request.signal,
+				(signal) => request.service.activate({ fromVersion: currentVersion, toVersion: currentVersion, installState, signal }),
+			);
 			return { status: "up_to_date", currentVersion };
 		}
 
