@@ -63,7 +63,7 @@ const localEntries = (archive: Uint8Array): ReadonlyMap<string, Uint8Array> => {
 };
 
 describe("selected trace dataset archive", () => {
-  test("preserves exact bytes in opaque selector paths when input order differs", () => {
+  test("stores unchanged credential-free bytes in opaque paths when input order differs", () => {
     // Given: selected frozen traces supplied in reverse selector order.
     const first = frozenTrace("1", new TextDecoder().decode(validAtf("codex")));
     const second = frozenTrace("2", new TextDecoder().decode(validAtf("opencode")));
@@ -101,6 +101,12 @@ describe("selected trace dataset archive", () => {
     const bearer = "Bearer verySensitiveCredentialValue123456";
     const password = "short-password";
     const inlineSecret = "API_KEY=short7";
+    const standaloneToken = "token='tiny-token'";
+    const shortBearerValue = "tinyBearer7";
+    const shortBearer = `Authorization: Bearer ${shortBearerValue}`;
+    const punctuationSuffix = "unctuationTail9!";
+    const punctuatedPassword = `password=p@${punctuationSuffix}`;
+    const command = [inlineSecret, standaloneToken, shortBearer, punctuatedPassword].join(" ");
     const trace = frozenTrace("7", JSON.stringify({
       runtime: "codex",
       status: "collected",
@@ -109,7 +115,7 @@ describe("selected trace dataset archive", () => {
       events: [{
         kind: "tool_call",
         name: "terminal",
-        payload: { input: { authorization: bearer, command: inlineSecret, password } },
+        payload: { input: { authorization: bearer, command, password } },
       }],
     }));
 
@@ -124,10 +130,9 @@ describe("selected trace dataset archive", () => {
     const manifest = datasetManifestSchema.parse(JSON.parse(new TextDecoder().decode(manifestBytes)));
 
     // Then: the ZIP contains only redacted ATF bytes and hashes those exact bytes.
-    expect(archivedText).not.toContain(bearer);
-    expect(archivedText).not.toContain(password);
-    expect(archivedText).not.toContain(inlineSecret);
-    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(3);
+    const rawMarkers = [bearer, password, inlineSecret, standaloneToken, shortBearerValue, punctuationSuffix];
+    expect(rawMarkers.filter((marker) => archivedText.includes(marker))).toEqual([]);
+    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(6);
     expect(manifest.artifacts[0]?.sha256).toBe(digest(traceBytes));
     expect(manifest.artifacts[0]?.byteCount).toBe(traceBytes.byteLength);
   });

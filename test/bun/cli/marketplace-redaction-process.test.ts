@@ -24,6 +24,12 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
   const bearer = "Bearer verySensitiveCredentialValue123456";
   const password = "short-password";
   const inlineSecret = "API_KEY=short7";
+  const standaloneToken = "token='tiny-token'";
+  const shortBearerValue = "tinyBearer7";
+  const shortBearer = `Authorization: Bearer ${shortBearerValue}`;
+  const punctuationSuffix = "unctuationTail9!";
+  const punctuatedPassword = `password=p@${punctuationSuffix}`;
+  const command = [inlineSecret, standaloneToken, shortBearer, punctuatedPassword].join(" ");
   const output = join(root, "candidate.zip");
   writeFileSync(join(root, "session.atf.json"), JSON.stringify({
     runtime: "codex",
@@ -33,7 +39,7 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
     events: [{
       kind: "tool_call",
       name: "terminal",
-      payload: { input: { authorization: bearer, command: inlineSecret, password } },
+      payload: { input: { authorization: bearer, command, password } },
     }],
   }));
   try {
@@ -62,10 +68,9 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr.toString()).toBe("");
     const archivedText = localEntryText(readFileSync(output), ".atf.json");
-    expect(archivedText).not.toContain(bearer);
-    expect(archivedText).not.toContain(password);
-    expect(archivedText).not.toContain(inlineSecret);
-    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(3);
+    const rawMarkers = [bearer, password, inlineSecret, standaloneToken, shortBearerValue, punctuationSuffix];
+    expect(rawMarkers.filter((marker) => archivedText.includes(marker))).toEqual([]);
+    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(6);
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
