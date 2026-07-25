@@ -107,6 +107,8 @@ describe("selected trace dataset archive", () => {
     const punctuationSuffix = "unctuationTail9!";
     const punctuatedPassword = `password=p@${punctuationSuffix}`;
     const command = [inlineSecret, standaloneToken, shortBearer, punctuatedPassword].join(" ");
+    const numericApiKey = 314_159_265;
+    const numericToken = 271_828_182;
     const trace = frozenTrace("7", JSON.stringify({
       runtime: "codex",
       status: "collected",
@@ -115,7 +117,9 @@ describe("selected trace dataset archive", () => {
       events: [{
         kind: "tool_call",
         name: "terminal",
-        payload: { input: { authorization: bearer, command, password } },
+        payload: {
+          input: { apiKey: numericApiKey, authorization: bearer, command, nested: { token: numericToken }, password },
+        },
       }],
     }));
 
@@ -130,9 +134,18 @@ describe("selected trace dataset archive", () => {
     const manifest = datasetManifestSchema.parse(JSON.parse(new TextDecoder().decode(manifestBytes)));
 
     // Then: the ZIP contains only redacted ATF bytes and hashes those exact bytes.
-    const rawMarkers = [bearer, password, inlineSecret, standaloneToken, shortBearerValue, punctuationSuffix];
+    const rawMarkers = [
+      bearer,
+      password,
+      inlineSecret,
+      standaloneToken,
+      shortBearerValue,
+      punctuationSuffix,
+      numericApiKey.toString(),
+      numericToken.toString(),
+    ];
     expect(rawMarkers.filter((marker) => archivedText.includes(marker))).toEqual([]);
-    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(6);
+    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(8);
     expect(manifest.artifacts[0]?.sha256).toBe(digest(traceBytes));
     expect(manifest.artifacts[0]?.byteCount).toBe(traceBytes.byteLength);
   });
