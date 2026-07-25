@@ -24,12 +24,12 @@ const repository = "effortprogrammer/agent-trajectory-marketplace";
 type ProcessFixture = Readonly<{
 	executable: string;
 	home: string;
-	launchctlLog: string;
 	oldRelease: string;
 	outputSentinel: string;
 	priorService: string;
 	releaseFixture: string;
 	root: string;
+	serviceLog: string;
 }>;
 
 const writeTarText = (
@@ -157,38 +157,48 @@ export const createProcessFixture = (buildSucceeds = true): ProcessFixture => {
 		service: { runtimes: ["codex"], intervalSeconds: 30, settleSeconds: 60 },
 	});
 	const home = join(root, "home");
-	const serviceDir = join(home, "Library", "LaunchAgents");
+	const serviceDir = process.platform === "linux"
+		? join(home, ".config", "systemd", "user")
+		: join(home, "Library", "LaunchAgents");
 	mkdirSync(serviceDir, { recursive: true });
-	const priorService = join(serviceDir, `${collectServiceLabel}.plist`);
+	const priorService = join(
+		serviceDir,
+		`${collectServiceLabel}.${process.platform === "linux" ? "service" : "plist"}`,
+	);
 	writeFileSync(priorService, "prior-service");
 	const bin = join(root, "bin");
 	mkdirSync(bin);
-	const launchctlLog = join(root, "launchctl.log");
-	writeFileSync(join(bin, "launchctl"), `#!/bin/sh
+	const serviceLog = join(root, "service.log");
+	const serviceManager = process.platform === "linux" ? "systemctl" : "launchctl";
+	writeFileSync(join(bin, serviceManager), `#!/bin/sh
 printf '%s\\n' "$*" >> "$ATM_TEST_SERVICE_LOG"
-if [ "$1" = "bootstrap" ]; then
+action="$1"
+if [ "$1" = "--user" ]; then action="$2"; fi
+if [ "$action" = "bootstrap" ] || [ "$action" = "restart" ]; then
   count=0
   [ -f "$ATM_TEST_BOOTSTRAP_COUNT" ] && count=$(sed -n '1p' "$ATM_TEST_BOOTSTRAP_COUNT")
   count=$((count + 1))
   printf '%s\\n' "$count" > "$ATM_TEST_BOOTSTRAP_COUNT"
 fi
-if [ "$1" = "print" ] && [ "$ATM_TEST_HEALTH_FAIL" = "1" ]; then
-  count=$(sed -n '1p' "$ATM_TEST_BOOTSTRAP_COUNT")
-  [ "$count" = "1" ] && exit 1
+if [ "$action" = "print" ] || [ "$action" = "is-active" ]; then
+  if [ "$ATM_TEST_HEALTH_FAIL" = "1" ]; then
+    count=$(sed -n '1p' "$ATM_TEST_BOOTSTRAP_COUNT")
+    [ "$count" = "1" ] && exit 1
+  fi
 fi
 exit 0
 `);
-	chmodSync(join(bin, "launchctl"), 0o755);
+	chmodSync(join(bin, serviceManager), 0o755);
 	writePreload(root);
 	return {
 		executable: join(root, "current", "dist", "collector.js"),
 		home,
-		launchctlLog,
 		oldRelease,
 		outputSentinel,
 		priorService,
 		releaseFixture: writeReleaseFixture(root, buildSucceeds),
 		root,
+		serviceLog,
 	};
 };
 
@@ -212,7 +222,7 @@ export const runBuiltUpdate = (
 		ATM_TEST_CORRUPT: options.corrupt ? "1" : "0",
 		ATM_TEST_HEALTH_FAIL: options.healthFails ? "1" : "0",
 		ATM_TEST_RELEASE_FIXTURE: fixture.releaseFixture,
-		ATM_TEST_SERVICE_LOG: fixture.launchctlLog,
+		ATM_TEST_SERVICE_LOG: fixture.serviceLog,
 	},
 	stderr: "pipe",
 	stdout: "pipe",

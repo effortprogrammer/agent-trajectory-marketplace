@@ -9,7 +9,8 @@ import {
 
 export const listHermesSessions = (sourceDir: string): readonly HarnessSessionRef[] => {
   const dbPath = resolveHermesDbPath(sourceDir)
-  const sqlite = openHermesDatabase(dbPath)
+  const snapshot = openHermesDatabase(dbPath)
+  const sqlite = snapshot.database
   try {
     const rows = sqlite
       .query<HermesSessionRow, []>(
@@ -39,6 +40,6 @@ export const listHermesSessions = (sourceDir: string): readonly HarnessSessionRe
       ...(row.cwd === null ? {} : { projectDir: row.cwd }),
     }))
   } finally {
-    sqlite.close()
+    snapshot.close()
   }
 }
