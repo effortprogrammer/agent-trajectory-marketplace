@@ -47,6 +47,8 @@ export type FrozenTrace = Readonly<{
 export const sessionSnapshotSchema = z
   .object({
     root: z.string().min(1),
+    rootDevice: z.number().int().nonnegative(),
+    rootInode: z.number().int().nonnegative(),
     traces: z.array(frozenTraceSchema),
     totalByteCount: z.number().int().nonnegative(),
   })
@@ -64,6 +66,8 @@ export const sessionSnapshotSchema = z
 
 export type SessionSnapshot = Readonly<{
   readonly root: string;
+  readonly rootDevice: number;
+  readonly rootInode: number;
   readonly traces: readonly FrozenTrace[];
   readonly totalByteCount: number;
 }>;

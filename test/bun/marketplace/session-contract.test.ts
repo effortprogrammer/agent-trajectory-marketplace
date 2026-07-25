@@ -68,6 +68,8 @@ describe("local session review contracts", () => {
     } satisfies FrozenTrace;
     const snapshot = {
       root: "/absolute/collected-root",
+      rootDevice: 42,
+      rootInode: 84,
       traces: [trace],
       totalByteCount: trace.byteCount,
     };
