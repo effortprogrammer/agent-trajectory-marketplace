@@ -1,13 +1,14 @@
 const credentialPatterns = [
   /\bBearer\s+[A-Za-z0-9._~+/-]+={0,2}/gi,
-  /\b(?:auth|authorization|api[_-]?key|bearer|key|pass|password|passwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/gi,
+  /\b(?:auth|authorization|api[_-]?key|bearer|cookie|credentials?|key|pass|password|passwd|pwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/gi,
   /\bsk-[A-Za-z0-9_-]{20,}/g, /\bgh[pousr]_[A-Za-z0-9]{20,}/g,
   /\bxox[baprs]-[A-Za-z0-9-]{10,}/g, /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, /\bAIza[A-Za-z0-9_-]{20,}/g,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g,
   /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----/g,
 ] as const;
 const sensitiveKeyMarkers = new Set([
-  "password", "passwd", "pass", "auth", "authorization", "token", "key", "secret",
+  "password", "passwd", "pass", "pwd", "auth", "authorization", "token", "key", "secret",
+  "credential", "credentials", "cookie",
 ]);
 const sensitiveKeyCompounds = new Set([
   "apikey", "accesstoken", "refreshtoken", "authtoken", "clientsecret", "privatekey", "bearer",

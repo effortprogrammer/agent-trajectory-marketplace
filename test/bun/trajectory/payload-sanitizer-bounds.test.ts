@@ -21,6 +21,19 @@ const overBudgetObject = (): Readonly<Record<string, unknown>> => {
   return value;
 };
 
+const throwingOwnKeysProxy = (): object => new Proxy([], {
+  ownKeys: (): never => {
+    throw new RangeError("hostile ownKeys trap");
+  },
+});
+
+const throwingDescriptorProxy = (): object => new Proxy({}, {
+  ownKeys: (): readonly string[] => ["value"],
+  getOwnPropertyDescriptor: (): never => {
+    throw new RangeError("hostile descriptor trap");
+  },
+});
+
 test("payload bounds reject a wide object before reading its values", () => {
   // Given: an object whose final value must never be read after its key count exceeds the budget.
   const input = overBudgetObject();
@@ -81,6 +94,50 @@ test("payload sanitization rejects an enumerable accessor without invoking it", 
   // Then: it is rejected without invoking the getter.
   expect(sanitized).toBeUndefined();
   expect(getterReads).toBe(0);
+});
+
+test("payload bounds reject a Proxy whose ownKeys trap throws", () => {
+  // Given: an untrusted Proxy that throws during reflective key enumeration.
+  const input = throwingOwnKeysProxy();
+
+  // When: the payload structure boundary inspects it.
+  const bounded = isPayloadStructureBounded(input);
+
+  // Then: the boundary rejects it instead of propagating attacker-controlled code.
+  expect(bounded).toBe(false);
+});
+
+test("payload sanitization rejects a Proxy whose ownKeys trap throws", () => {
+  // Given: the same hostile key-enumeration boundary value.
+  const input = throwingOwnKeysProxy();
+
+  // When: the collection-time sanitizer inspects it.
+  const sanitized = sanitizeHarnessPayload({ input });
+
+  // Then: it fails closed without propagating the trap error.
+  expect(sanitized).toBeUndefined();
+});
+
+test("payload bounds reject a Proxy whose descriptor trap throws", () => {
+  // Given: an untrusted Proxy that throws while its enumerable descriptor is inspected.
+  const input = throwingDescriptorProxy();
+
+  // When: the payload structure boundary inspects it.
+  const bounded = isPayloadStructureBounded(input);
+
+  // Then: the boundary rejects it instead of propagating attacker-controlled code.
+  expect(bounded).toBe(false);
+});
+
+test("payload sanitization rejects a Proxy whose descriptor trap throws", () => {
+  // Given: the same hostile descriptor boundary value.
+  const input = throwingDescriptorProxy();
+
+  // When: the collection-time sanitizer inspects it.
+  const sanitized = sanitizeHarnessPayload({ input });
+
+  // Then: it fails closed without propagating the trap error.
+  expect(sanitized).toBeUndefined();
 });
 
 test("truncation never exceeds a byte cap smaller than its marker", () => {
