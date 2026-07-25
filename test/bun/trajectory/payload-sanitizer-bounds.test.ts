@@ -119,3 +119,28 @@ test("payload sanitization stops before materializing a leaf beyond the aggregat
   expect(terminalReads).toBe(0);
   expect(result).toEqual(expect.objectContaining({ serializedLimitExceeded: true }));
 });
+
+test("payload sanitization omits unsupported object properties before aggregate accounting", () => {
+  // Given: values JSON.stringify omits from objects beside one retained value.
+  const input = {
+    input: {
+      callback: (): void => {},
+      kept: "ok",
+      missing: undefined,
+      symbol: Symbol("omitted"),
+    },
+  };
+  const expected = { input: { kept: "ok" } };
+  const exactByteCap = Buffer.byteLength(JSON.stringify(expected), "utf8");
+
+  // When: the aggregate cap is exactly the size of the serialized retained data.
+  const result = sanitizePayloadValue(input, 1_024, exactByteCap);
+
+  // Then: omitted properties consume no budget and do not enter the sanitized value.
+  expect(result).toEqual({
+    value: expected,
+    truncated: false,
+    serializedLimitExceeded: false,
+  });
+  expect(JSON.stringify(result?.value)).toBe(JSON.stringify(expected));
+});
