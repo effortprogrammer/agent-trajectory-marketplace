@@ -13,6 +13,7 @@ import {
   type SessionReport,
   type ValidatedTrace,
 } from "../../../src/marketplace/session-contract";
+import { MarketplaceError } from "../../../src/marketplace/error";
 import { harnessTraceDocumentSchema } from "../../../src/trajectory/adapters/contract";
 
 const selector = fullSelectorSchema.parse(`s-${"a".repeat(64)}`);
@@ -46,7 +47,62 @@ const attested = (event: object, index: number): object => ({
 
 const dangerousCodePoint = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u;
 
+const deeplyNestedValue = (depth: number): unknown => {
+  let value: unknown = "leaf";
+  for (let index = 0; index < depth; index += 1) value = { nested: value };
+  return value;
+};
+
+const marketplaceErrorCode = (run: () => unknown): string | undefined => {
+  try {
+    run();
+    return undefined;
+  } catch (error) {
+    return error instanceof MarketplaceError ? error.code : undefined;
+  }
+};
+
 describe("bounded session reports", () => {
+  test("rejects excessively deep payloads as invalid_trace", () => {
+    // Given: schema-valid payload values at the traversal boundary plus pathological input/output graphs.
+    const accepted = validated([
+      attested({ kind: "tool_call", name: "terminal", payload: { input: deeplyNestedValue(256) } }, 0),
+    ]);
+    const tooDeepInput = validated([
+      attested({ kind: "tool_call", name: "terminal", payload: { input: deeplyNestedValue(257) } }, 0),
+    ]);
+    const veryDeepInput = validated([
+      attested({ kind: "tool_call", name: "terminal", payload: { input: deeplyNestedValue(100_000) } }, 0),
+    ]);
+    const tooDeepOutput = validated([
+      attested({ kind: "tool_result", name: "terminal", payload: { output: deeplyNestedValue(100_000) } }, 0),
+    ]);
+    const cyclicInput: { nested?: unknown } = {};
+    cyclicInput.nested = cyclicInput;
+    const cyclicOutput: unknown[] = [];
+    cyclicOutput.push(cyclicOutput);
+    const cyclicInputTrace = validated([
+      attested({ kind: "tool_call", name: "terminal", payload: { input: cyclicInput } }, 0),
+    ]);
+    const cyclicOutputTrace = validated([
+      attested({ kind: "tool_result", name: "terminal", payload: { output: cyclicOutput } }, 0),
+    ]);
+
+    // When: list and inspection evidence cross the sanitizer boundary.
+    const acceptedReport = buildSessionReport(accepted);
+    const rejected = [
+      marketplaceErrorCode(() => buildSessionListItem(tooDeepInput)),
+      marketplaceErrorCode(() => buildSessionReport(veryDeepInput)),
+      marketplaceErrorCode(() => buildSessionReport(tooDeepOutput)),
+      marketplaceErrorCode(() => buildSessionListItem(cyclicInputTrace)),
+      marketplaceErrorCode(() => buildSessionReport(cyclicOutputTrace)),
+    ];
+
+    // Then: depth 256 remains visible, while every rejected graph has the stable marketplace error.
+    expect(acceptedReport.items).toHaveLength(1);
+    expect(rejected).toEqual(["invalid_trace", "invalid_trace", "invalid_trace", "invalid_trace", "invalid_trace"]);
+  });
+
   test("preserves actual source indices and categorizes request action result and error evidence", () => {
     // Given: a current-schema trace with stored user, tool, assistant, and failing tool-result events.
     const trace = validated([
