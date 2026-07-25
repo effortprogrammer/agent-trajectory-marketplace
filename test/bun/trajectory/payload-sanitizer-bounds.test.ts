@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 
 import { sanitizeHarnessPayload } from "../../../src/trajectory/adapters/contract";
-import { isPayloadStructureBounded } from "../../../src/trajectory/adapters/payload-sanitizer";
+import {
+  boundedRedactedString,
+  isPayloadStructureBounded,
+} from "../../../src/trajectory/adapters/payload-sanitizer";
 
 const overBudgetObject = (): Readonly<Record<string, unknown>> => {
   const value: Record<string, unknown> = {};
@@ -37,4 +40,56 @@ test("payload sanitization rejects a wide object before reading its values", () 
 
   // Then: the object is rejected without invoking the terminal getter.
   expect(sanitized).toBeUndefined();
+});
+
+test("payload bounds reject an enumerable accessor without invoking it", () => {
+  // Given: a within-budget object whose enumerable accessor must not execute.
+  let getterReads = 0;
+  const input = {};
+  Object.defineProperty(input, "value", {
+    enumerable: true,
+    get: (): string => {
+      getterReads += 1;
+      throw new RangeError("accessor was invoked");
+    },
+  });
+
+  // When: the untrusted structure is checked.
+  const bounded = isPayloadStructureBounded(input);
+
+  // Then: accessor-backed payloads fail closed without running user code.
+  expect(bounded).toBe(false);
+  expect(getterReads).toBe(0);
+});
+
+test("payload sanitization rejects an enumerable accessor without invoking it", () => {
+  // Given: the same hostile accessor at the sanitizer boundary.
+  let getterReads = 0;
+  const input = {};
+  Object.defineProperty(input, "value", {
+    enumerable: true,
+    get: (): string => {
+      getterReads += 1;
+      throw new RangeError("accessor was invoked");
+    },
+  });
+
+  // When: the payload is sanitized.
+  const sanitized = sanitizeHarnessPayload({ input });
+
+  // Then: it is rejected without invoking the getter.
+  expect(sanitized).toBeUndefined();
+  expect(getterReads).toBe(0);
+});
+
+test("truncation never exceeds a byte cap smaller than its marker", () => {
+  // Given: a multibyte value and a cap too small for the full truncation marker.
+  const byteCap = 1;
+
+  // When: the raw payload string helper truncates it.
+  const result = boundedRedactedString("한", byteCap);
+
+  // Then: its output still honors the caller's byte contract.
+  expect(result.truncated).toBe(true);
+  expect(Buffer.byteLength(result.text, "utf8")).toBeLessThanOrEqual(byteCap);
 });

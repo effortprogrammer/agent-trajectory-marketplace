@@ -109,6 +109,7 @@ describe("selected trace dataset archive", () => {
     const command = [inlineSecret, standaloneToken, shortBearer, punctuatedPassword].join(" ");
     const numericApiKey = 314_159_265;
     const numericToken = 271_828_182;
+    const projectApiKey = "sk-proj-abcdefghijklmnopqrstuvwx";
     const trace = frozenTrace("7", JSON.stringify({
       runtime: "codex",
       status: "collected",
@@ -118,7 +119,13 @@ describe("selected trace dataset archive", () => {
         kind: "tool_call",
         name: "terminal",
         payload: {
-          input: { apiKey: numericApiKey, authorization: bearer, command, nested: { token: numericToken }, password },
+          input: {
+            apiKey: numericApiKey,
+            authorization: bearer,
+            command: `${command} ${projectApiKey}`,
+            nested: { token: numericToken },
+            password,
+          },
         },
       }],
     }));
@@ -143,9 +150,10 @@ describe("selected trace dataset archive", () => {
       punctuationSuffix,
       numericApiKey.toString(),
       numericToken.toString(),
+      projectApiKey,
     ];
     expect(rawMarkers.filter((marker) => archivedText.includes(marker))).toEqual([]);
-    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(8);
+    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(9);
     expect(manifest.artifacts[0]?.sha256).toBe(digest(traceBytes));
     expect(manifest.artifacts[0]?.byteCount).toBe(traceBytes.byteLength);
   });

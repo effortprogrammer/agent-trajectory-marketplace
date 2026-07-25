@@ -32,6 +32,7 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
   const command = [inlineSecret, standaloneToken, shortBearer, punctuatedPassword].join(" ");
   const numericApiKey = 314_159_265;
   const numericToken = 271_828_182;
+  const projectApiKey = "sk-proj-abcdefghijklmnopqrstuvwx";
   const output = join(root, "candidate.zip");
   writeFileSync(join(root, "session.atf.json"), JSON.stringify({
     runtime: "codex",
@@ -42,7 +43,13 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
       kind: "tool_call",
       name: "terminal",
       payload: {
-        input: { apiKey: numericApiKey, authorization: bearer, command, nested: { token: numericToken }, password },
+        input: {
+          apiKey: numericApiKey,
+          authorization: bearer,
+          command: `${command} ${projectApiKey}`,
+          nested: { token: numericToken },
+          password,
+        },
       },
     }],
   }));
@@ -81,9 +88,10 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
       punctuationSuffix,
       numericApiKey.toString(),
       numericToken.toString(),
+      projectApiKey,
     ];
     expect(rawMarkers.filter((marker) => archivedText.includes(marker))).toEqual([]);
-    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(8);
+    expect(archivedText.match(/\[redacted\]/g)?.length).toBe(9);
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
