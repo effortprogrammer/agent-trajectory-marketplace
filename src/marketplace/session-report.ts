@@ -1,4 +1,4 @@
-import type { HarnessTraceEvent } from "../trajectory/adapters/contract";
+import { boundedRedactedString, type HarnessTraceEvent } from "../trajectory/adapters/contract";
 import type {
   SessionList,
   SessionListItem,
@@ -13,6 +13,7 @@ const maximumTextCharacters = 1_000;
 const truncationMarker = "…[truncated]";
 const terminalControl = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u;
 const terminalControls = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/gu;
+const reportTokenCredential = /\btoken\b\s*[:=]\s*["']?[A-Za-z0-9._~+/-]{12,}={0,2}/gi;
 const knownEventKinds = new Set([
   "session_start", "function_enter", "function_exit", "llm_call", "tool_call", "tool_result",
 ]);
@@ -30,8 +31,9 @@ const controlMarker = (character: string): string => {
 };
 
 const safeText = (value: string): SafeText => {
-  const sanitized = terminalControl.test(value);
-  const terminalSafe = value.replace(terminalControls, controlMarker);
+  const redacted = boundedRedactedString(value).text.replace(reportTokenCredential, "[redacted]");
+  const sanitized = terminalControl.test(redacted);
+  const terminalSafe = redacted.replace(terminalControls, controlMarker);
   const characters = Array.from(terminalSafe);
   if (characters.length <= maximumTextCharacters) {
     return { text: terminalSafe, sanitized, truncated: false };
@@ -106,7 +108,7 @@ const eventMarkers = (
 ): readonly SessionMarker[] => {
   const payload = event.payload;
   const markers: SessionMarker[] = [];
-  if (contains(payload, (text) => text.includes("[redacted]"))) {
+  if (contains(payload, (text) => text.includes("[redacted]")) || fields.some((field) => field.text.includes("[redacted]"))) {
     markers.push({ kind: "redacted", eventIndex });
   }
   if (

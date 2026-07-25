@@ -1,5 +1,5 @@
 import { CString, dlopen, read as readMemory } from "bun:ffi";
-import { closeSync, constants, fstatSync, openSync, readSync, realpathSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 
 import { MarketplaceError } from "./error";
 import type { MarketplaceErrorCode } from "./error";
@@ -17,6 +17,7 @@ const fileFlags = constants.O_RDONLY | constants.O_NOFOLLOW;
 export type ConfinementOptions = Readonly<{
   readonly afterDirectoryOpen?: (relativeDirectory: string) => void;
   readonly afterInitialStat?: (absolutePath: string) => void;
+  readonly afterRootPathResolved?: (absoluteRoot: string) => void;
   readonly forceUnsupportedPlatform?: boolean;
 }>;
 
@@ -82,6 +83,24 @@ function encodedName(name: string): Uint8Array {
 
 function openAt(library: NativeLibrary, request: OpenRequest): number {
   return library.symbols.openat(request.directory, encodedName(request.name), request.flags, 0);
+}
+
+function openAbsoluteDirectory(library: NativeLibrary, root: string): number {
+  if (!root.startsWith("/")) throw new MarketplaceError("invalid_root");
+  let descriptor = openSync("/", directoryFlags);
+  try {
+    for (const name of root.split("/").filter((part) => part.length > 0)) {
+      const child = openAt(library, { directory: descriptor, name, flags: directoryFlags });
+      if (child < 0) throw new MarketplaceError("invalid_root");
+      const parent = descriptor;
+      descriptor = child;
+      closeSync(parent);
+    }
+    return descriptor;
+  } catch (error) {
+    closeSync(descriptor);
+    throw error;
+  }
 }
 
 function directoryNames(library: NativeLibrary, descriptor: number): readonly string[] {
@@ -230,8 +249,9 @@ function withReader<T>(request: BatchRequest, action: (reader: OpenAtReader) => 
   const library = loadNative(request.options);
   let descriptor: number | undefined;
   try {
-    const root = realpathSync(request.root);
-    descriptor = openSync(root, directoryFlags);
+    const root = request.root;
+    request.options.afterRootPathResolved?.(root);
+    descriptor = openAbsoluteDirectory(library, root);
     if (!fstatSync(descriptor).isDirectory()) throw new MarketplaceError("invalid_root");
     return action(new OpenAtReader({ library, root, rootDescriptor: descriptor, options: request.options }));
   } catch (error) {

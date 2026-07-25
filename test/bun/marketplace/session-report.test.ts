@@ -95,6 +95,23 @@ describe("bounded session reports", () => {
     expect(dangerousCodePoint.test(human.replaceAll("\n", ""))).toBe(false);
   });
 
+  test("redacts credential-shaped values from list and inspection evidence", () => {
+    // Given: a schema-valid direct ATF whose request bypassed native collector redaction.
+    const secret = "super-secret-token-123456";
+    const trace = validated([
+      attested({ kind: "function_enter", name: "turn-1", payload: { role: "user", content: `review TOKEN=${secret}` } }, 0),
+    ]);
+
+    // When: both user-facing session summaries are produced.
+    const report = buildSessionReport(trace);
+    const rendered = `${renderSessionList([buildSessionListItem(trace)])}\n${renderSessionReport(report)}`;
+
+    // Then: the secret never crosses the output boundary and redaction stays visible.
+    expect(JSON.stringify({ report, rendered })).not.toContain(secret);
+    expect(rendered).toContain("review [redacted]");
+    expect(report.markers.map((marker) => marker.kind)).toContain("redacted");
+  });
+
   test("bounds Unicode-safe excerpts and declares evidence omitted after the two-hundredth item", () => {
     // Given: 201 actual user events, with the first ending immediately after a surrogate-pair boundary.
     const veryLongRequest = `${"x".repeat(999)}😀more`;
