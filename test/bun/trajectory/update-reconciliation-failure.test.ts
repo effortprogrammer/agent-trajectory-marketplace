@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, jest, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
 	mkdirSync,
 	readFileSync,
@@ -27,13 +27,11 @@ import {
 const roots: string[] = [];
 
 afterEach(() => {
-	jest.useRealTimers();
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 describe("same-version reconciliation retryability", () => {
 	test("waits for an aborted activation to settle before starting rollback", async () => {
-		jest.useFakeTimers();
 		const root = join(tmpdir(), `atm-reconcile-quiescence-${crypto.randomUUID()}`);
 		const currentRelease = join(root, "releases", "1.0.0");
 		roots.push(root);
@@ -45,7 +43,10 @@ describe("same-version reconciliation retryability", () => {
 			outputDir: join(root, "collected"),
 			service: { runtimes: [], intervalSeconds: 30, settleSeconds: 60 },
 		});
+		const controller = new AbortController();
 		const activationStarted = Promise.withResolvers<void>();
+		const activationAborted = Promise.withResolvers<void>();
+		const delayedActivation = Promise.withResolvers<void>();
 		let serviceState = "initial";
 		let rollbackCalls = 0;
 		const service: UpdateServiceHandover = {
@@ -53,10 +54,11 @@ describe("same-version reconciliation retryability", () => {
 				const settled = Promise.withResolvers<void>();
 				activationStarted.resolve();
 				signal.addEventListener("abort", () => {
-					setTimeout(() => {
+					activationAborted.resolve();
+					void delayedActivation.promise.then(() => {
 						serviceState = "activation";
 						settled.resolve();
-					}, 1_000);
+					});
 				}, { once: true });
 				return settled.promise;
 			},
@@ -67,18 +69,22 @@ describe("same-version reconciliation retryability", () => {
 		};
 		const transaction = runUpdateTransaction({
 			stateRoot: root,
+			signal: controller.signal,
 			source: { resolve: async () => ({ kind: "up_to_date", version: "1.0.0" }) },
 			builder: { stage: async () => undefined },
 			service,
 		});
 		await activationStarted.promise;
 
-		jest.advanceTimersByTime(60_000);
+		controller.abort();
+		await activationAborted.promise;
+		await Promise.resolve();
+		await Promise.resolve();
 		await Promise.resolve();
 		expect(rollbackCalls).toBe(0);
 		expect(serviceState).toBe("initial");
 
-		jest.advanceTimersByTime(1_000);
+		delayedActivation.resolve();
 		await expect(transaction).resolves.toEqual({
 			status: "update_failed",
 			currentVersion: "1.0.0",
