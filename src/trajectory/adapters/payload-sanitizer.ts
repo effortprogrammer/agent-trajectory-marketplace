@@ -1,24 +1,14 @@
+import { boundedRedactedString, isSensitiveObjectKey } from "./payload-redaction";
+
+export { boundedRedactedString } from "./payload-redaction";
+
 const maxPayloadDepth = 256;
 const maxVisitedValues = 65_536;
-
-const credentialPatterns = [
-  /\bBearer\s+[A-Za-z0-9._~+/-]+={0,2}/gi,
-  /\b(?:auth|authorization|api[_-]?key|bearer|key|pass|password|passwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)/gi,
-  /\bsk-[A-Za-z0-9_-]{20,}/g, /\bgh[pousr]_[A-Za-z0-9]{20,}/g,
-  /\bxox[baprs]-[A-Za-z0-9-]{10,}/g, /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, /\bAIza[A-Za-z0-9_-]{20,}/g,
-  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g,
-  /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----/g,
-] as const;
-const sensitiveKeyMarkers = new Set([
-  "password", "passwd", "pass", "auth", "authorization", "token", "key", "secret",
-]);
-const sensitiveKeyCompounds = new Set([
-  "apikey", "accesstoken", "refreshtoken", "authtoken", "clientsecret", "privatekey", "bearer",
-]);
 
 type SanitizerState = {
   truncated: boolean;
   visitedValues: number;
+  serializedBytes: number;
   readonly ancestors: Set<object>;
 };
 
@@ -36,23 +26,14 @@ type BoundsFrame =
   | Readonly<{ kind: "enter"; value: unknown; depth: number }>
   | Readonly<{ kind: "exit"; value: object }>;
 
-export type SanitizedPayloadValue = Readonly<{ value: unknown; truncated: boolean }>;
+export type SanitizedPayloadValue = Readonly<{
+  value: unknown;
+  truncated: boolean;
+  serializedLimitExceeded: boolean;
+}>;
 
-const redactCredentialSpans = (value: string): string => {
-  let redacted = value;
-  for (const pattern of credentialPatterns) redacted = redacted.replace(pattern, "[redacted]");
-  return redacted;
-};
-
-const isSensitiveObjectKey = (key: string): boolean => {
-  const normalized = key
-    .replaceAll(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .replaceAll(/[^a-zA-Z0-9]+/g, "_")
-    .toLowerCase();
-  return (
-    normalized.split("_").some((part) => sensitiveKeyMarkers.has(part)) ||
-    sensitiveKeyCompounds.has(normalized.replaceAll("_", ""))
-  );
+const serializedLimitResult: SanitizedPayloadValue = {
+  value: undefined, truncated: true, serializedLimitExceeded: true,
 };
 
 const arrayIndexes = (value: readonly unknown[]): readonly number[] =>
@@ -126,32 +107,21 @@ export const isPayloadStructureBounded = (input: unknown): boolean => {
   return true;
 };
 
-export const boundedRedactedString = (
-  value: string,
-  maxStringBytes: number,
-): Readonly<{ text: string; truncated: boolean }> => {
-  const redacted = redactCredentialSpans(value);
-  if (Buffer.byteLength(redacted, "utf8") <= maxStringBytes) {
-    return { text: redacted, truncated: false };
-  }
-  const marker = "…[truncated]";
-  const buffer = Buffer.from(redacted, "utf8");
-  const markerBytes = Buffer.byteLength(marker, "utf8");
-  if (maxStringBytes < markerBytes) return { text: "", truncated: true };
-  let end = maxStringBytes - markerBytes;
-  while (end > 0 && (buffer[end] ?? 0) >> 6 === 0b10) end -= 1;
-  return { text: `${buffer.subarray(0, end).toString("utf8")}${marker}`, truncated: true };
-};
-
 export const sanitizePayloadValue = (
   input: unknown,
   maxStringBytes: number,
+  maxSerializedBytes: number,
 ): SanitizedPayloadValue | undefined => {
   let result: unknown;
   const state: SanitizerState = {
     truncated: false,
     visitedValues: 0,
+    serializedBytes: 0,
     ancestors: new Set<object>(),
+  };
+  const consumeSerializedBytes = (bytes: number): boolean => {
+    state.serializedBytes += bytes;
+    return state.serializedBytes <= maxSerializedBytes;
   };
   const stack: SanitizerFrame[] = [
     {
@@ -177,25 +147,37 @@ export const sanitizePayloadValue = (
       return undefined;
     }
     if (frame.sensitiveContext) {
+      if (!consumeSerializedBytes(12)) return serializedLimitResult;
       frame.assign("[redacted]");
       continue;
     }
     if (typeof frame.value === "string") {
       const bounded = boundedRedactedString(frame.value, maxStringBytes);
+      if (!consumeSerializedBytes(Buffer.byteLength(JSON.stringify(bounded.text), "utf8"))) {
+        return serializedLimitResult;
+      }
       if (bounded.truncated) state.truncated = true;
       frame.assign(bounded.text);
       continue;
     }
     if (frame.value === null || typeof frame.value !== "object") {
+      if (typeof frame.value === "bigint") return undefined;
+      const serialized = JSON.stringify(frame.value);
+      if (!consumeSerializedBytes(serialized === undefined ? 4 : Buffer.byteLength(serialized, "utf8"))) {
+        return serializedLimitResult;
+      }
       frame.assign(frame.value);
       continue;
     }
     if (state.ancestors.has(frame.value)) return undefined;
+    if (!consumeSerializedBytes(2)) return serializedLimitResult;
     state.ancestors.add(frame.value);
     stack.push({ kind: "exit", value: frame.value });
     if (Array.isArray(frame.value)) {
       if (state.visitedValues + frame.value.length > maxVisitedValues) return undefined;
       const indexes = arrayIndexes(frame.value);
+      const arrayOverhead = Math.max(0, frame.value.length - 1) + (frame.value.length - indexes.length) * 4;
+      if (!consumeSerializedBytes(arrayOverhead)) return serializedLimitResult;
       const output = new Array<unknown>(frame.value.length);
       frame.assign(output);
       for (let position = indexes.length - 1; position >= 0; position -= 1) {
@@ -220,11 +202,19 @@ export const sanitizePayloadValue = (
     if (keys === undefined) return undefined;
     const output: Record<string, unknown> = {};
     frame.assign(output);
+    let serializedKeys = 0;
     for (let index = keys.length - 1; index >= 0; index -= 1) {
       const key = keys[index];
       if (key === undefined) continue;
       const child = ownEnumerableDataValue(frame.value, key);
       if (child === undefined) return undefined;
+      const rawKeyBytes = Buffer.byteLength(key, "utf8");
+      if (!consumeSerializedBytes(rawKeyBytes)) return serializedLimitResult;
+      const encodedKeyBytes = Buffer.byteLength(JSON.stringify(key), "utf8");
+      if (!consumeSerializedBytes(encodedKeyBytes - rawKeyBytes + 1 + (serializedKeys > 0 ? 1 : 0))) {
+        return serializedLimitResult;
+      }
+      serializedKeys += 1;
       stack.push({
         kind: "enter",
         value: child.value,
@@ -241,5 +231,5 @@ export const sanitizePayloadValue = (
       });
     }
   }
-  return { value: result, truncated: state.truncated };
+  return { value: result, truncated: state.truncated, serializedLimitExceeded: false };
 };

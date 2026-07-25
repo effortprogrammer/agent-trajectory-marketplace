@@ -4,6 +4,7 @@ import { sanitizeHarnessPayload } from "../../../src/trajectory/adapters/contrac
 import {
   boundedRedactedString,
   isPayloadStructureBounded,
+  sanitizePayloadValue,
 } from "../../../src/trajectory/adapters/payload-sanitizer";
 
 const overBudgetObject = (): Readonly<Record<string, unknown>> => {
@@ -92,4 +93,29 @@ test("truncation never exceeds a byte cap smaller than its marker", () => {
   // Then: its output still honors the caller's byte contract.
   expect(result.truncated).toBe(true);
   expect(Buffer.byteLength(result.text, "utf8")).toBeLessThanOrEqual(byteCap);
+});
+
+test("payload sanitization stops before materializing a leaf beyond the aggregate budget", () => {
+  // Given: two large early leaves and a later subtree that records materialization.
+  let terminalReads = 0;
+  const terminal = new Proxy({}, {
+    ownKeys: (target): (string | symbol)[] => {
+      terminalReads += 1;
+      return Reflect.ownKeys(target);
+    },
+  });
+  const input = {
+    input: {
+      first: "x".repeat(80),
+      second: "y".repeat(80),
+      terminal,
+    },
+  };
+
+  // When: a small aggregate budget is supplied through the public sanitizer seam.
+  const result: unknown = Reflect.apply(sanitizePayloadValue, undefined, [input, 1_024, 128]);
+
+  // Then: the budget stops traversal before the terminal subtree is materialized.
+  expect(terminalReads).toBe(0);
+  expect(result).toEqual(expect.objectContaining({ serializedLimitExceeded: true }));
 });
