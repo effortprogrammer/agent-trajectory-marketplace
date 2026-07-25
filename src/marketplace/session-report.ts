@@ -17,7 +17,7 @@ const maximumTextCharacters = 1_000;
 const truncationMarker = "…[truncated]";
 const terminalControl = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u;
 const terminalControls = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/gu;
-const reportCredential = /\b(?:Bearer\s+[^\s,;}\]]+|(?:auth(?:orization)?|api[_-]?key|secret|password|passwd|pass|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b["']?\s*[:=]\s*(?!["']?\[redacted\]["']?)(?:"[^"\r\n]+"|'[^'\r\n]+'|Bearer\s+[^\s,;}\]]+|[^\s,;}\]]+))/gi;
+const reportCredential = /\b(?:Bearer\s+[^\s,;}\]]+|(?:auth(?:orization)?|api[_-]?key|secret|password|passwd|pass|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)\b["']?(?:\s*[:=]\s*|\s+)(?!["']?\[redacted\]["']?)(?:"[^"\r\n]+"|'[^'\r\n]+'|Bearer\s+[^\s,;}\]]+|[^\s,;}\]]+))/gi;
 const knownEventKinds = new Set([
   "session_start", "function_enter", "function_exit", "llm_call", "tool_call", "tool_result",
 ]);
