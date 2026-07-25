@@ -128,6 +128,48 @@ describe("serialized update transaction", () => {
 		expect(existsSync(join(root, "previous"))).toBe(false);
 	});
 
+	test("reconciles a normalized legacy service when already current", async () => {
+		// Given: a raw v1.0.2 state from the five-runtime installer snapshot.
+		const root = join(tmpdir(), `atm-update-legacy-${crypto.randomUUID()}`);
+		const currentRelease = join(root, "releases", "1.0.2");
+		mkdirSync(currentRelease, { recursive: true });
+		symlinkSync(currentRelease, join(root, "current"));
+		writeFileSync(
+			deriveInstallPaths(root, "1.0.2").stateFile,
+			`${JSON.stringify({
+				schemaVersion: 1,
+				installRoot: root,
+				outputDir: join(root, "collected"),
+				service: { runtimes: ["claude-code", "codex", "hermes", "openclaw", "opencode"], intervalSeconds: 30, settleSeconds: 60 },
+			})}\n`,
+		);
+		roots.push(root);
+		const requests: Array<Readonly<{ fromVersion: string; toVersion: string; runtimes: readonly string[] }>> = [];
+
+		// When: an update check confirms that the installed release is current.
+		const result = await runUpdateTransaction({
+			stateRoot: root,
+			source: { resolve: async () => ({ kind: "up_to_date", version: "1.0.2" }) },
+			builder: { stage: async () => undefined },
+			service: {
+				activate: async ({ fromVersion, toVersion, installState }) => {
+					requests.push({
+						fromVersion,
+						toVersion,
+						runtimes: installState.service.runtimes,
+					});
+				},
+				rollback: async () => undefined,
+			},
+		});
+
+		// Then: the normalizer reaches a same-version reconciliation handover.
+		expect(result).toEqual({ status: "up_to_date", currentVersion: "1.0.2" });
+		expect(requests).toEqual([
+			{ fromVersion: "1.0.2", toVersion: "1.0.2", runtimes: [] },
+		]);
+	});
+
 	test("restores both pointers and invokes rollback when service activation fails", async () => {
 		// Given
 		const { root, oldRelease } = fixture();
