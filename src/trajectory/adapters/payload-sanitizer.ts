@@ -164,11 +164,11 @@ export const sanitizePayloadValue = (
     if (state.visitedValues > maxVisitedValues || frame.depth > maxPayloadDepth) {
       return undefined;
     }
+    if (frame.sensitiveContext) {
+      frame.assign("[redacted]");
+      continue;
+    }
     if (typeof frame.value === "string") {
-      if (frame.sensitiveContext) {
-        frame.assign("[redacted]");
-        continue;
-      }
       const bounded = boundedRedactedString(frame.value, maxStringBytes);
       if (bounded.truncated) state.truncated = true;
       frame.assign(bounded.text);
