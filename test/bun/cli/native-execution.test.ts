@@ -131,7 +131,7 @@ describe("native collector CLI execution", () => {
     expect(result).toMatchObject({ exported: 1, failed: 0, runtimes: ["codex"] });
   });
 
-  test("renders a canonical service install without mutating launchd", () => {
+  test("renders a canonical service install without mutating the platform manager", () => {
     // Given: a canonical dry-run request using native runtime defaults.
     const outputDir = fixture().outputDir;
 
@@ -148,9 +148,9 @@ describe("native collector CLI execution", () => {
       "codex",
     ]);
 
-    // Then: launchd is not changed and the generated command uses canonical grammar.
+    // Then: the platform manager is not changed and the generated command uses canonical grammar.
     expect(result).toMatchObject({ bootstrapped: false, detail: "dry_run" });
-    expect(result).toHaveProperty("plist");
+    expect(result).toHaveProperty(process.platform === "linux" ? "unit" : "plist");
   });
 
   test("installs an unpinned service by default and dedupes repeated runtimes", () => {

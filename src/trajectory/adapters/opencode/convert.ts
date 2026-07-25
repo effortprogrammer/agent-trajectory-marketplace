@@ -65,7 +65,8 @@ export const convertOpenCodeSession = (session: HarnessSessionInput): HarnessTra
     );
   }
   const dbPath = resolveOpenCodeDbPath(session.sessionPath);
-  const sqlite = openOpenCodeDatabase(dbPath);
+  const snapshot = openOpenCodeDatabase(dbPath);
+  const sqlite = snapshot.database;
   try {
     const sessionRow = fetchOpenCodeSession(sqlite, session.sessionId);
     if (sessionRow === null) {
@@ -200,6 +201,6 @@ export const convertOpenCodeSession = (session: HarnessSessionInput): HarnessTra
       events,
     });
   } finally {
-    sqlite.close();
+    snapshot.close();
   }
 };

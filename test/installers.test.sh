@@ -57,7 +57,7 @@ mkdir -p "$TEMP_ROOT/release/agent-trajectory-marketplace/scripts"
 cp "$ROOT/scripts/install-core.sh" "$TEMP_ROOT/release/agent-trajectory-marketplace/scripts/install-core.sh"
 tar --format=ustar -czf "$TEMP_ROOT/atm-v1.1.0.tar.gz" -C "$TEMP_ROOT/release" agent-trajectory-marketplace
 release_archive_digest="$(shasum -a 256 "$TEMP_ROOT/atm-v1.1.0.tar.gz" | cut -d' ' -f1)"
-release_archive_size="$(stat -f%z "$TEMP_ROOT/atm-v1.1.0.tar.gz")"
+release_archive_size="$(wc -c <"$TEMP_ROOT/atm-v1.1.0.tar.gz" | tr -d '[:space:]')"
 cat >"$TEMP_ROOT/atm-release-manifest.json" <<EOF
 {"schemaVersion":1,"packageName":"agent-trajectory-marketplace","version":"1.1.0","tag":"v1.1.0","archive":{"name":"atm-v1.1.0.tar.gz","size":$release_archive_size,"sha256":"$release_archive_digest"}}
 EOF
