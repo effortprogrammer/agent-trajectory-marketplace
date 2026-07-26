@@ -1,9 +1,13 @@
 import { createInterface } from "node:readline";
 
+import { readStoredAuthSession, storedAuthSessionStatus } from "../auth/store";
+import { normalizeAuthServerUrl } from "../auth/server-url";
 import { parseMarketplaceCommand } from "./marketplace-command";
 import { datasetArchivePolicy } from "../marketplace/archive-contract";
 import { writeCandidateBundle } from "../marketplace/bundle-service";
 import { MarketplaceError } from "../marketplace/error";
+import { readPublishBundle } from "../marketplace/publish-bundle";
+import { createPublishClient } from "../marketplace/publish-client";
 import { runFrozenReview } from "../marketplace/review-loop";
 import type { ReviewIO } from "../marketplace/review-loop";
 import {
@@ -19,7 +23,7 @@ import { harnessTraceDocumentSchema } from "../trajectory/adapters/contract";
 class MarketplaceCliError extends Error {
   readonly name = "MarketplaceCliError";
 
-  constructor(readonly code: "invalid_command") {
+  constructor(readonly code: "invalid_command" | "missing_publish_credential") {
     super(code);
   }
 }
@@ -53,6 +57,22 @@ const parseFrozenTrace = (frozenTrace: FrozenTrace): ValidatedTrace => {
   const document = harnessTraceDocumentSchema.safeParse(value);
   if (!document.success) throw new MarketplaceError("invalid_trace");
   return { frozenTrace, document: document.data };
+};
+
+const validCredential = (value: string | undefined): value is string =>
+  value !== undefined && value.length > 0 && value.trim() === value && !/[\u0000-\u0020\u007f]/u.test(value);
+
+const resolvePublishCredential = (server: string, apiKey: string | undefined): string => {
+  if (validCredential(apiKey)) return apiKey;
+  const environmentCredential = process.env["TRAJECTORY_REGISTRY_API_KEY"];
+  if (validCredential(environmentCredential)) return environmentCredential;
+  try {
+    const session = readStoredAuthSession(server);
+    if (session !== undefined && storedAuthSessionStatus(session) === "active") return session.accessToken;
+  } catch {
+    throw new MarketplaceCliError("missing_publish_credential");
+  }
+  throw new MarketplaceCliError("missing_publish_credential");
 };
 
 const compactReport = (report: SessionReport): CompactSessionReport => {
@@ -172,6 +192,18 @@ export const runMarketplaceCli = async (argumentsList: readonly string[]): Promi
         process.removeListener("SIGTERM", cancel);
         lineReader.close();
       }
+    }
+    case "candidate-publish": {
+      const server = normalizeAuthServerUrl(command.server);
+      const bundle = readPublishBundle(command.bundle);
+      const credential = resolvePublishCredential(server, command.apiKey);
+      const receipt = await createPublishClient(server).publish({
+        archive: bundle.archive,
+        candidate: bundle.candidate,
+        credential,
+      });
+      console.log(JSON.stringify(receipt));
+      return;
     }
     case "invalid_bundle_request":
       throw new MarketplaceError("invalid_bundle_request");
