@@ -37,10 +37,10 @@ const summary = (): CollectSweepSummary => ({
 
 describe("collector telemetry", () => {
   test.each([
-    [undefined],
-    ["https://us.i.posthog.com"],
-    ["https://eu.i.posthog.com"],
-  ])("routes the absent or official PostHog host through the country proxy", (host) => {
+    [undefined, "https://us.i.posthog.com"],
+    ["https://us.i.posthog.com", "https://us.i.posthog.com"],
+    ["https://eu.i.posthog.com", "https://eu.i.posthog.com"],
+  ])("delivers telemetry directly to the configured PostHog region", (host, expectedHost) => {
     const configuration = resolveCollectorTelemetryConfig({
       ATM_POSTHOG_API_KEY: "phc_test",
       ATM_POSTHOG_HOST: host,
@@ -48,7 +48,7 @@ describe("collector telemetry", () => {
 
     expect(configuration).toEqual({
       apiKey: "phc_test",
-      host: "https://atm-telemetry-country-proxy.yhjhoward7.workers.dev",
+      host: expectedHost,
     });
   });
 
@@ -104,7 +104,7 @@ describe("collector telemetry", () => {
       },
     });
     expect(Object.keys(captured[0]?.properties ?? {}).sort()).toEqual([
-      "$ip",
+      "$process_person_profile",
       "active_runtimes",
       "atm_version",
       "distinct_id",
@@ -132,7 +132,7 @@ describe("collector telemetry", () => {
       api_key: "phc_test",
       event: "collector_installed",
       properties: {
-        "$ip": "0",
+        "$process_person_profile": false,
         atm_version: "1.0.0",
         distinct_id: "11111111-1111-4111-8111-111111111111",
         installation_id: "11111111-1111-4111-8111-111111111111",
