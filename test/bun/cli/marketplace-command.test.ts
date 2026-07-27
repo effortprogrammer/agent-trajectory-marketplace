@@ -110,11 +110,32 @@ describe("trajectory marketplace seller CLI grammar", () => {
     });
   });
 
+  test("parses the only candidate publication spelling", () => {
+    // Given: an explicit publish request with each supported option exactly once.
+    const argumentsList = [
+      "trajectory", "marketplace", "seller", "candidate", "publish",
+      "--bundle", "/tmp/candidate.zip", "--server", "https://registry.example.test", "--api-key", "flag-value",
+    ];
+
+    // When: the arguments cross the marketplace parser boundary.
+    const result = parseMarketplaceCommand(argumentsList);
+
+    // Then: dispatch receives only the typed local request.
+    expect(result).toEqual({
+      apiKey: "flag-value",
+      bundle: "/tmp/candidate.zip",
+      command: "candidate-publish",
+      server: "https://registry.example.test",
+    });
+  });
+
   test("returns invalid command for unsupported marketplace spellings and session syntax", () => {
-    // Given: unavailable publication, unknown flags, and malformed inspect requests.
+    // Given: unknown flags, duplicate publication options, and malformed inspect requests.
     const invalidArguments = [
       ["marketplace", "seller", "candidate", "publish"],
-      ["marketplace", "seller", "candidate", "publish", "--api-key", "secret"],
+      ["marketplace", "seller", "candidate", "publish", "--bundle", "relative.zip", "--server", "https://registry.example.test"],
+      ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--server", "https://registry.example.test", "--server", "https://two.example.test"],
+      ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--server", "https://registry.example.test", "--unknown", "value"],
       ["marketplace", "seller", "sessions", "list", "--root", "/tmp/traces", "--unknown"],
       ["marketplace", "seller", "sessions", "inspect", "s-short", "--root", "/tmp/traces"],
       ["marketplace", "seller", "sessions", "list", "--root", "relative"],
@@ -124,13 +145,7 @@ describe("trajectory marketplace seller CLI grammar", () => {
     const results = invalidArguments.map(parseMarketplaceCommand);
 
     // Then: no unavailable command or malformed session request reaches a dispatcher.
-    expect(results).toEqual([
-      { command: "invalid_command" },
-      { command: "invalid_command" },
-      { command: "invalid_command" },
-      { command: "invalid_command" },
-      { command: "invalid_command" },
-    ]);
+    expect(results).toEqual(invalidArguments.map(() => ({ command: "invalid_command" })));
   });
 
   test("returns invalid bundle request for unsafe, ambiguous, and incompatible bundle options", () => {

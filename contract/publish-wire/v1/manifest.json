@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "file": "candidate-valid.frame",
+      "sha256": "7df9225dd66f7015ab92cf6733f8114e111bc59a77e6763a77749c24aea4bfc0",
+      "verdict": "accept",
+      "code": "accepted"
+    },
+    {
+      "file": "candidate-mutated-length.frame",
+      "sha256": "4e631b133b11730cbf1c1a8e237c9521676b5c653815ac98079d222bac58f7e0",
+      "verdict": "reject",
+      "code": "invalid_candidate"
+    },
+    {
+      "file": "candidate-mutated-zip.frame",
+      "sha256": "27bded084a2c16daf1924951a6c6eeaabaa8dc918d94cb430b6d705cb06b4e20",
+      "verdict": "reject",
+      "code": "invalid_candidate"
+    },
+    {
+      "file": "receipt-202.json",
+      "sha256": "6dc139b1a3dbafc63c612e1aee7f4ae59a6c2d1b43d50c42e0527b51925f4d28",
+      "verdict": "accept",
+      "code": "accepted"
+    },
+    {
+      "file": "status-200.json",
+      "sha256": "363b488aa697dcd11c7d1e73c21c94eb3a70348bc460b75b86edc734a698115c",
+      "verdict": "accept",
+      "code": "processing"
+    },
+    {
+      "file": "error-400.json",
+      "sha256": "18f8650265a8376110700e3a426a1d23816b262477db8be25a728efaacdf687d",
+      "verdict": "accept",
+      "code": "invalid_candidate"
+    },
+    {
+      "file": "error-401.json",
+      "sha256": "95750cf57163de141d0b491cc849901d7ecfade33b26ac49a10e2cfd3fac1663",
+      "verdict": "accept",
+      "code": "unauthorized"
+    },
+    {
+      "file": "error-404.json",
+      "sha256": "badea243df4da5de29a277e72c78bba317982f0549b68aed1961a95d3bedfe08",
+      "verdict": "accept",
+      "code": "not_found"
+    },
+    {
+      "file": "error-409.json",
+      "sha256": "49f7fb792252e8ab4fc64308279482b82da1630b054c7a64a877a3c6a9be66ee",
+      "verdict": "accept",
+      "code": "idempotency_conflict"
+    },
+    {
+      "file": "error-413.json",
+      "sha256": "916883f19e7f2c05c7c146cbb1689449f4d26992f0cbdcc2f2e067e2de250db4",
+      "verdict": "accept",
+      "code": "payload_too_large"
+    },
+    {
+      "file": "error-429.json",
+      "sha256": "8244d68bd61ac409c2121e4e2454d0f16dcb6ee9c4b54de3c0b8fa9e3165687a",
+      "verdict": "accept",
+      "code": "rate_limited"
+    },
+    {
+      "file": "error-503.json",
+      "sha256": "5cb7fd4e2ed1bf14bf030ca2712c9da7afec237c6e38e35317c28fcdc02d487b",
+      "verdict": "accept",
+      "code": "unavailable"
+    },
+    {
+      "file": "receipt-unknown-field-202.json",
+      "sha256": "f273e83b3151a35a046815d4394f6c6c48b38df8ac383aed070a12250dc6a36d",
+      "verdict": "reject",
+      "code": "invalid_response"
+    }
+  ]
+}
