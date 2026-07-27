@@ -9,9 +9,6 @@ import type { CollectSweepSummary } from "./collect-watch";
 
 export const collectorTelemetryStateFileName = "collector-telemetry-state.json";
 
-const collectorTelemetryProxyHost =
-  "https://atm-telemetry-country-proxy.yhjhoward7.workers.dev";
-
 const telemetryConfigurationSchema = z.object({
   apiKey: z.string().trim().min(1),
   host: z.string().trim().url(),
@@ -31,7 +28,7 @@ export type CollectorTelemetryConfig = Readonly<{
 }>;
 
 type CollectorTelemetryProperties = Readonly<{
-  "$ip": "0";
+  "$process_person_profile": false;
   active_runtimes?: readonly string[];
   atm_version: string;
   distinct_id: string;
@@ -88,7 +85,7 @@ const properties = (
   version: string,
   extra: Readonly<Partial<Pick<CollectorTelemetryProperties, "active_runtimes" | "error_code" | "exported_session_count">>>,
 ): CollectorTelemetryProperties => ({
-  "$ip": "0",
+  "$process_person_profile": false,
   atm_version: version,
   distinct_id: state.installationId,
   installation_id: state.installationId,
@@ -111,16 +108,9 @@ export const resolveCollectorTelemetryConfig = (
 ): CollectorTelemetryConfig | undefined => {
   const apiKey = environment.ATM_POSTHOG_API_KEY?.trim();
   if (apiKey === undefined || apiKey.length === 0) return undefined;
-  const configuredHost = environment.ATM_POSTHOG_HOST?.trim();
-  const host = configuredHost === undefined
-    || configuredHost.length === 0
-    || configuredHost === "https://us.i.posthog.com"
-    || configuredHost === "https://eu.i.posthog.com"
-    ? collectorTelemetryProxyHost
-    : configuredHost;
   const parsed = telemetryConfigurationSchema.safeParse({
     apiKey,
-    host,
+    host: environment.ATM_POSTHOG_HOST?.trim() || "https://us.i.posthog.com",
   });
   return parsed.success ? parsed.data : undefined;
 };
