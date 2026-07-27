@@ -71,6 +71,32 @@ describe("marketplace candidate publish process boundary", () => {
     })
   })
 
+  test("invalid explicit API key rejects before fallback and makes zero HTTP requests", async () => {
+    // Given: a valid bundle, live registry, and valid fallback credentials behind an invalid flag.
+    const root = fixtureRoot()
+    let hits = 0
+    const server = Bun.serve({ fetch: () => { hits += 1; return new Response(null, { status: 500 }) }, hostname: "127.0.0.1", port: 0 })
+    writeStoredAuthSession({
+      accessToken: "stored-sentinel",
+      accountId: "acct-0123456789abcdef",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      server: `http://127.0.0.1:${server.port}`,
+      tokenType: "Bearer",
+    }, { storePath: join(root, "agent-trajectory-marketplace", "auth.json") })
+
+    // When: the built CLI receives an explicitly supplied whitespace-padded API key.
+    const result = await runCli([
+      "marketplace", "seller", "candidate", "publish", "--bundle", bundle(root), "--server", `http://127.0.0.1:${server.port}`, "--api-key", " invalid-flag ",
+    ], { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root, TRAJECTORY_REGISTRY_API_KEY: "environment-sentinel" })
+    server.stop(true)
+
+    // Then: explicit invalid input fails locally instead of selecting either fallback credential.
+    expect({ hits, result }).toEqual({
+      hits: 0,
+      result: { exitCode: 1, stderr: '{"error":"missing_publish_credential"}\n', stdout: "" },
+    })
+  })
+
   test("built CLI posts one exact frame and prints strict accepted receipt", async () => {
     // Given: a reviewed dataset bundle and loopback registry receipt.
     const root = fixtureRoot()

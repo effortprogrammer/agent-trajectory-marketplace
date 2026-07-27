@@ -63,7 +63,10 @@ const validCredential = (value: string | undefined): value is string =>
   value !== undefined && value.length > 0 && value.trim() === value && !/[\u0000-\u0020\u007f]/u.test(value);
 
 const resolvePublishCredential = (server: string, apiKey: string | undefined): string => {
-  if (validCredential(apiKey)) return apiKey;
+  if (apiKey !== undefined) {
+    if (!validCredential(apiKey)) throw new MarketplaceCliError("missing_publish_credential");
+    return apiKey;
+  }
   const environmentCredential = process.env["TRAJECTORY_REGISTRY_API_KEY"];
   if (validCredential(environmentCredential)) return environmentCredential;
   try {
