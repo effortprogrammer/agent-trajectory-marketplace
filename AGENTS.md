@@ -2,12 +2,13 @@
 
 ## Purpose
 
-This repository contains a Bun-only collector and encrypted candidate-publish CLI. It has no web UI or collector HTTP bridge.
+This repository contains a Bun-only collector, an encrypted candidate-publish CLI, and a loopback-only local review console. There is no collector HTTP bridge and no hosted surface.
 
 ## Commands
 
 - `bun run build:collector` — bundle the Bun CLI
 - `bun run trajectory -- collect runtimes` — list supported runtimes
+- `bun run trajectory -- console --root <dir>` — serve the local review console
 - `bun test test/bun` — run the Bun test suite
 - `bash test/installers.test.sh` — verify installer preflights
 - `bun run typecheck` — type-check without emitting files
@@ -17,6 +18,13 @@ This repository contains a Bun-only collector and encrypted candidate-publish CL
 - Preserve native Bun adapters, credential redaction, watch state, launchd integration, and explicit output confinement.
 - `--source` overrides are explicit; do not silently broaden filesystem access.
 - No `--runtime` on watch means all supported native runtimes.
+
+## Console rules
+
+- The console binds loopback only; a non-loopback `--hostname` is rejected.
+- It reads the confined trace root and never writes anything except `upload-selection.json`.
+- It serves stored, already-filtered trace text only; it never reconstructs pre-redaction values.
+- Upload selection is explicit and local; selecting a session does not publish it.
 
 ## Publish rules
 
