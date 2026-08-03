@@ -12,6 +12,22 @@ import {
 } from "../../../src/marketplace/publish-contract"
 import { parsePublishFrame } from "../../../src/marketplace/publish-frame"
 
+const expectedFixtureFiles = [
+  "candidate-valid.frame",
+  "candidate-mutated-length.frame",
+  "candidate-mutated-zip.frame",
+  "receipt-202.json",
+  "status-200.json",
+  "error-400.json",
+  "error-401.json",
+  "error-404.json",
+  "error-409.json",
+  "error-413.json",
+  "error-429.json",
+  "error-503.json",
+  "receipt-unknown-field-202.json",
+] as const
+
 const fixtureSchema = z
   .object({
     file: z.string().regex(/^[a-z0-9-]+\.(frame|json)$/),
@@ -20,7 +36,12 @@ const fixtureSchema = z
     code: z.string().regex(/^[a-z_]+$/),
   })
   .strict()
-const manifestSchema = z.object({ schemaVersion: z.literal(1), fixtures: z.array(fixtureSchema).min(1) }).strict()
+const manifestSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    fixtures: z.array(fixtureSchema).length(expectedFixtureFiles.length),
+  })
+  .strict()
 
 type Fixture = z.infer<typeof fixtureSchema>
 
@@ -82,6 +103,9 @@ const manifestFile = Bun.file(manifestPath)
 const rawManifest = await manifestFile.json()
 const parsedManifest = manifestSchema.safeParse(rawManifest)
 if (!parsedManifest.success) throw new FixtureVerificationError(manifestPath, "invalid manifest")
+if (parsedManifest.data.fixtures.some((fixture, index) => fixture.file !== expectedFixtureFiles[index])) {
+  throw new FixtureVerificationError(manifestPath, "fixture set mismatch")
+}
 const root = pathToFileURL(`${dirname(resolve(manifestPath))}/`)
 
 for (const fixture of parsedManifest.data.fixtures) {
