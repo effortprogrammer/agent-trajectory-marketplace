@@ -12,7 +12,7 @@ export function applySecurityHeaders(response: Response): Response {
       "script-src 'self' 'unsafe-inline'; " +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
       "font-src 'self' https://fonts.gstatic.com; " +
-      "img-src 'self' data: https:; media-src 'self' https:; " +
+      "img-src 'self' data: https:; media-src 'self' https: blob:; " +
       "connect-src 'self' https:; " +
       "frame-src 'self' https://auth.higgsfield.app https://auth.higgsfield-dev.app; " +
       "base-uri 'self'; form-action 'self'",
