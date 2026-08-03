@@ -18,7 +18,13 @@ export class PublishBundleError extends Error {
   constructor(readonly code: "invalid_bundle_request") { super(code) }
 }
 
-type BundleEntry = Readonly<{ readonly crc32: number; readonly data: Buffer; readonly name: string; readonly offset: number }>
+type BundleEntry = Readonly<{
+  readonly crc32: number
+  readonly data: Buffer
+  readonly name: string
+  readonly nameBytes: Buffer
+  readonly offset: number
+}>
 export type PublishBundle = Readonly<{ readonly archive: Buffer; readonly candidate: PublishCandidate }>
 
 const invalid = (): never => { throw new PublishBundleError("invalid_bundle_request") }
@@ -81,17 +87,18 @@ const readEntries = (archive: Buffer): readonly BundleEntry[] => {
     const size = archive.readUInt32LE(offset + 22)
     const nameLength = archive.readUInt16LE(offset + 26)
     const extraLength = archive.readUInt16LE(offset + 28)
-    if (flags !== 0 || compression !== 0 || compressedSize !== size) return invalid()
+    if (flags !== 0 || compression !== 0 || compressedSize !== size || extraLength !== 0) return invalid()
     const nameStart = offset + 30
     const dataStart = nameStart + nameLength + extraLength
     const dataEnd = dataStart + size
     if (dataEnd > centralOffset) return invalid()
+    const nameBytes = archive.subarray(nameStart, nameStart + nameLength)
     let name: string
-    try { name = new TextDecoder("utf-8", { fatal: true }).decode(archive.subarray(nameStart, nameStart + nameLength)) } catch { return invalid() }
+    try { name = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(nameBytes) } catch { return invalid() }
     if (name.length === 0 || name.includes("\\") || name.split("/").some((part) => part === "" || part === "." || part === "..")) return invalid()
     const data = archive.subarray(dataStart, dataEnd)
     if (crc32(data) !== checksum) return invalid()
-    const entry = { crc32: checksum, data, name, offset }
+    const entry = { crc32: checksum, data, name, nameBytes, offset }
     entries.push(entry)
     entriesByOffset.set(offset, entry)
     offset = dataEnd
@@ -109,11 +116,25 @@ const readEntries = (archive: Buffer): readonly BundleEntry[] => {
     const commentLength = archive.readUInt16LE(centralPosition + 32)
     const diskStart = archive.readUInt16LE(centralPosition + 34)
     const localOffset = archive.readUInt32LE(centralPosition + 42)
-    if (flags !== 0 || compression !== 0 || compressedSize !== size || diskStart !== 0) return invalid()
+    if (
+      flags !== 0 ||
+      compression !== 0 ||
+      compressedSize !== size ||
+      extraLength !== 0 ||
+      commentLength !== 0 ||
+      diskStart !== 0
+    ) return invalid()
+    const nameBytes = archive.subarray(centralPosition + 46, centralPosition + 46 + nameLength)
     let name: string
-    try { name = new TextDecoder("utf-8", { fatal: true }).decode(archive.subarray(centralPosition + 46, centralPosition + 46 + nameLength)) } catch { return invalid() }
+    try { name = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(nameBytes) } catch { return invalid() }
     const local = entriesByOffset.get(localOffset)
-    if (local === undefined || local.name !== name || local.data.length !== size || local.crc32 !== checksum) return invalid()
+    if (
+      local === undefined ||
+      local.name !== name ||
+      !local.nameBytes.equals(nameBytes) ||
+      local.data.length !== size ||
+      local.crc32 !== checksum
+    ) return invalid()
     entriesByOffset.delete(localOffset)
     centralPosition += 46 + nameLength + extraLength + commentLength
   }
