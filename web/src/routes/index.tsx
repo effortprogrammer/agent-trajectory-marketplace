@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import Lenis from "lenis";
 import { useEffect, useRef, useState } from "react";
 
 import { ScrollScrub } from "@/components/scroll-scrub/scroll-scrub";
@@ -71,6 +72,7 @@ const FAQ_ITEMS = [
 ] as const;
 
 function Index() {
+  useSmoothScroll();
   return (
     <div className="relative min-h-dvh bg-atm-ink text-atm-paper">
       <SkipLink />
@@ -90,6 +92,25 @@ function Index() {
 }
 
 /* ---------- chrome ---------- */
+
+function useSmoothScroll() {
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+    const lenis = new Lenis({ duration: 1.1 });
+    let frame = 0;
+    const loop = (time: number) => {
+      lenis.raf(time);
+      frame = requestAnimationFrame(loop);
+    };
+    frame = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(frame);
+      lenis.destroy();
+    };
+  }, []);
+}
 
 function SkipLink() {
   return (
