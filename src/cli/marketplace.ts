@@ -63,7 +63,10 @@ const validCredential = (value: string | undefined): value is string =>
   value !== undefined && value.length > 0 && value.trim() === value && !/[\u0000-\u0020\u007f]/u.test(value);
 
 const resolvePublishCredential = (server: string, apiKey: string | undefined): string => {
-  if (validCredential(apiKey)) return apiKey;
+  if (apiKey !== undefined) {
+    if (!validCredential(apiKey)) throw new MarketplaceCliError("missing_publish_credential");
+    return apiKey;
+  }
   const environmentCredential = process.env["TRAJECTORY_REGISTRY_API_KEY"];
   if (validCredential(environmentCredential)) return environmentCredential;
   try {
@@ -114,6 +117,12 @@ export const isMarketplaceInvocation = (argumentsList: readonly string[]): boole
 };
 
 export const runMarketplaceCli = async (argumentsList: readonly string[]): Promise<void> => {
+  const executableOffset = argumentsList[0] === "trajectory" ? 1 : 0;
+  const marketplaceArguments = argumentsList.slice(executableOffset);
+  if (marketplaceArguments.join(" ") === "marketplace seller candidate publish --help") {
+    console.log("Usage: trajectory marketplace seller candidate publish --bundle <absolute-zip> --server <url> [--api-key <key>]\n\nPublish a candidate bundle to the marketplace.\n\nCredential precedence: --api-key, TRAJECTORY_REGISTRY_API_KEY, active stored login token.");
+    return;
+  }
   const command = parseMarketplaceCommand(argumentsList);
   switch (command.command) {
     case "sessions-list": {

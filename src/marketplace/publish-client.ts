@@ -1,16 +1,24 @@
 import ky, { isNetworkError, isTimeoutError } from "ky"
 
-import { encodePublishFrame } from "./publish-frame"
+import { createPublishFrameBody } from "./publish-frame"
 import { parsePublishResponse } from "./publish-contract"
-import type { PublishCandidate, PublishReceipt } from "./publish-contract"
+import type { PublishCandidate, PublishErrorCode, PublishReceipt } from "./publish-contract"
 
 const responseLimitBytes = 64 * 1024
 const publishTimeoutMs = 15 * 60 * 1000
 const publishPath = "/v1/marketplace/seller/candidates"
 
+type PublishClientErrorCode =
+  | PublishErrorCode
+  | "invalid_response"
+  | "redirect_rejected"
+  | "request_failed"
+  | "timeout"
+  | "unexpected_response"
+
 export class PublishClientError extends Error {
   readonly name = "PublishClientError"
-  constructor(readonly code: "invalid_response" | "redirect_rejected" | "request_failed" | "timeout" | "unexpected_response", readonly status: number) { super(code) }
+  constructor(readonly code: PublishClientErrorCode, readonly status: number) { super(code) }
 }
 
 type PublishRequest = Readonly<{ readonly archive: Uint8Array; readonly candidate: PublishCandidate; readonly credential: string }>
@@ -40,10 +48,12 @@ export const createPublishClient = (server: string): PublishClient => ({
   publish: async (request): Promise<PublishReceipt> => {
     const signal = AbortSignal.timeout(publishTimeoutMs)
     try {
+      const frame = createPublishFrameBody(request.candidate, request.archive)
       const response = await ky(`${server}${publishPath}`, {
-        body: encodePublishFrame(request.candidate, request.archive),
+        body: frame.body,
         headers: {
           authorization: `Bearer ${request.credential}`,
+          "content-length": String(frame.contentLength),
           "content-type": "application/octet-stream",
           "idempotency-key": `archive-${request.candidate.archiveSha256}`,
         },
@@ -54,6 +64,7 @@ export const createPublishClient = (server: string): PublishClient => ({
         throw new PublishClientError("redirect_rejected", response.status)
       }
       const parsed = parsePublishResponse(response.status, await boundedBody(response))
+      if ("code" in parsed) throw new PublishClientError(parsed.code, response.status)
       if (!("statusUrl" in parsed) || parsed.status !== "accepted") {
         throw new PublishClientError("unexpected_response", response.status)
       }

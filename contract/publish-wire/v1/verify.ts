@@ -4,7 +4,12 @@ import { pathToFileURL } from "node:url"
 
 import { z } from "zod"
 
-import { PublishWireContractError, parsePublishResponse } from "../../../src/marketplace/publish-contract"
+import { parsePublishBundle, PublishBundleError } from "../../../src/marketplace/publish-bundle"
+import {
+  PublishWireContractError,
+  encodeCandidateJson,
+  parsePublishResponse,
+} from "../../../src/marketplace/publish-contract"
 import { parsePublishFrame } from "../../../src/marketplace/publish-frame"
 
 const fixtureSchema = z
@@ -42,18 +47,32 @@ const responseStatus = (file: string): number => {
 
 const responseCode = (response: ReturnType<typeof parsePublishResponse>): string => "code" in response ? response.code : response.status
 
+const verifyFrame = (bytes: Uint8Array): string => {
+  const frame = parsePublishFrame(bytes)
+  const bundle = parsePublishBundle(frame.archive)
+  if (!encodeCandidateJson(bundle.candidate).equals(encodeCandidateJson(frame.candidate))) {
+    throw new PublishWireContractError("invalid_candidate")
+  }
+  return "accepted"
+}
+
 const verifyFixture = (fixture: Fixture, bytes: Uint8Array): void => {
   try {
     const code = fixture.file.endsWith(".frame")
-      ? (parsePublishFrame(bytes), "accepted")
+      ? verifyFrame(bytes)
       : responseCode(parsePublishResponse(responseStatus(fixture.file), bytes))
     if (fixture.verdict !== "accept" || code !== fixture.code) {
       throw new FixtureVerificationError(fixture.file, `expected ${fixture.verdict}/${fixture.code}, received accept/${code}`)
     }
   } catch (error) {
     if (error instanceof FixtureVerificationError) throw error
+    if (error instanceof PublishBundleError && fixture.verdict === "reject" && fixture.code === "invalid_candidate") return
     if (error instanceof PublishWireContractError && fixture.verdict === "reject" && error.code === fixture.code) return
-    const code = error instanceof PublishWireContractError ? error.code : "unexpected_error"
+    const code = error instanceof PublishWireContractError
+      ? error.code
+      : error instanceof PublishBundleError
+        ? "invalid_candidate"
+        : "unexpected_error"
     throw new FixtureVerificationError(fixture.file, `expected ${fixture.verdict}/${fixture.code}, received reject/${code}`)
   }
 }

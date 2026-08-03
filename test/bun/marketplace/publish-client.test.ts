@@ -70,6 +70,31 @@ describe("candidate publish client", () => {
     // Then: neither response is accepted or followed.
     expect([redirectError.code, oversizedError.code]).toEqual(["redirect_rejected", "invalid_response"])
   })
+
+  test.each([
+    [400, "invalid_candidate"],
+    [401, "unauthorized"],
+    [404, "not_found"],
+    [409, "idempotency_conflict"],
+    [413, "payload_too_large"],
+    [429, "rate_limited"],
+    [503, "unavailable"],
+  ] as const)("preserves canonical HTTP %i error code %s", async (status, code) => {
+    // Given: a registry response accepted by the frozen publish-wire error contract.
+    const archive = Buffer.from("dataset bytes")
+    const candidate = createCandidateFromExactBytes({ archive, artifactCount: 1, manifest: Buffer.from("manifest") })
+    const server = serve(() => Response.json({ protocolVersion: 1, code }, { status }))
+
+    // When: the client receives the canonical non-success response.
+    const error = await expectError(() => createPublishClient(`http://127.0.0.1:${server.port}`).publish({
+      archive,
+      candidate,
+      credential: "flag-sentinel",
+    }))
+
+    // Then: callers retain both the machine-readable contract code and HTTP status.
+    expect(error).toMatchObject({ code, status })
+  })
 })
 
 const expectError = async (action: () => Promise<unknown>): Promise<PublishClientError> => {
