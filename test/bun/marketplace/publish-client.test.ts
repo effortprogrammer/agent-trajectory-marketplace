@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
 
 import { createPublishClient, PublishClientError } from "../../../src/marketplace/publish-client"
-import { createCandidateFromExactBytes } from "../../../src/marketplace/publish-contract"
+import { parsePublishFrame } from "../../../src/marketplace/publish-frame"
 
 const servers: Bun.Server<undefined>[] = []
+
+const validRequest = () => {
+  const fixture = parsePublishFrame(readFileSync("contract/publish-wire/v1/candidate-valid.frame"))
+  return { archive: Buffer.from(fixture.archive), candidate: fixture.candidate }
+}
 
 const serve = (fetch: (request: Request) => Response | Promise<Response>): Bun.Server<undefined> => {
   const server = Bun.serve({ fetch, hostname: "127.0.0.1", port: 0 })
@@ -18,8 +24,7 @@ afterEach(() => {
 describe("candidate publish client", () => {
   test("CLI API key wins without leaking any credential sentinel", async () => {
     // Given: a loopback registry and three intentionally different credentials.
-    const archive = Buffer.from("dataset bytes")
-    const candidate = createCandidateFromExactBytes({ archive, artifactCount: 1, manifest: Buffer.from("manifest") })
+    const { archive, candidate } = validRequest()
     const sentinels = ["flag-sentinel", "environment-sentinel", "stored-sentinel"]
     const submissionId = `sub_${"0".repeat(26)}`
     const authorizations: string[] = []
@@ -56,16 +61,22 @@ describe("candidate publish client", () => {
 
   test("rejects redirects and cancels an oversized response", async () => {
     // Given: separate registry responses outside the v1 receive contract.
-    const archive = Buffer.from("dataset bytes")
-    const candidate = createCandidateFromExactBytes({ archive, artifactCount: 1, manifest: Buffer.from("manifest") })
+    const redirectRequest = validRequest()
+    const oversizedRequest = validRequest()
     const redirect = serve(() => new Response(null, { headers: { location: "https://example.test" }, status: 302 }))
     const oversized = serve(() => new Response(new ReadableStream<Uint8Array>({
       start(controller) { controller.enqueue(new Uint8Array(65_537)) },
     })))
 
     // When: each response crosses the bounded client boundary.
-    const redirectError = await expectError(() => createPublishClient(`http://127.0.0.1:${redirect.port}`).publish({ archive, candidate, credential: "flag-sentinel" }))
-    const oversizedError = await expectError(() => createPublishClient(`http://127.0.0.1:${oversized.port}`).publish({ archive, candidate, credential: "flag-sentinel" }))
+    const redirectError = await expectError(() => createPublishClient(`http://127.0.0.1:${redirect.port}`).publish({
+      ...redirectRequest,
+      credential: "flag-sentinel",
+    }))
+    const oversizedError = await expectError(() => createPublishClient(`http://127.0.0.1:${oversized.port}`).publish({
+      ...oversizedRequest,
+      credential: "flag-sentinel",
+    }))
 
     // Then: neither response is accepted or followed.
     expect([redirectError.code, oversizedError.code]).toEqual(["redirect_rejected", "invalid_response"])
@@ -91,8 +102,7 @@ describe("candidate publish client", () => {
 
   test("preserves the HTTP status when a response violates the wire contract", async () => {
     // Given: a canonical request followed by malformed response bytes at HTTP 202.
-    const archive = Buffer.from("dataset bytes")
-    const candidate = createCandidateFromExactBytes({ archive, artifactCount: 1, manifest: Buffer.from("manifest") })
+    const { archive, candidate } = validRequest()
     const server = serve(() => new Response("{malformed", { status: 202 }))
 
     // When: the bounded response parser rejects those bytes.
@@ -108,13 +118,9 @@ describe("candidate publish client", () => {
 
   test("preserves local candidate contract errors before transport", async () => {
     // Given: candidate identity derived from bytes different from the caller-provided archive.
-    const candidateArchive = Buffer.from("candidate archive")
-    const requestArchive = Buffer.from("request archive")
-    const candidate = createCandidateFromExactBytes({
-      archive: candidateArchive,
-      artifactCount: 1,
-      manifest: Buffer.from("manifest"),
-    })
+    const { archive: candidateArchive, candidate } = validRequest()
+    const requestArchive = Buffer.from(candidateArchive)
+    requestArchive[requestArchive.length - 1] ^= 1
     let hits = 0
     const server = serve(() => {
       hits += 1
@@ -146,8 +152,7 @@ describe("candidate publish client", () => {
     [503, "unavailable"],
   ] as const)("preserves canonical HTTP %i error code %s", async (status, code) => {
     // Given: a registry response accepted by the frozen publish-wire error contract.
-    const archive = Buffer.from("dataset bytes")
-    const candidate = createCandidateFromExactBytes({ archive, artifactCount: 1, manifest: Buffer.from("manifest") })
+    const { archive, candidate } = validRequest()
     const server = serve(() => Response.json({ protocolVersion: 1, code }, { status }))
 
     // When: the client receives the canonical non-success response.
