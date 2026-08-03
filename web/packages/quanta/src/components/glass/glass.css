@@ -1,0 +1,141 @@
+/**
+ * Glass — a convincing frosted-glass surface. Pure quanta (no Base UI primitive).
+ *
+ * The realism comes from LAYERING five effects (see glass.tsx JSDoc):
+ *   1. backdrop-filter: blur(token) saturate(~1.6)   — saturate pops the backdrop
+ *   2. translucent fill (background-glass)
+ *   3. specular EDGE highlight — inset box-shadows (light top/left + dark bottom/right)
+ *   4. TOP SHEEN — ::before linear-gradient (light → transparent), low opacity
+ *   5. elevation drop shadow (raised)
+ *
+ * Token note: the medium blur (40px) maps to --hf-space-1000 exactly (the Modal /
+ * Card glass radius). The sm (20px) and lg (64px) blur radii, the saturate factor,
+ * and the sheen geometry/opacity have NO design token, so each is encoded as a
+ * documented, caller-overridable `--q-glass-*` custom-property default inside the
+ * @utility (precedent: --q-menu-min-width / --q-slider-width). FLAGGED for the
+ * design-tokens owner. Colors are tokens only (background-glass, transparent-*).
+ */
+@source "./glass.tsx";
+
+@utility q-glass {
+  /* ── Tunable defaults (no token; caller-overridable knobs, FLAGGED). ──────── */
+  --q-glass-blur: var(--hf-space-1000); /* 40px — medium; matches Modal/Card glass */
+  --q-glass-saturate: 1.6; /* no token: glass saturation boost */
+  --q-glass-radius: var(--hf-radius-600); /* 24px — quanta surface radius */
+  --q-glass-sheen-height: 50%; /* no token: top reflection covers the upper half */
+  --q-glass-sheen-color: var(--hf-color-transparent-light-15); /* glossy top reflection */
+
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: var(--hf-space-0);
+  isolation: isolate; /* keep the ::before sheen scoped above the backdrop, below content */
+  overflow: clip; /* clip the sheen + tint wash to the rounded corners */
+
+  border-radius: var(--q-glass-radius);
+  background-color: var(--hf-color-background-glass);
+  color: var(--hf-color-text-primary);
+
+  /* (1) blur + (2) the saturate that makes the backdrop read like real glass. */
+  backdrop-filter: blur(var(--q-glass-blur)) saturate(var(--q-glass-saturate));
+
+  /* (3) Specular EDGE highlight — a bright 1px inset light line catching the top/
+   * left edge + a faint dark inset on the bottom/right, so the rim reads as glass.
+   * (1px = --hf-border-width-thin; both offsets are hairline.) */
+  box-shadow:
+    inset var(--hf-border-width-thin) var(--hf-border-width-thin) var(--hf-space-0) var(--hf-color-transparent-light-20),
+    inset calc(-1 * var(--hf-border-width-thin)) calc(-1 * var(--hf-border-width-thin)) var(--hf-space-0) var(--hf-color-transparent-dark-15);
+
+  transition-property: box-shadow, transform, background-color;
+  transition-duration: var(--hf-duration-normal); /* 200ms */
+  transition-timing-function: var(--hf-ease-out);
+
+  /* (4) TOP SHEEN — the glossy reflection over the upper portion of the pane. */
+  &::before {
+    content: "";
+    position: absolute;
+    inset-block-start: var(--hf-space-0);
+    inset-inline: var(--hf-space-0);
+    height: var(--q-glass-sheen-height);
+    pointer-events: none;
+    z-index: -1; /* behind content, above the backdrop fill */
+    background-image: linear-gradient(
+      to bottom,
+      var(--q-glass-sheen-color),
+      transparent
+    );
+  }
+}
+
+/* ── (1) Blur radii — sm/lg have no spacing token; documented FLAGGED knobs. ── */
+@utility q-glass-blur-sm {
+  --q-glass-blur: 20px; /* no token: 20px backdrop blur (half of the 40px md) */
+}
+@utility q-glass-blur-md {
+  --q-glass-blur: var(--hf-space-1000); /* 40px */
+}
+@utility q-glass-blur-lg {
+  --q-glass-blur: 64px; /* no token: 64px backdrop blur (heavy frost) */
+}
+
+/* ── Corner radius — token-mapped steps. ─────────────────────────────────────── */
+@utility q-glass-rounded-200 { --q-glass-radius: var(--hf-radius-200); } /* 8px */
+@utility q-glass-rounded-300 { --q-glass-radius: var(--hf-radius-300); } /* 12px */
+@utility q-glass-rounded-400 { --q-glass-radius: var(--hf-radius-400); } /* 16px */
+@utility q-glass-rounded-500 { --q-glass-radius: var(--hf-radius-500); } /* 20px */
+@utility q-glass-rounded-600 { --q-glass-radius: var(--hf-radius-600); } /* 24px */
+@utility q-glass-rounded-full { --q-glass-radius: var(--hf-radius-full); }
+
+/* ── (5) Elevation — float the pane with the shared raised drop shadow while
+ * keeping the specular inset edge highlight. ─────────────────────────────────── */
+@utility q-glass-raised {
+  box-shadow:
+    inset var(--hf-border-width-thin) var(--hf-border-width-thin) var(--hf-space-0) var(--hf-color-transparent-light-20),
+    inset calc(-1 * var(--hf-border-width-thin)) calc(-1 * var(--hf-border-width-thin)) var(--hf-space-0) var(--hf-color-transparent-dark-15),
+    var(--hf-shadow-raised);
+}
+
+/* ── Optional faint tint — a wash of the slot color over the glass + a tinted
+ * top-left edge, so the pane reads as e.g. brand glass. Driven by the --q-tint*
+ * vars set inline via slotStyle(tint). ──────────────────────────────────────── */
+@utility q-glass-tinted {
+  background-color: color-mix(in oklch, var(--q-tint) 12%, var(--hf-color-background-glass));
+
+  &::before {
+    /* layer a faint colored sheen on top of the white gloss for a tinted edge. */
+    background-image:
+      linear-gradient(to bottom, color-mix(in oklch, var(--q-tint) 22%, transparent), transparent),
+      linear-gradient(to bottom, var(--q-glass-sheen-color), transparent);
+  }
+}
+
+/* ── Interactive — subtle brighten + lift on hover (and keyboard focus). ─────── */
+@utility q-glass-interactive {
+  cursor: pointer;
+
+  &:hover {
+    background-color: color-mix(in oklch, var(--hf-color-transparent-light-05), var(--hf-color-background-glass));
+    transform: translateY(calc(-1 * var(--hf-space-050))); /* lift 2px */
+  }
+
+  &:focus-visible {
+    outline: var(--hf-border-width-medium) solid var(--hf-color-border-focus);
+    outline-offset: var(--hf-border-width-medium);
+  }
+}
+
+/* Tinted + interactive hover keeps the tint, just brightens it a touch. */
+.q-glass-tinted.q-glass-interactive:hover {
+  background-color: color-mix(in oklch, var(--q-tint) 18%, var(--hf-color-background-glass));
+}
+
+/* Reduced motion: keep the brighten, drop the lift + transition. */
+@media (prefers-reduced-motion: reduce) {
+  .q-glass {
+    transition-property: box-shadow, background-color;
+  }
+  .q-glass-interactive:hover {
+    transform: none;
+  }
+}

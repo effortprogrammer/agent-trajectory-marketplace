@@ -1,0 +1,32 @@
+{
+  "name": "@higgsfield/app-landing",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Typed landing-page content contract and Quanta renderer for generated Higgsfield apps",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@higgsfield/quanta": "workspace:*",
+    "lucide-react": "^1.23.0",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.8.3"
+  }
+}

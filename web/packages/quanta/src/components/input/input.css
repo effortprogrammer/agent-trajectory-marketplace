@@ -1,0 +1,134 @@
+/**
+ * Field scaffolding shared by Input and Textarea, pixel-matched to the Figma
+ * TextField (node 342:1354) / TextArea (node 2134:76).
+ *
+ * Base UI Field owns label/description/error association and validity; these
+ * `q-field-*` utilities only paint. Structure: label (caption/sm/medium) ·
+ * control surface (white-5%, radius/300, 1.5px border that turns lime on focus /
+ * red on error) · helper (caption/sm/regular, tertiary) or error (red).
+ *
+ * Figma ships a single 40px filled style — no size or "plain" variants. The
+ * multiline control modifier lives in textarea.css (its only consumer).
+ */
+
+@source "./input.tsx";
+
+/* Field root — label / control / helper stack. */
+@utility q-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hf-space-100); /* 4px */
+  width: 100%;
+
+  &:has(:disabled),
+  &:has([data-disabled]) {
+    opacity: var(--hf-opacity-disabled);
+  }
+}
+
+/* Label row. */
+@utility q-field-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--hf-space-100); /* 4px */
+  padding-inline-end: var(--hf-space-200); /* 8px */
+  color: var(--hf-color-text-primary);
+  @apply text-q-caption-sm-medium; /* Inter Medium 12px */
+}
+@utility q-field-label-invalid {
+  color: var(--hf-color-state-error-fg);
+}
+@utility q-field-required {
+  color: var(--hf-color-state-error-fg);
+  @apply text-q-label-sm-medium;
+}
+
+/* Control surface — the bordered white-5% box that holds prefix/input/suffix.
+ * Single Figma size: 40px tall, 12px inline padding, radius/300 (12px). */
+@utility q-field-control {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--hf-space-150); /* 6px */
+  width: 100%;
+  height: var(--hf-space-1000); /* 40px */
+  padding-inline: var(--hf-space-300); /* 12px */
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--hf-radius-300); /* 12px */
+  background-color: var(--hf-color-overlay-dim-soft); /* white 5% */
+  color: var(--hf-color-icon-secondary); /* prefix/suffix glyph color */
+
+  &:hover {
+    background-image: linear-gradient(90deg, var(--hf-color-overlay-hover), var(--hf-color-overlay-hover));
+  }
+
+  &:focus-within {
+    overflow: hidden;
+    box-shadow: inset 0 0 0 var(--hf-border-width-medium) var(--hf-color-border-focus);
+  }
+
+  &:has(:disabled),
+  &:has([data-disabled]) {
+    cursor: not-allowed;
+  }
+}
+
+/* Error — red border, beats focus. */
+@utility q-field-control-invalid {
+  box-shadow: inset 0 0 0 var(--hf-border-width-medium) var(--hf-color-border-error);
+
+  &:focus-within {
+    box-shadow: inset 0 0 0 var(--hf-border-width-medium) var(--hf-color-border-error);
+  }
+}
+
+/* Prefix / suffix icon slot (20px). */
+@utility q-field-affix {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-500); /* 20px */
+  height: var(--hf-space-500);
+
+  & svg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* The actual input / textarea element (transparent; the surface is the wrapper). */
+@utility q-field-input {
+  flex: 1 1 var(--hf-space-0);
+  min-width: 0;
+  width: 100%;
+  height: var(--hf-space-400); /* label/sm line-height: 16px */
+  appearance: none;
+  background: transparent;
+  border: var(--hf-border-width-none) solid transparent;
+  padding: var(--hf-space-0);
+  outline: none;
+  resize: none;
+  color: var(--hf-color-text-primary);
+  @apply text-q-label-sm-regular; /* Inter Regular 14px */
+
+  &::placeholder {
+    color: var(--hf-color-text-on-overlay-secondary); /* white 50% */
+    opacity: 1;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/* Helper / error text. */
+@utility q-field-description {
+  color: var(--hf-color-text-tertiary);
+  @apply text-q-caption-sm-regular;
+}
+@utility q-field-error {
+  color: var(--hf-color-state-error-fg);
+  @apply text-q-caption-sm-regular;
+}

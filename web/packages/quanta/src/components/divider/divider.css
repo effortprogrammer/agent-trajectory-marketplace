@@ -1,0 +1,76 @@
+/**
+ * Divider presentation — the bare etched separator from Figma node 834:1556
+ * (`height: 1px; align-self: stretch`, edge-to-edge). The visible mark is a 2px
+ * etched line: a 1px darker rule overflowing 1px ABOVE the 1px layout box, and a
+ * 1px lighter rule inside it.
+ *
+ *   top    = black 15%  (Figma drop-shadow transparent/light/15 by value)
+ *   bottom = white 10%  (Figma fill        transparent/dark/10  by value)
+ *
+ * Matched to quanta tokens BY VALUE: #00000026 = transparent-dark-15 and
+ * #ffffff1a = transparent-light-10. The rules span the full width (no inset) —
+ * this single primitive is used everywhere, including dropdown menus (which used
+ * to special-case an inset `q-menu-separator`; that was dropped).
+ *
+ * @source points Tailwind's scanner at the colocated source (quanta is a
+ * symlinked dep and Tailwind skips node_modules) — same convention as dot.css.
+ */
+@source "./divider.tsx";
+
+@utility q-divider {
+  border: 0;
+  border-width: 0;
+  box-sizing: border-box;
+  height: var(--hf-border-width-thin);
+  overflow: visible;
+  position: relative;
+}
+
+.q-divider::before,
+.q-divider::after {
+  content: "";
+  display: block;
+  height: var(--hf-border-width-thin);
+  left: var(--hf-space-0);
+  position: absolute;
+  right: var(--hf-space-0);
+}
+
+.q-divider::before {
+  background-color: var(--hf-color-transparent-dark-15);
+  top: calc(var(--hf-border-width-thin) * -1);
+}
+
+.q-divider::after {
+  background-color: var(--hf-color-transparent-light-10);
+  top: var(--hf-space-0);
+}
+
+@utility q-divider-vertical {
+  border: 0;
+  border-width: 0;
+  box-sizing: border-box;
+  overflow: visible;
+  position: relative;
+  width: var(--hf-border-width-thin);
+}
+
+.q-divider-vertical::before,
+.q-divider-vertical::after {
+  bottom: var(--hf-space-0);
+  content: "";
+  display: block;
+  position: absolute;
+  top: var(--hf-space-0);
+  width: var(--hf-border-width-thin);
+}
+
+.q-divider-vertical::before {
+  background-color: var(--hf-color-transparent-dark-15);
+  left: calc(var(--hf-border-width-thin) * -1);
+}
+
+.q-divider-vertical::after {
+  background-color: var(--hf-color-transparent-light-10);
+  left: var(--hf-space-0);
+}

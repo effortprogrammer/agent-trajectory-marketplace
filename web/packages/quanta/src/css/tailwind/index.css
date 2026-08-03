@@ -1,0 +1,42 @@
+/**
+ * Layer 3 — Tailwind bridge (manifest)
+ *
+ * Final entry point for Tailwind v4 consumers. Imports the theme (Layer 1 + 2)
+ * and aliases hf-* names to `--color-*` via `@theme inline` so Tailwind
+ * generates utilities (`bg-surface-default`, `text-text-primary`, etc).
+ *
+ * Why `@theme inline` (and not plain `@theme`):
+ * When Tailwind generates opacity modifiers (`bg-x/50`) it needs to see the
+ * underlying var to synthesize `color-mix()`. With plain `@theme` a `var(...)`
+ * value is treated as an opaque string and the modifier breaks.
+ *
+ * This file is for Tailwind ONLY. Non-Tailwind consumers import
+ * `@higgsfield/quanta/theme.css` directly.
+ *
+ * One file per category. `@theme inline` blocks are additive.
+ */
+
+@import "../theme/index.css";
+
+@import "./color.css";
+@import "./border-width.css";
+@import "./breakpoint.css";
+@import "./radius.css";
+@import "./spacing.css";
+@import "./shadow.css";
+@import "./typography.css";
+@import "./z-index.css";
+@import "./motion.css";
+@import "./icon.css";
+@import "./opacity.css";
+@import "./gradient.css";
+
+/* Generated component-override tier — global `--q-<comp>-<dim>` default knobs
+ * on :root (modal/menu/sidebar/slider/sonner/vault widths, …). Imported BEFORE
+ * components.css so each component reads its default here; a consumer override
+ * on any closer scope wins the cascade. */
+@import "../components/component.css";
+
+/* Component presentation — q-* component utilities, aggregated in components.css
+ * so they land in the Tailwind bundle. */
+@import "./components.css";

@@ -1,0 +1,67 @@
+/**
+ * Toggle presentation utilities (q-namespaced). Geometry follows the same
+ * 32/40/48px control ramp as the ready-for-dev Toggle page, with pressed state
+ * painted by the shared slot-color system.
+ */
+@source "./toggle.tsx";
+
+@utility q-toggle {
+  @apply inline-flex shrink-0 cursor-pointer items-center justify-center rounded-q-300;
+  @apply bg-transparent text-q-text-secondary outline-none select-none;
+  @apply transition-colors;
+
+  &:hover {
+    @apply bg-q-overlay-hover;
+  }
+
+  &[data-pressed] {
+    @apply q-slot-bg-10 q-slot-text;
+  }
+
+  &:focus-visible {
+    @apply ring-2 q-slot-ring-40;
+  }
+
+  &[data-disabled] {
+    @apply pointer-events-none opacity-q-disabled;
+  }
+}
+
+@utility q-toggle-sm {
+  height: var(--hf-space-800);
+  min-width: var(--hf-space-800);
+  gap: var(--hf-space-100);
+  padding-inline: var(--hf-space-200);
+  @apply text-q-label-sm-medium;
+
+  & svg {
+    height: var(--hf-space-400);
+    width: var(--hf-space-400);
+  }
+}
+
+@utility q-toggle-md {
+  height: var(--hf-space-1000);
+  min-width: var(--hf-space-1000);
+  gap: var(--hf-space-200);
+  padding-inline: var(--hf-space-300);
+  @apply text-q-label-sm-medium;
+
+  & svg {
+    height: var(--hf-space-500);
+    width: var(--hf-space-500);
+  }
+}
+
+@utility q-toggle-lg {
+  height: var(--hf-space-1200);
+  min-width: var(--hf-space-1200);
+  gap: var(--hf-space-200);
+  padding-inline: var(--hf-space-400);
+  @apply text-q-label-md-medium;
+
+  & svg {
+    height: var(--hf-space-600);
+    width: var(--hf-space-600);
+  }
+}

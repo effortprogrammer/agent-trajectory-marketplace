@@ -1,0 +1,53 @@
+/**
+ * Icon presentation — the standardized glyph sizing.
+ *
+ * NODE-ONLY: `q-icon` is applied DIRECTLY to the glyph `<svg>` (no wrapper). It
+ * sizes the svg to a fixed `--hf-icon-<size>` square (the size scale lives in the
+ * codegen-emitted primitives/icon.css → tailwind/icon.css). Setting `width`/
+ * `height` as CSS properties overrides a glyph's intrinsic `width="24"`/
+ * `height="24"` attributes, so every icon renders at the requested token size.
+ * This replaces the per-component `& svg { width/height }` rules.
+ *
+ * `display: inline-flex` keeps the svg an inline-level box (so it flows beside
+ * text exactly like the previous wrapper did) and zeroes the inline-baseline
+ * descender whitespace that a default `display: inline` svg would add — matching
+ * the old wrapper's `line-height: 0`.
+ *
+ * Color is left to `currentColor` (the glyphs use `stroke`/`fill="currentColor"`)
+ * — Icon either inherits the surrounding text color or sets it via a
+ * `text-q-icon-*` utility from the `color` prop (see icon.tsx).
+ *
+ * Tailwind skips node_modules and quanta is symlinked, so the literal class
+ * strings in icon.tsx (`q-icon-md`, `text-q-icon-primary`, …) must be registered
+ * via @source here, same convention as the other components.
+ */
+@source "./icon.tsx";
+
+@utility q-icon {
+  --q-icon-size: var(--hf-icon-md);
+
+  display: inline-flex;
+  flex-shrink: 0;
+  width: var(--q-icon-size);
+  height: var(--q-icon-size);
+}
+
+@utility q-icon-xs {
+  --q-icon-size: var(--hf-icon-xs);
+}
+
+@utility q-icon-sm {
+  --q-icon-size: var(--hf-icon-sm);
+}
+
+@utility q-icon-md {
+  --q-icon-size: var(--hf-icon-md);
+}
+
+@utility q-icon-lg {
+  --q-icon-size: var(--hf-icon-lg);
+}
+
+@utility q-icon-xl {
+  --q-icon-size: var(--hf-icon-xl);
+}

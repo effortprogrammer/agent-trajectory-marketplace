@@ -1,0 +1,582 @@
+/**
+ * Tabs presentation utilities, matched to the Figma Tabs / Segment /
+ * Segmented Control nodes:
+ * 1639:4673, 1646:275, 1825:362, 2700:199, 2701:248, 2701:310.
+ */
+
+@source "./tabs.tsx";
+
+@utility q-tabs {
+  --q-tabs-accent: var(--q-tint, var(--hf-color-brand-primary));
+  --q-tabs-focus-ring: var(--hf-color-transparent-lime-20);
+  --q-tabs-indicator-bg: var(--hf-color-border-inverse);
+  --q-tabs-indicator-fg: var(--hf-color-text-primary);
+  --q-tabs-indicator-icon: var(--hf-color-icon-primary);
+  --q-tabs-segment-radius: var(--hf-radius-250);
+  --q-tabs-selected-radius: var(--hf-radius-200);
+  --q-tabs-tab-fg: var(--hf-color-text-tertiary);
+  --q-tabs-tab-hover-bg: transparent;
+  --q-tabs-tab-hover-fg: var(--hf-color-brand-primary);
+  --q-tabs-tab-icon: currentColor;
+  --q-tabs-hover-release-delay: var(--q-tabs-transition-duration);
+  --q-tabs-hover-release-duration: var(--hf-duration-fast);
+  --q-tabs-transition-duration: var(--hf-duration-normal);
+  --q-tabs-transition-ease: var(--hf-ease-out);
+
+  display: block;
+  width: 100%;
+}
+
+@utility q-tabs-list {
+  align-items: center;
+  box-sizing: border-box;
+  display: inline-flex;
+  isolation: isolate;
+  max-width: 100%;
+  position: relative;
+}
+
+@utility q-tabs-tab {
+  align-items: center;
+  appearance: none;
+  background-color: transparent;
+  border: var(--hf-border-width-none) solid transparent;
+  box-sizing: border-box;
+  color: var(--q-tabs-tab-fg);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  justify-content: center;
+  outline: none;
+  padding: var(--hf-space-250) var(--hf-space-400);
+  position: relative;
+  transition-duration: var(--q-tabs-transition-duration);
+  transition-property: background-color, border-color, box-shadow, color, opacity;
+  transition-timing-function: var(--q-tabs-transition-ease);
+  user-select: none;
+  white-space: nowrap;
+  z-index: 1;
+
+  & svg {
+    color: var(--q-tabs-tab-icon);
+    flex-shrink: 0;
+    height: var(--q-tabs-icon-size, var(--hf-icon-sm));
+    width: var(--q-tabs-icon-size, var(--hf-icon-sm));
+  }
+}
+
+@utility q-tabs-tab-content {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--q-tabs-content-gap, var(--hf-space-150));
+  justify-content: center;
+  min-width: var(--hf-space-0);
+  overflow: hidden;
+  padding: var(--hf-space-0) var(--q-tabs-label-padding-x, var(--hf-space-150));
+  position: relative;
+  text-overflow: ellipsis;
+  z-index: 1;
+}
+
+@utility q-tabs-tab-icon {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  justify-content: center;
+}
+
+@utility q-tabs-tab-label {
+  min-width: var(--hf-space-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Width-locking label: a zero-height ::after carries a semibold copy of the
+ * text, forcing the box to the widest (bold) footprint. The visible text flows
+ * above it and can switch weight on select without changing width — so the
+ * indicator and neighbouring tabs never wobble. */
+@utility q-tabs-tab-text {
+  display: inline-flex;
+  flex-direction: column;
+  white-space: nowrap;
+}
+
+.q-tabs-tab-text::after {
+  content: attr(data-text);
+  font-weight: var(--hf-type-weight-medium);
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  letter-spacing: var(--label-xs-medium-letter-spacing);
+}
+
+@utility q-tabs-tab-secondary {
+  color: var(--q-tabs-tab-secondary-fg, var(--hf-color-text-tertiary));
+  min-width: var(--hf-space-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@utility q-tabs-tab-icon-only {
+  --q-tabs-content-gap: var(--hf-space-0);
+  --q-tabs-label-padding-x: var(--hf-space-0);
+  --q-tabs-icon-size: var(--hf-icon-md); /* icon-only glyph is 20px (labels stay 16px) */
+}
+
+@utility q-tabs-indicator {
+  bottom: auto;
+  box-sizing: border-box;
+  left: var(--active-tab-left);
+  pointer-events: none;
+  position: absolute;
+  top: var(--active-tab-top);
+  transition-duration: var(--q-tabs-transition-duration);
+  transition-property: background, background-color, border-color, border-radius, box-shadow, height, left, top, width;
+  transition-timing-function: var(--q-tabs-transition-ease);
+  will-change: height, left, top, width;
+  z-index: 0;
+}
+
+@utility q-tabs-panel {
+  animation: q-tabs-panel-in var(--q-tabs-transition-duration) var(--q-tabs-transition-ease);
+  color: var(--hf-color-text-primary);
+  outline: none;
+  padding-top: var(--hf-space-400);
+}
+
+@utility q-tabs-list-fill {
+  width: 100%;
+
+  & .q-tabs-tab {
+    flex: 1 1 var(--hf-space-0);
+    /* Allow shrinking below intrinsic label width so every tab gets an equal
+     * share (nowrap labels otherwise floor each tab at its text width). */
+    min-width: var(--hf-space-0);
+  }
+}
+
+/* When the list is full-width, expand the root too — segmented/soft default to
+ * inline-block/width:auto, so without this the 100% list has nothing to fill. */
+.q-tabs:has(.q-tabs-list-fill) {
+  display: block;
+  width: 100%;
+}
+
+.q-tabs-underline {
+  --q-tabs-indicator-bg: var(--hf-color-border-inverse);
+  --q-tabs-tab-fg: var(--hf-color-text-tertiary);
+  --q-tabs-tab-hover-bg: transparent;
+  --q-tabs-tab-hover-fg: var(--hf-color-brand-primary);
+}
+
+.q-tabs-underline.q-tabs-tone-accent {
+  --q-tabs-indicator-bg: var(--q-tabs-accent);
+  --q-tabs-indicator-fg: var(--q-tabs-accent);
+}
+
+.q-tabs-underline .q-tabs-list {
+  border-bottom: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+  gap: var(--hf-space-200);
+  height: calc(var(--hf-space-1000) + var(--hf-space-300));
+  overflow: clip;
+  padding-inline: var(--hf-space-0);
+}
+
+.q-tabs-underline .q-tabs-tab {
+  min-height: calc(var(--hf-space-1000) + var(--hf-space-300));
+  padding: 0;
+  @apply text-q-body-sm-medium;
+}
+
+/* Figma underline tab keeps body/sm/medium in every state (inactive/active/
+ * active-accent); only colour + the 2px bottom border change on select. */
+.q-tabs-underline .q-tabs-tab[data-active] {
+  color: var(--q-tabs-indicator-fg);
+}
+
+/* Width-lock ghost matches the medium weight (no weight change on select). */
+.q-tabs-underline .q-tabs-tab-text::after {
+  font-weight: var(--hf-type-weight-medium);
+}
+
+.q-tabs-underline .q-tabs-tab:not([data-active]):not([data-disabled]):hover {
+  background-color: var(--q-tabs-tab-hover-bg);
+  color: var(--q-tabs-tab-hover-fg);
+}
+
+.q-tabs-underline .q-tabs-indicator {
+  background-color: var(--q-tabs-indicator-bg);
+  bottom: var(--hf-space-0);
+  height: var(--hf-border-width-thick);
+  left: var(--active-tab-left);
+  top: auto;
+  width: var(--active-tab-width);
+  z-index: 2;
+}
+
+.q-tabs-pill {
+  --q-tabs-indicator-bg: var(--hf-color-button-primary);
+  --q-tabs-indicator-fg: var(--hf-color-text-inverse);
+  --q-tabs-tab-fg: var(--hf-color-text-secondary);
+  --q-tabs-tab-hover-bg: transparent;
+  --q-tabs-tab-hover-fg: var(--hf-color-text-primary);
+}
+
+.q-tabs-pill .q-tabs-list {
+  border-radius: var(--hf-space-2400);
+  gap: var(--hf-space-050);
+  overflow: clip;
+  padding: var(--hf-space-100);
+}
+
+.q-tabs-pill .q-tabs-tab {
+  border-radius: var(--hf-space-2400);
+  min-height: var(--hf-space-800);
+  padding: var(--hf-space-100) var(--hf-space-200);
+  @apply text-q-label-xs-medium;
+}
+
+.q-tabs-pill .q-tabs-tab-content {
+  --q-tabs-label-padding-x: var(--hf-space-200);
+}
+
+.q-tabs-pill .q-tabs-tab[data-active] {
+  color: var(--q-tabs-indicator-fg);
+  @apply text-q-label-xs-medium;
+}
+
+.q-tabs-pill .q-tabs-tab-text::after {
+  font-weight: var(--hf-type-weight-medium);
+}
+
+.q-tabs-pill .q-tabs-tab:not([data-active]):not([data-disabled]):hover {
+  color: var(--q-tabs-tab-hover-fg);
+}
+
+.q-tabs-pill .q-tabs-indicator {
+  background-color: var(--q-tabs-indicator-bg);
+  border-radius: var(--hf-space-2400);
+  height: var(--active-tab-height);
+  width: var(--active-tab-width);
+}
+
+.q-tabs-segmented {
+  --q-tabs-content-gap: var(--hf-space-0);
+  --q-tabs-glass-blur: var(--hf-space-300);
+  --q-tabs-glass-selected-bg: var(--hf-gradient-glass-sheen);
+  --q-tabs-icon-size: var(--hf-icon-sm);
+  --q-tabs-indicator-bg: var(--hf-color-background-glass);
+  --q-tabs-indicator-border: var(--hf-color-border-subtle);
+  --q-tabs-indicator-fg: var(--hf-color-text-primary);
+  --q-tabs-indicator-icon: var(--hf-color-icon-primary);
+  --q-tabs-label-padding-x: var(--hf-space-100);
+  --q-tabs-segment-radius: var(--hf-radius-200);
+  --q-tabs-selected-radius: var(--hf-radius-200);
+  --q-tabs-tab-fg: var(--hf-color-text-on-overlay-secondary);
+  --q-tabs-tab-hover-bg: var(--hf-color-overlay-hover);
+  --q-tabs-tab-hover-fg: var(--hf-color-text-primary);
+  --q-tabs-tab-icon: var(--hf-color-icon-on-overlay-secondary);
+  --q-tabs-track-bg: var(--hf-color-overlay-hover);
+  --q-tabs-track-radius: var(--hf-radius-300);
+
+  display: inline-block;
+  width: auto;
+}
+
+.q-tabs-segmented.q-tabs-shape-pill {
+  --q-tabs-segment-radius: var(--hf-radius-full);
+  --q-tabs-selected-radius: var(--hf-radius-full);
+  --q-tabs-track-radius: var(--hf-radius-full);
+}
+
+.q-tabs-segmented.q-tabs-shape-icon {
+  --q-tabs-icon-size: var(--hf-icon-sm);
+  --q-tabs-label-padding-x: var(--hf-space-0);
+}
+
+.q-tabs-segmented.q-tabs-tone-default {
+  --q-tabs-indicator-bg: var(--hf-color-overlay-hover);
+  --q-tabs-indicator-border: var(--hf-color-border-subtle);
+  --q-tabs-indicator-fg: var(--hf-color-text-primary);
+  --q-tabs-indicator-icon: var(--hf-color-icon-primary);
+}
+
+.q-tabs-segmented.q-tabs-tone-solid {
+  --q-tabs-indicator-bg: var(--hf-color-button-primary);
+  --q-tabs-indicator-fg: var(--hf-color-text-inverse);
+  --q-tabs-indicator-icon: var(--hf-color-icon-inverse);
+}
+
+.q-tabs-segmented.q-tabs-tone-brand-soft {
+  --q-tabs-indicator-bg: var(--hf-color-transparent-lime-15);
+  --q-tabs-indicator-fg: var(--hf-color-brand-primary);
+  --q-tabs-indicator-icon: var(--hf-color-icon-accent);
+}
+
+.q-tabs-segmented.q-tabs-tone-brand {
+  --q-tabs-indicator-bg: var(--hf-color-brand-primary);
+  --q-tabs-indicator-fg: var(--hf-color-text-inverse);
+  --q-tabs-indicator-icon: var(--hf-color-icon-inverse);
+}
+
+.q-tabs-segmented .q-tabs-list {
+  align-items: center;
+  background-color: var(--q-tabs-track-bg);
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-default);
+  border-radius: var(--q-tabs-track-radius);
+  height: var(--hf-space-1000);
+  overflow: clip;
+  padding: var(--hf-space-100);
+}
+
+.q-tabs-segmented.q-tabs-surface-glass .q-tabs-list {
+  backdrop-filter: blur(var(--q-tabs-glass-blur));
+  /* no token: -0.5px spread and 3px blur have no exact space token; this drop+dark-12 color combo matches no shadow composite role (modal uses dark-15) so kept as a raw multi-layer glass shadow with tokenized color */
+  box-shadow:
+    0 var(--hf-space-050) var(--hf-space-100) -0.5px var(--hf-color-transparent-dark-12),
+    inset 0 var(--hf-space-050) 3px var(--hf-color-transparent-light-05);
+}
+
+.q-tabs-segmented.q-tabs-surface-flat .q-tabs-list {
+  box-shadow: none;
+}
+
+.q-tabs-segmented .q-tabs-tab {
+  border-radius: var(--q-tabs-segment-radius);
+  height: var(--hf-space-800);
+  min-height: var(--hf-space-800);
+  padding: var(--hf-space-100) var(--hf-space-200);
+  @apply text-q-label-xs-medium;
+}
+
+.q-tabs-segmented .q-tabs-tab-content {
+  --q-tabs-content-gap: var(--hf-space-0);
+  --q-tabs-label-padding-x: var(--hf-space-0);
+  overflow: visible;
+}
+
+.q-tabs-segmented .q-tabs-tab-text {
+  padding-inline: var(--hf-space-100);
+}
+
+.q-tabs-segmented .q-tabs-tab-text::after {
+  font-weight: var(--hf-type-weight-medium);
+}
+
+.q-tabs-segmented .q-tabs-tab[data-active] {
+  color: var(--q-tabs-indicator-fg);
+  @apply text-q-label-xs-medium;
+}
+
+.q-tabs-segmented .q-tabs-tab[data-active] svg {
+  color: var(--q-tabs-indicator-icon);
+}
+
+.q-tabs-segmented .q-tabs-tab:not([data-active]):not([data-disabled]):hover {
+  background-color: var(--q-tabs-tab-hover-bg);
+  border-radius: var(--q-tabs-selected-radius);
+  color: var(--q-tabs-tab-hover-fg);
+}
+
+.q-tabs-segmented .q-tabs-tab:not([data-active]):not([data-disabled]):hover svg {
+  color: var(--hf-color-icon-primary);
+}
+
+.q-tabs-segmented .q-tabs-indicator {
+  background-color: var(--q-tabs-indicator-bg);
+  border: var(--hf-border-width-thin) solid transparent;
+  border-radius: var(--q-tabs-selected-radius);
+  height: var(--active-tab-height);
+  width: var(--active-tab-width);
+}
+
+.q-tabs-segmented.q-tabs-tone-default .q-tabs-indicator {
+  border-color: var(--q-tabs-indicator-border);
+}
+
+/* Keep the clicked hover fill alive while the selected pill travels to it,
+ * then release it once the pill has arrived. */
+.q-tabs-segmented .q-tabs-tab[data-active] {
+  background-color: transparent;
+  transition-delay:
+    var(--q-tabs-hover-release-delay),
+    var(--hf-duration-instant),
+    var(--hf-duration-instant),
+    var(--hf-duration-instant),
+    var(--hf-duration-instant);
+  transition-duration:
+    var(--q-tabs-hover-release-duration),
+    var(--q-tabs-transition-duration),
+    var(--q-tabs-transition-duration),
+    var(--q-tabs-transition-duration),
+    var(--q-tabs-transition-duration);
+  transition-property: background-color, border-color, box-shadow, color, opacity;
+}
+
+.q-tabs-segmented.q-tabs-tone-glass .q-tabs-indicator {
+  backdrop-filter: blur(var(--q-tabs-glass-blur));
+  background: var(--q-tabs-glass-selected-bg);
+  border-color: var(--q-tabs-indicator-border);
+  /* no token: 3px blur has no exact space token; this drop+dark-12 color combo matches no shadow composite role so kept as a raw multi-layer glass shadow with tokenized color */
+  box-shadow:
+    0 var(--hf-space-050) var(--hf-space-050) var(--hf-space-0) var(--hf-color-transparent-dark-12),
+    inset 0 var(--hf-space-050) 3px var(--hf-color-transparent-light-05);
+}
+
+.q-tabs-segmented.q-tabs-shape-icon .q-tabs-list {
+  height: var(--hf-space-1000);
+}
+
+.q-tabs-segmented.q-tabs-shape-icon .q-tabs-tab {
+  height: var(--hf-space-800);
+  min-height: var(--hf-space-800);
+  min-width: var(--hf-space-800);
+  padding: var(--hf-space-0);
+}
+
+.q-tabs-segmented.q-tabs-shape-icon .q-tabs-tab-content {
+  --q-tabs-content-gap: var(--hf-space-0);
+  --q-tabs-label-padding-x: var(--hf-space-0);
+}
+
+.q-tabs-segmented.q-tabs-shape-icon.q-tabs-tone-glass {
+  --q-tabs-glass-selected-bg: var(--hf-gradient-glass-sheen-alt);
+}
+
+/* ── Media soft tabs (Figma node 1639:4673) ─────────────────────────────────
+ * Track: transparent/dark/05 or overlay/scrim, radius/300, p4, gap4.
+ * Tab: px12/py8, gap6, radius/200, caption/sm/medium, 24px passed icons.
+ * Selected: transparent/dark/05 + border/subtle, text/icon primary. */
+.q-tabs-soft {
+  --q-tabs-selected-bg: var(--hf-color-overlay-hover);
+  --q-tabs-selected-radius: var(--hf-radius-200);
+  --q-tabs-tab-fg: var(--hf-color-text-secondary);
+  --q-tabs-tab-icon: var(--hf-color-icon-secondary);
+  --q-tabs-tab-hover-bg: var(--hf-color-overlay-hover);
+  --q-tabs-tab-hover-fg: var(--hf-color-text-primary);
+  --q-tabs-tab-selected-fg: var(--hf-color-text-primary);
+  --q-tabs-tab-selected-icon: var(--hf-color-icon-primary);
+  --q-tabs-icon-size: var(--hf-icon-sm);
+
+  display: inline-block;
+  width: auto;
+}
+
+.q-tabs-soft .q-tabs-list {
+  background-color: var(--hf-color-overlay-hover);
+  border-radius: var(--hf-radius-300);
+  gap: var(--hf-space-100);
+  padding: var(--hf-space-100);
+}
+
+.q-tabs-soft.q-tabs-soft-scrim .q-tabs-list {
+  background-color: var(--hf-color-overlay-scrim);
+}
+
+/* The sliding selection pill (white-5% surface that animates between tabs). */
+.q-tabs-soft .q-tabs-indicator {
+  background-color: var(--q-tabs-selected-bg);
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+  border-radius: var(--q-tabs-selected-radius);
+  height: var(--active-tab-height);
+  width: var(--active-tab-width);
+}
+
+.q-tabs-soft .q-tabs-tab {
+  border-radius: var(--hf-radius-200);
+  gap: var(--hf-space-150);
+  padding: var(--hf-space-200) var(--hf-space-300);
+  @apply text-q-caption-sm-medium;
+}
+
+.q-tabs-soft .q-tabs-tab-content {
+  --q-tabs-content-gap: var(--hf-space-150);
+  --q-tabs-label-padding-x: var(--hf-space-0);
+  overflow: visible;
+}
+
+.q-tabs-soft .q-tabs-tab[data-active] {
+  background-color: transparent;
+  color: var(--q-tabs-tab-selected-fg);
+  transition-delay:
+    var(--q-tabs-hover-release-delay),
+    var(--hf-duration-instant),
+    var(--hf-duration-instant),
+    var(--hf-duration-instant),
+    var(--hf-duration-instant);
+  transition-duration:
+    var(--q-tabs-hover-release-duration),
+    var(--q-tabs-transition-duration),
+    var(--q-tabs-transition-duration),
+    var(--q-tabs-transition-duration),
+    var(--q-tabs-transition-duration);
+  transition-property: background-color, border-color, box-shadow, color, opacity;
+  @apply text-q-caption-sm-medium;
+}
+
+.q-tabs-soft .q-tabs-tab-text::after {
+  font-weight: var(--hf-type-weight-medium);
+}
+
+.q-tabs-soft .q-tabs-tab[data-active] svg {
+  color: var(--q-tabs-tab-selected-icon);
+}
+
+.q-tabs-soft .q-tabs-tab:not([data-active]):not([data-disabled]):hover {
+  background-color: var(--q-tabs-tab-hover-bg);
+  color: var(--q-tabs-tab-hover-fg);
+}
+
+.q-tabs-soft .q-tabs-tab:not([data-active]):not([data-disabled]):hover svg {
+  color: var(--hf-color-icon-primary);
+}
+
+.q-tabs-tab:focus-visible {
+  box-shadow: 0 0 0 var(--hf-border-width-thick) var(--q-tabs-focus-ring);
+}
+
+.q-tabs-tab[data-disabled] {
+  cursor: not-allowed;
+  opacity: var(--hf-opacity-muted);
+}
+
+/* Icon-only tabs are a 1:1 square; the corner radius comes from the shape, so
+ * only the pill shape (full radius) reads as a complete circle — the rounded
+ * shape stays a rounded square. The icon itself bumps to 20px (in the utility
+ * above). The selected pill follows the same per-shape radius automatically. */
+.q-tabs-segmented .q-tabs-tab-icon-only {
+  padding: var(--hf-space-150);
+}
+
+.q-tabs-tab-icon-only .q-tabs-tab-content {
+  padding: 0;
+}
+
+.q-tabs-soft .q-tabs-tab-icon-only {
+  padding: var(--hf-space-150);
+}
+
+@keyframes q-tabs-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--hf-space-050));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(var(--hf-space-0));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .q-tabs {
+    --q-tabs-hover-release-delay: var(--hf-duration-instant);
+    --q-tabs-transition-duration: var(--hf-duration-instant);
+  }
+
+  .q-tabs-panel {
+    animation: none;
+  }
+}

@@ -1,0 +1,110 @@
+/**
+ * Dot presentation — pinned to the Figma "Status Dot" component (node 1418:94).
+ *
+ * Dot composes emitted q-* token utilities (palette fills, the glass ring
+ * colour, border-widths, and spacing sizes) plus native backdrop-blur. The
+ * stroke is outside the filled Figma dot (`box-content` in dot.tsx), so the
+ * visual boxes are 12 / 9 / 7px around 8 / 6 / 4px fills. This file points
+ * Tailwind's scanner at the colocated source (Tailwind skips node_modules and
+ * quanta is symlinked, so the literal class strings in dot.tsx — e.g.
+ * `bg-q-palette-mint-bg`, `border-q-background-glass` — must be registered
+ * explicitly, same convention as avatar.css / button.css). The TS unions
+ * (SIZE / RING / RING_COLOR / FILL) are the single source of truth.
+ *
+ * Decorative motion (opt-in via the `animation` prop) lives here. Both presence
+ * animations derive their colour from `currentColor` (the component sets `color`
+ * to the fill while animating), animate only compositor-friendly properties
+ * (opacity + transform) so they stay smooth, and are switched off under
+ * `prefers-reduced-motion`.
+ */
+@source "./dot.tsx";
+
+/* The glass ring's backdrop blur is Figma's BackgroundGlassBlur (radius 80 →
+ * 40px), the same 40px the modal/vault/sonner glass use — tokenized via
+ * --hf-space-1000 (was the non-token `backdrop-blur-2xl` Tailwind preset). */
+@utility q-dot {
+  background-clip: padding-box;
+  backdrop-filter: blur(var(--hf-space-1000));
+}
+
+/* ── pulse — radar-style rings ripple outward from the dot (live / online). ── *
+ * Two staggered ::before/::after rings (one half a cycle behind) read as a
+ * continuous ripple. They sit behind the dot (z-index -1) so the fill stays
+ * crisp; `inset: 0` anchors them to the colored fill, which then scales out. */
+@keyframes q-dot-pulse {
+  from {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(2.75);
+  }
+}
+
+@utility q-dot-pulse {
+  position: relative;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    inset: var(--hf-space-0);
+    z-index: -1; /* no token: stacking layer, not a spacing scale value */
+    border-radius: var(--hf-radius-full);
+    background-color: currentColor;
+    pointer-events: none;
+    will-change: transform, opacity;
+    /* no token: 2s — no matching --hf-duration-* (longest is 1400ms) */
+    animation: q-dot-pulse 2s var(--hf-ease-out) infinite;
+  }
+
+  &::after {
+    animation-delay: var(--hf-duration-1000); /* 1000ms = 1s */
+  }
+}
+
+/* ── glow — a soft coloured halo breathes around the dot. A constantly-blurred
+ * currentColor disc behind the dot animates ONLY opacity + scale (both
+ * compositor-friendly), so the breathing stays perfectly smooth — unlike an
+ * animated box-shadow, which repaints every frame and janks. ── */
+@keyframes q-dot-glow {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: scale(1.4);
+  }
+
+  50% {
+    opacity: 0.38;
+    transform: scale(1.9);
+  }
+}
+
+@utility q-dot-glow {
+  position: relative;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: var(--hf-space-0);
+    z-index: -1; /* no token: stacking layer, not a spacing scale value */
+    border-radius: var(--hf-radius-full);
+    background-color: currentColor;
+    filter: blur(var(--hf-space-050)); /* 2px — tight soft halo */
+    pointer-events: none;
+    will-change: transform, opacity;
+    /* no token: 2.4s — no matching --hf-duration-*; ease-in-out keyword is not
+     * byte-identical to --hf-ease-in-out (cubic-bezier(0.4, 0, 0.2, 1)) */
+    animation: q-dot-glow 2.4s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .q-dot-pulse::before,
+  .q-dot-pulse::after,
+  .q-dot-glow::before {
+    display: none;
+  }
+}

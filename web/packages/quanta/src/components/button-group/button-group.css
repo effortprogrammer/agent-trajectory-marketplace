@@ -1,0 +1,80 @@
+/**
+ * ButtonGroup presentation utilities (q-namespaced). A pure-quanta LAYOUT around
+ * quanta <Button>s — it owns no fills/typography; it only arranges the buttons
+ * and, when attached, re-shapes their corners + collapses their adjacent edges
+ * into a single shared hairline so the row reads as one segmented control.
+ *
+ * Token-only: the inner corners are zeroed to radius/none and the edge overlap
+ * pulls each non-first button back by one --hf-border-width-thin (the 1px edge
+ * worn by the outline/secondary buttons) so two abutting 1px borders render as
+ * one hairline. The outer corners keep whatever radius the child Button's size
+ * already set (radius/150..300) — the group never sets a radius, it only zeroes
+ * the inner ones, so each size's outer rounding is preserved.
+ *
+ * Crisp for edged variants (outline / secondary / ghost-on-hover); acceptable
+ * for solid fills (primary/danger) where there is no visible border to collapse.
+ */
+
+@source "./button-group.tsx";
+
+@utility q-button-group {
+  /* Edged buttons that overlap must paint above their neighbour on hover/focus
+   * so the active outline isn't clipped by the next button's collapsed edge. */
+  display: inline-flex;
+  max-width: 100%;
+  position: relative;
+
+  & > .q-button {
+    position: relative;
+  }
+
+  /* Lift the hovered/focused button so its full border + focus ring win over
+   * the collapsed shared edge of its neighbours. */
+  & > .q-button:hover,
+  & > .q-button:focus-visible {
+    z-index: 1;
+  }
+}
+
+@utility q-button-group-horizontal {
+  flex-direction: row;
+}
+
+@utility q-button-group-vertical {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* ── Spaced: independent buttons, a small token gap, no edge surgery ───────── */
+@utility q-button-group-spaced {
+  gap: var(--hf-space-200);
+}
+
+/* ── Attached: segmented control ───────────────────────────────────────────
+ * Zero the inner corners and overlap neighbouring edges so the shared border
+ * collapses to one hairline. Logical properties (start/end) keep this correct
+ * under RTL and for both axes via the orientation-scoped rules below. */
+
+/* Horizontal attached: collapse along the inline axis. */
+.q-button-group-attached.q-button-group-horizontal > .q-button:not(:first-child) {
+  border-start-start-radius: var(--hf-radius-0);
+  border-end-start-radius: var(--hf-radius-0);
+  margin-inline-start: calc(-1 * var(--hf-border-width-thin));
+}
+
+.q-button-group-attached.q-button-group-horizontal > .q-button:not(:last-child) {
+  border-start-end-radius: var(--hf-radius-0);
+  border-end-end-radius: var(--hf-radius-0);
+}
+
+/* Vertical attached: collapse along the block axis. */
+.q-button-group-attached.q-button-group-vertical > .q-button:not(:first-child) {
+  border-start-start-radius: var(--hf-radius-0);
+  border-start-end-radius: var(--hf-radius-0);
+  margin-block-start: calc(-1 * var(--hf-border-width-thin));
+}
+
+.q-button-group-attached.q-button-group-vertical > .q-button:not(:last-child) {
+  border-end-start-radius: var(--hf-radius-0);
+  border-end-end-radius: var(--hf-radius-0);
+}

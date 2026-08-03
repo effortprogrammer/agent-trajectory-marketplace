@@ -1,0 +1,191 @@
+/**
+ * Checkbox presentation utilities (q-namespaced), matched to the Figma
+ * component at node 481:795 (parent 478:1397).
+ *
+ * Figma ground truth (Dev Mode variable defs / metadata / exported vectors):
+ *   Two-layer structure:
+ *     frame  (tap + focus target)  sm=20 md=24 lg=28  → --hf-space-500/600/700
+ *     box    (visible square)      sm=18 md=20 lg=24  → frame minus inset
+ *   frame radius 8px (custom in Figma), box radius 6px (radius/150)
+ *   border 1.5px (border-width/medium)
+ *
+ *   Per-state (brand), verified against exported SVGs:
+ *     inactive   1.5px border, border/default #ffffff1a
+ *     hover      1.5px border, custom #4f6109
+ *     active     fill icon/accent #d1fe17, glyph icon/inverse #1a1a1a
+ *     focused    active + frame bg/primary + transparent-lime-20 ring @ r8
+ *     disabled   fill background/glass #23262abf, NO visible border, glyph icon/disabled #484e56
+ *     indeterminate           fill #d1fe17, minus #1a1a1a
+ *     indeterminate_disabled  fill #23262a (secondary-strong), NO border, minus #484e56
+ */
+
+@source "./checkbox.tsx";
+
+@utility q-checkbox {
+  --q-checkbox-fill: var(--hf-color-icon-accent);
+  --q-checkbox-fg: var(--hf-color-icon-inverse);
+  --q-checkbox-hover-border: var(--hf-color-lime-900);
+  --q-checkbox-focus-ring: var(--hf-color-transparent-lime-20);
+  --q-checkbox-target-size: var(--hf-space-600);
+  --q-checkbox-box-size: var(--hf-space-500);
+
+  align-items: center;
+  background-color: transparent;
+  border: var(--hf-border-width-none) solid transparent;
+  box-sizing: border-box;
+  color: var(--q-checkbox-fg);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: var(--q-checkbox-target-size);
+  justify-content: center;
+  outline: none;
+  padding: var(--hf-space-0);
+  position: relative;
+  border-radius: var(--hf-radius-200);
+  transition-property: background-color, border-color, box-shadow, color;
+  vertical-align: top;
+  width: var(--q-checkbox-target-size);
+}
+
+@utility q-checkbox-box {
+  align-items: center;
+  background-color: transparent;
+  border: var(--hf-border-width-medium) solid var(--hf-color-border-default);
+  border-radius: var(--hf-radius-150);
+  box-sizing: border-box;
+  color: transparent;
+  display: flex;
+  height: var(--q-checkbox-box-size);
+  justify-content: center;
+  transition-property: background-color, border-color, color;
+  width: var(--q-checkbox-box-size);
+}
+
+@utility q-checkbox-indicator {
+  align-items: center;
+  color: currentColor;
+  display: flex;
+  height: var(--q-checkbox-box-size);
+  justify-content: center;
+  width: var(--q-checkbox-box-size);
+
+  /* Glyph occupies ~70% of the box (the Figma check/minus sit inset, not
+   * edge-to-edge); the 10×8 viewBox scales with `meet`, so this also tames the
+   * stroke proportionally. % keeps it correct across sm/md/lg. */
+  & svg {
+    height: 70%;
+    width: 70%;
+  }
+}
+
+@utility q-checkbox-sm {
+  --q-checkbox-target-size: var(--hf-space-500);
+  --q-checkbox-box-size: calc(var(--hf-space-500) - var(--hf-space-050));
+}
+
+@utility q-checkbox-md {
+  --q-checkbox-target-size: var(--hf-space-600);
+  --q-checkbox-box-size: var(--hf-space-500);
+}
+
+@utility q-checkbox-lg {
+  --q-checkbox-target-size: var(--hf-space-700);
+  --q-checkbox-box-size: var(--hf-space-600);
+}
+
+@utility q-checkbox-brand {
+  --q-checkbox-fill: var(--hf-color-icon-accent);
+  --q-checkbox-fg: var(--hf-color-icon-inverse);
+  --q-checkbox-hover-border: var(--hf-color-lime-900);
+  --q-checkbox-focus-ring: var(--hf-color-transparent-lime-20);
+}
+
+@utility q-checkbox-white {
+  --q-checkbox-fill: var(--hf-color-palette-white);
+  --q-checkbox-fg: var(--hf-color-icon-inverse);
+  --q-checkbox-hover-border: var(--hf-color-transparent-light-30);
+  --q-checkbox-focus-ring: var(--hf-color-transparent-light-20);
+}
+
+.q-checkbox:not([data-checked]):not([data-indeterminate]):not([data-disabled]):hover .q-checkbox-box {
+  border-color: var(--q-checkbox-hover-border);
+}
+
+.q-checkbox[data-checked] .q-checkbox-box,
+.q-checkbox[data-indeterminate] .q-checkbox-box {
+  background-color: var(--q-checkbox-fill);
+  border-color: var(--q-checkbox-fill);
+  color: var(--q-checkbox-fg);
+}
+
+.q-checkbox:focus-visible {
+  background-color: var(--hf-color-background-primary);
+  box-shadow: 0 0 0 var(--hf-border-width-thick) var(--q-checkbox-focus-ring);
+}
+
+.q-checkbox[data-disabled] {
+  cursor: not-allowed;
+}
+
+/* Disabled base: glass fill + icon/disabled glyph. Only the UNCHECKED disabled
+ * box shows the icon/disabled outline (so the empty target stays visible). */
+.q-checkbox[data-disabled] .q-checkbox-box {
+  background-color: var(--hf-color-background-glass);
+  border-color: var(--hf-color-icon-disabled);
+  color: var(--hf-color-icon-disabled);
+}
+
+/* Disabled + checked: NO visible border — a filled box needs no outline (Figma
+ * 481:814 shows the check on the glass fill with no border line; the box's 1.5px
+ * border is the fill colour, not a grey edge). */
+.q-checkbox[data-disabled][data-checked]:not([data-indeterminate]) .q-checkbox-box {
+  border-color: transparent;
+}
+
+/* indeterminate_disabled: opaque secondary-strong fill, NO border, icon/disabled minus. */
+.q-checkbox[data-disabled][data-indeterminate] .q-checkbox-box {
+  background-color: var(--hf-color-background-secondary-strong);
+  border-color: var(--hf-color-background-secondary-strong);
+  color: var(--hf-color-icon-disabled);
+}
+
+.q-checkbox[data-disabled]:not([data-checked]):not([data-indeterminate]) .q-checkbox-box {
+  color: transparent;
+}
+
+@utility q-checkbox-label {
+  align-items: flex-start;
+  color: var(--hf-color-text-primary);
+  cursor: pointer;
+  display: flex;
+  gap: var(--hf-space-300);
+  min-width: var(--hf-space-0);
+}
+
+@utility q-checkbox-label-left {
+  justify-content: flex-start;
+}
+
+@utility q-checkbox-label-right {
+  justify-content: space-between;
+}
+
+@utility q-checkbox-label-text {
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  flex-direction: column;
+  gap: var(--hf-space-100);
+  min-width: var(--hf-space-0);
+  overflow-wrap: anywhere;
+}
+
+/* Title/description colour + composite type are now applied by <Typography>
+ * (color="primary"/"tertiary", variant label-sm-medium/label-md-medium/label-sm-regular)
+ * in checkbox.tsx. Only the md title's line-height override has no Typography
+ * equivalent, so it stays here. */
+@utility q-checkbox-label-md {
+  .q-checkbox-label-title {
+    line-height: var(--hf-space-500);
+  }
+}

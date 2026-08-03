@@ -1,0 +1,120 @@
+/**
+ * NotFound — empty / zero-results state primitive (icon tile + title +
+ * subtitle). Matched to the Figma "Menu / Empty" state but framework-agnostic:
+ * usable inside menus, panels, lists, or anywhere an empty state is needed.
+ *
+ * Self-contained `q-not-found-*` namespace — no dependency on the menu layer.
+ *
+ * Sizing is driven by CSS vars set on the root (md defaults) and overridden by
+ * the `q-not-found-{sm,md,lg}` size utilities. Variants (`plain`/`card`/
+ * `outline`) only change the OUTER surface — the glassy icon tile is untouched.
+ */
+
+@source "./not-found.tsx";
+
+@utility q-not-found {
+  /* md defaults — overridden by the size utilities below. */
+  --q-nf-gap: var(--hf-space-200);
+  --q-nf-pad: var(--hf-space-300);
+  --q-nf-min-h: calc(var(--hf-space-2400) + var(--hf-space-300));
+  --q-nf-tile: var(--hf-space-1000); /* 40px */
+  --q-nf-icon: var(--hf-space-600); /* 24px */
+  --q-nf-radius: var(--hf-radius-500); /* 20px — card / outline corner */
+
+  align-items: center;
+  color: var(--hf-color-text-tertiary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--q-nf-gap);
+  justify-content: center;
+  min-height: var(--q-nf-min-h);
+  padding: var(--q-nf-pad);
+  text-align: center;
+}
+
+/* ── Glassy icon tile — IDENTICAL across every size/variant (scaled only). ──── */
+@utility q-not-found-icon {
+  align-items: center;
+  background-color: var(--hf-color-overlay-hover);
+  border-radius: var(--hf-radius-full);
+  box-shadow:
+    inset var(--hf-space-0) var(--hf-space-050) var(--hf-space-150) var(--hf-space-0) var(--hf-color-transparent-light-15),
+    var(--hf-space-0) var(--hf-space-050) var(--hf-space-050) calc(-1 * var(--hf-space-050)) var(--hf-color-shadow-sm);
+  color: var(--hf-color-icon-tertiary);
+  display: inline-flex;
+  height: var(--q-nf-tile);
+  justify-content: center;
+  width: var(--q-nf-tile);
+
+  & svg {
+    height: var(--q-nf-icon);
+    width: var(--q-nf-icon);
+  }
+}
+
+@utility q-not-found-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hf-space-050);
+}
+
+/* ── Actions row — optional CTA cluster (e.g. a quanta Button). ──────────────── */
+@utility q-not-found-actions {
+  align-items: center;
+  display: flex;
+  gap: var(--hf-space-200);
+  justify-content: center;
+}
+
+/* Title / subtitle type + color now live on <Typography> (per-size variant +
+   secondary/tertiary color) — see not-found.tsx. */
+
+/* ── Sizes — override the geometry vars; type lives on <Typography>. ────────── */
+@utility q-not-found-sm {
+  --q-nf-gap: var(--hf-space-150);
+  --q-nf-pad: var(--hf-space-200);
+  --q-nf-min-h: calc(var(--hf-space-1600) + var(--hf-space-200));
+  --q-nf-tile: var(--hf-space-800); /* 32px */
+  --q-nf-icon: var(--hf-space-500); /* 20px */
+  --q-nf-radius: var(--hf-radius-400); /* 16px */
+}
+
+@utility q-not-found-md {
+  --q-nf-gap: var(--hf-space-200);
+  --q-nf-pad: var(--hf-space-300);
+  --q-nf-min-h: calc(var(--hf-space-2400) + var(--hf-space-300));
+  --q-nf-tile: var(--hf-space-1000); /* 40px */
+  --q-nf-icon: var(--hf-space-600); /* 24px */
+  --q-nf-radius: var(--hf-radius-500); /* 20px */
+}
+
+@utility q-not-found-lg {
+  --q-nf-gap: var(--hf-space-300);
+  --q-nf-pad: var(--hf-space-500);
+  --q-nf-min-h: calc(var(--hf-space-2400) + var(--hf-space-1000));
+  --q-nf-tile: var(--hf-space-1400); /* 56px */
+  --q-nf-icon: var(--hf-space-700); /* 28px */
+  --q-nf-radius: var(--hf-radius-600); /* 24px */
+}
+
+/* ── Variants — outer surface only; the glassy tile stays the same. ─────────── */
+@utility q-not-found-plain {
+  /* Transparent — drops into an existing (often glass) surface. */
+  background-color: transparent;
+}
+
+/* Self-contained frosted-glass panel (same glass idiom as Modal / Dropdown). */
+@utility q-not-found-card {
+  background-color: var(--hf-color-background-glass);
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+  border-radius: var(--q-nf-radius);
+  backdrop-filter: blur(var(--hf-space-1000)); /* 40px */
+  box-shadow: var(--hf-space-0) var(--hf-space-050) var(--hf-space-100) calc(-1 * var(--hf-space-050)) var(--hf-color-shadow-sm);
+}
+
+/* Dashed drop-zone outline — subtle border, transparent fill. */
+@utility q-not-found-outline {
+  background-color: transparent;
+  border: var(--hf-border-width-thin) dashed var(--hf-color-border-subtle);
+  border-radius: var(--q-nf-radius);
+}

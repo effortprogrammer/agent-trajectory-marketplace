@@ -1,0 +1,28 @@
+/**
+ * Layer 2 — Semantic (themed) (manifest)
+ *
+ * Semantic hf-* tokens. References primitives only, via var(...).
+ * No Tailwind dependency — works in any CSS project.
+ *
+ * Contract: `data-theme="{brand}-{mode}"`. Quanta ships exactly one brand —
+ * `default` (light + dark). Multi-brand is the consumer's extension point:
+ * write your own `:where([data-theme="acme-light"])` blocks in your CSS.
+ *
+ * "Auto" (follow system) is resolved at runtime via runtime/controller.ts;
+ * it is not a separate CSS theme.
+ *
+ * Selector: `:where(...)` — zero specificity. Consumer classes and nested
+ * `data-theme` overrides win without specificity wars.
+ * See spec/decisions.md → R1.
+ */
+
+@import "../primitives/index.css";
+
+@import "./fonts.css";
+@import "./color.css";
+/* radius — global, no theme layer (primitives + tailwind only, like spacing/z-index) */
+/* @import "./spacing.css";    — TBD */
+/* shadow — global, no theme layer (primitives + tailwind only); each layer's
+ * color is a var(--hf-color-*) ref themed downstream, geometry is global */
+@import "./typography.css";
+/* motion — global, no theme layer (primitives + tailwind only) */

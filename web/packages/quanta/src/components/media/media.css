@@ -1,0 +1,121 @@
+/**
+ * Media — pure-quanta presentational surface for images & videos at a fixed
+ * aspect ratio (no Figma node; a composition primitive for media grids and video
+ * cards). The TS unions in media.tsx (RATIO_CLASS / FIT_CLASS / ROUNDED_CLASS /
+ * OVERLAY_PLACEMENT_CLASS) are the single source of truth; this file registers
+ * the colocated source for Tailwind's scanner (quanta is symlinked, so literal
+ * class strings must be registered explicitly) and defines the box geometry,
+ * the two ratio presets that have no `aspect-*` utility, the fill rule, the
+ * fallback surface, and the overlay placements / gradient scrim — tokens only.
+ */
+@source "./media.tsx";
+
+/* The aspect-ratio box. Clips overflow so the corner radius (set via the
+ * rounded-q-* utility on the same element) curves the media inside it. */
+@utility q-media {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  /* Custom numeric ratio is wired through this var from the `ratio` prop; the
+   * preset ratios use the `aspect-*` utility instead and leave this unset. */
+  aspect-ratio: var(--q-media-ratio, auto);
+  background-color: var(--hf-color-background-secondary);
+}
+
+/* Ratio presets with no native `aspect-*` utility — portrait 3/4, wide 21/9. */
+@utility q-media-portrait {
+  aspect-ratio: 3 / 4;
+}
+@utility q-media-wide {
+  aspect-ratio: 21 / 9;
+}
+
+/* Image / Video fill the box edge-to-edge; object-fit comes from FIT_CLASS. */
+@utility q-media-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* `auto` ratio boxes have no fixed height, so let the media set intrinsic
+   * size; fixed-ratio boxes stretch it to the box via the 100% above. */
+  object-position: center;
+}
+
+/* The empty / broken-source slot — a tinted box with centered content. */
+@utility q-media-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--hf-space-200);
+  padding: var(--hf-space-400);
+  background-color: var(--hf-color-background-elevated-start);
+  color: var(--hf-color-text-tertiary);
+  text-align: center;
+}
+
+/* An absolutely-positioned layer the caller fills. Base layout is centered
+ * content; placement utilities re-anchor / add the scrim. */
+@utility q-media-overlay {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--hf-space-200);
+  pointer-events: none;
+
+  /* Interactive children (a play button) re-enable pointer events themselves. */
+  & > * {
+    pointer-events: auto;
+  }
+}
+
+@utility q-media-overlay-fill {
+  inset: 0;
+}
+
+@utility q-media-overlay-center {
+  inset: 0;
+}
+
+/* Bottom band with a dark→transparent gradient scrim for legible caption text. */
+@utility q-media-overlay-bottom {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: var(--hf-space-400);
+  background-image: linear-gradient(
+    to top,
+    var(--hf-color-transparent-dark-50),
+    transparent
+  );
+}
+
+/* Top band scrim — mirror of bottom, for top-anchored badges / titles. */
+@utility q-media-overlay-top {
+  top: 0;
+  right: 0;
+  left: 0;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: var(--hf-space-400);
+  background-image: linear-gradient(
+    to bottom,
+    var(--hf-color-transparent-dark-50),
+    transparent
+  );
+}
+
+/* A small label region under / over the media. */
+@utility q-media-caption {
+  @apply text-q-caption-sm-medium;
+  display: flex;
+  align-items: center;
+  gap: var(--hf-space-200);
+  padding: var(--hf-space-200) var(--hf-space-300);
+  color: var(--hf-color-text-secondary);
+}

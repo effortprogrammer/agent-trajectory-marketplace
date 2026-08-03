@@ -1,0 +1,16 @@
+/**
+ * Typography registration (Mode B — registration-only; see ai/COMPONENT_STANDARD.md §3).
+ *
+ * Typography emits NO new rules: it is the single funnel that composes the
+ * already-emitted composite type utilities (`text-q-<role>-<size>-<weight>` from
+ * src/css/tailwind/typography.css) plus the semantic `text-q-text-*` colour
+ * utilities (src/css/tailwind/color.css) and the native `truncate` utility.
+ *
+ * This file exists only to point Tailwind's scanner at the colocated source:
+ * Tailwind skips node_modules and quanta is consumed as a symlinked workspace
+ * package, so the literal class strings in typography.tsx (e.g.
+ * `text-q-body-md-regular`, `text-q-text-secondary`) are NOT discovered unless
+ * registered here. The TS unions + `satisfies Record<…>` maps in typography.tsx
+ * are the single source of truth.
+ */
+@source "./typography.tsx";

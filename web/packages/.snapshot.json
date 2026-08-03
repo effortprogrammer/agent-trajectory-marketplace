@@ -1,0 +1,19 @@
+{
+  "sourceRepository": "git@github.com:higgsfield-ai/fnf-web.git",
+  "fnfRef": "b8f86ca2cffa0576a3e85a42e18c78b4f8225de6",
+  "fnfCommit": "b8f86ca2cffa0576a3e85a42e18c78b4f8225de6",
+  "quantaRef": "b8f86ca2cffa0576a3e85a42e18c78b4f8225de6",
+  "quantaCommit": "b8f86ca2cffa0576a3e85a42e18c78b4f8225de6",
+  "bundleName": "manual-package-sync-b8f86ca2cffa.zip",
+  "bundleSha256": "not-generated-manual-sync",
+  "syncedBy": "nurdaulet@higgsfield.com",
+  "syncMode": "manual-package-copy",
+  "generatedAt": "2026-07-01T13:13:14Z",
+  "managedPackages": [
+    "@higgsfield/fnf",
+    "@higgsfield/fnf-react",
+    "@higgsfield/quanta"
+  ],
+  "templateLayout": "app-project",
+  "notes": "quanta's @higgsfield-ai/icons (private Nexus) is demoted to an optionalDependency; @higgsfield-ai/icons/* is aliased to src/lib/quanta-lucide-icons.ts (lucide-react) in vite.config.ts + tsconfig.json so the template builds on public npm. quanta stories/ + scripts/ are trimmed. Re-apply these on the next sync."
+}

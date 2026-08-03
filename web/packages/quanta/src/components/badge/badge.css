@@ -1,0 +1,208 @@
+/**
+ * Badge presentation utilities (q-namespaced), matched to the Figma Badge
+ * component at node 526:456.
+ */
+
+@source "./badge.tsx";
+
+@utility q-badge {
+  --q-badge-bg: var(--hf-color-brand-blue);
+  --q-badge-fg: var(--hf-color-text-primary);
+  --q-badge-height: var(--hf-type-line-height-200);
+  --q-badge-min-width: var(--hf-space-800);
+  --q-badge-padding-left: var(--hf-space-100);
+  --q-badge-padding-right: var(--hf-space-150);
+  --q-badge-radius: var(--hf-radius-050);
+  --q-badge-font-family: "Space_Grotesk:Bold", var(--hf-type-family-grotesk); /* no token: Figma-exported font face literal; fallback uses the family token */
+  --q-badge-font-size: var(--hf-type-size-100);
+  --q-badge-letter-spacing: var(--hf-type-letter-spacing-none);
+  --q-badge-skew: -10.89deg; /* no token: Figma badge skew angle */
+  --q-badge-scale-y: 1; /* no token: unitless transform scale factor */
+  --q-badge-frame-transform: none;
+
+  align-items: center;
+  color: var(--q-badge-fg);
+  display: inline-flex;
+  height: var(--q-badge-height);
+  justify-content: center;
+  line-height: var(--q-badge-height);
+  min-width: var(--q-badge-min-width);
+  position: relative;
+  vertical-align: middle;
+}
+
+@utility q-badge-frame {
+  align-items: center;
+  box-sizing: border-box;
+  display: inline-flex;
+  height: var(--q-badge-height);
+  justify-content: center;
+  min-width: var(--q-badge-min-width);
+  position: relative;
+  transform: var(--q-badge-frame-transform);
+  transform-origin: center;
+}
+
+@utility q-badge-surface {
+  align-items: center;
+  background: var(--q-badge-bg);
+  border-radius: var(--q-badge-radius);
+  box-sizing: border-box;
+  display: inline-flex;
+  gap: var(--hf-space-050);
+  height: var(--q-badge-height);
+  justify-content: center;
+  min-width: var(--q-badge-min-width);
+  overflow: hidden;
+  padding: var(--hf-space-0) var(--q-badge-padding-right) var(--hf-space-0) var(--q-badge-padding-left);
+  position: relative;
+}
+
+@utility q-badge-text {
+  color: currentColor;
+  /* Figma faux-bold: a 0.5px stroke in the text's own colour thickens the caps
+   * (matches `-webkit-text-stroke: 0.5px var(--icon-inverse)` in node 526:456;
+   * currentColor adapts it to each variant's fg). 0.5px = the hairline token. */
+  -webkit-text-stroke: var(--hf-border-width-hairline) currentColor;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--q-badge-font-family);
+  font-size: var(--q-badge-font-size);
+  font-style: normal;
+  font-weight: var(--hf-type-weight-bold);
+  font-synthesis: none;
+  flex-shrink: 0;
+  justify-content: center;
+  line-height: 0;
+  position: relative;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+  word-break: break-word;
+}
+
+@utility q-badge-label {
+  line-height: normal;
+}
+
+.q-badge-skew {
+  --q-badge-height: 15px; /* no token: 0.9375rem not on the space scale */
+  --q-badge-min-width: var(--hf-space-800);
+  --q-badge-padding-left: var(--hf-space-100);
+  --q-badge-padding-right: var(--hf-space-150);
+  --q-badge-radius: var(--hf-radius-050);
+  /* Figma label letter-spacing scales with size: -0.6px at xs (12px), -0.8px at
+   * sm (16px) — same proportional pattern the compact text uses. */
+  --q-badge-scale-y: 0.98; /* no token: unitless transform scale factor */
+  --q-badge-frame-transform: skewX(var(--q-badge-skew)) scaleY(var(--q-badge-scale-y));
+  --q-badge-skew-overhang: 1.4169px; /* no token: skew bounding-box overhang compensation */
+
+  padding-inline: var(--q-badge-skew-overhang);
+}
+
+.q-badge-compact {
+  --q-badge-height: var(--hf-type-line-height-100);
+  --q-badge-min-width: var(--hf-space-700);
+  --q-badge-padding-left: var(--hf-space-100);
+  --q-badge-padding-right: var(--hf-space-150);
+  --q-badge-radius: var(--hf-radius-050);
+  --q-badge-font-family: var(--hf-type-family-grotesk);
+  --q-badge-letter-spacing: var(--hf-type-letter-spacing-slight);
+  --q-badge-scale-y: 1;
+  --q-badge-frame-transform: none;
+  --q-badge-slant: 2px; /* no token: the brand tag's right-edge lean (Figma 526:456 ticket); constant px so the lean reads the same at any width */
+
+  /* The brand "ticket" shape, kept but made FLEXIBLE so it GROWS with its text.
+   * The Figma `clip-path: path()` was fixed-coordinate (28×12 / 40×17) with the
+   * label position:absolute on top, so any text past "new" spilled off the fill.
+   * `shape()` recreates the SAME geometry responsively: the right edge leans in by
+   * --q-badge-slant (the ticket signature) and every corner is an `arc` of
+   * --q-badge-radius so they read ROUNDED, not cut (polygon vertices are sharp and
+   * border-radius can't round a clip-path). The label flows INSIDE the surface, so
+   * the fill always covers the text. border-radius (base) is the fallback for
+   * engines without shape() → a plain rounded pill that still grows. */
+  .q-badge-surface {
+    clip-path: shape(
+      from var(--q-badge-radius) 0,
+      line to calc(100% - var(--q-badge-radius)) 0,
+      arc to 100% var(--q-badge-radius) of var(--q-badge-radius) cw,
+      line to calc(100% - var(--q-badge-slant)) calc(100% - var(--q-badge-radius)),
+      arc to calc(100% - var(--q-badge-slant) - var(--q-badge-radius)) 100% of var(--q-badge-radius) cw,
+      line to var(--q-badge-radius) 100%,
+      arc to 0 calc(100% - var(--q-badge-radius)) of var(--q-badge-radius) cw,
+      line to 0 var(--q-badge-radius),
+      arc to var(--q-badge-radius) 0 of var(--q-badge-radius) cw,
+      close
+    );
+  }
+
+  .q-badge-text {
+    display: block;
+    letter-spacing: calc(var(--hf-type-letter-spacing-slight) * 1.5); /* no token: 1.5 is a unitless multiplier */
+    line-height: 13px;
+    text-align: start;
+  }
+
+  .q-badge-label {
+    line-height: inherit;
+  }
+}
+
+@utility q-badge-blue {
+  --q-badge-bg: var(--hf-gradient-badge-blue);
+  --q-badge-fg: var(--hf-color-text-primary);
+}
+
+@utility q-badge-lime {
+  --q-badge-bg: var(--hf-color-brand-primary);
+  --q-badge-fg: var(--hf-color-text-inverse);
+}
+
+@utility q-badge-pink {
+  --q-badge-bg: var(--hf-gradient-badge-pink);
+  --q-badge-fg: var(--hf-color-text-primary);
+}
+
+@utility q-badge-purple {
+  --q-badge-bg: var(--hf-gradient-badge-purple);
+  --q-badge-fg: var(--hf-color-text-primary);
+}
+
+@utility q-badge-lime-subtle {
+  --q-badge-bg: var(--hf-color-transparent-lime-15);
+  --q-badge-fg: var(--hf-color-text-link);
+}
+
+@utility q-badge-n-brand {
+  --q-badge-bg: var(--hf-color-brand-primary);
+  --q-badge-fg: var(--hf-color-text-inverse);
+}
+
+@utility q-badge-n-blue {
+  --q-badge-bg: var(--hf-color-brand-cyan);
+  --q-badge-fg: var(--hf-color-text-inverse);
+}
+
+/*
+ * Size sm — Figma "Size=sm" variants (node 526:456).
+ * Default (no size class) is xs, baked into the shape utilities above. The sm
+ * deltas differ by shape, so they're applied as shape×size compound rules.
+ */
+.q-badge-skew.q-badge-sm {
+  --q-badge-height: var(--hf-space-500);
+  --q-badge-padding-left: var(--hf-space-100);
+  --q-badge-padding-right: var(--hf-space-150);
+  --q-badge-font-size: var(--hf-type-size-300);
+  --q-badge-letter-spacing: calc(var(--hf-type-letter-spacing-slight) * 2); /* no token: 2 unitless multiplier → -0.8px (Figma node 526:456 inspect) */
+  --q-badge-skew-overhang: 1.8892px; /* no token: skew bounding-box overhang compensation */
+}
+
+.q-badge-compact.q-badge-sm {
+  --q-badge-min-width: var(--hf-space-1000);
+  --q-badge-font-size: var(--hf-type-size-300);
+  --q-badge-height: 17px; /* no token: 1.0625rem not on the space scale */
+  --q-badge-slant: 2.5px; /* no token: taller tag keeps the same lean angle */
+}
+.q-badge-compact.q-badge-sm .q-badge-text {
+  letter-spacing: calc(var(--hf-type-letter-spacing-slight) * 2); /* no token: 2 is a unitless multiplier */
+}

@@ -1,0 +1,33 @@
+/**
+ * Textarea presentation — the multi-line control modifier for the shared field
+ * scaffolding, pixel-matched to the Figma TextArea (node 2134:76). The `q-field-*`
+ * base utilities (label, surface, input element, helper, error) live in
+ * input.css; this file adds only the multiline override and points Tailwind's
+ * scanner at the colocated source.
+ *
+ * Figma TextArea: same white-5% surface as TextField but the control grows
+ * vertically — top-aligned (items-start), min-height 80px, 8px block padding.
+ */
+
+@source "./textarea.tsx";
+
+@utility q-field-multiline {
+  min-height: var(--q-textarea-min-height); /* default 10.25rem lives in generated component tier :root; Figma TextArea state frame 164px has no --hf-space-* equivalent (max is --hf-space-2400 = 96px) */
+}
+
+@utility q-field-control-multiline {
+  flex: 1 0 var(--hf-space-0);
+  height: auto;
+  min-height: var(--hf-space-2000); /* 80px */
+  flex-direction: column;
+  align-items: flex-start;
+  padding-block: var(--hf-space-200); /* 8px */
+}
+
+.q-field-input.q-field-input-multiline {
+  align-self: stretch;
+  flex: 1 1 var(--hf-space-0);
+  height: auto;
+  min-height: var(--hf-space-0);
+  padding-block: var(--hf-space-050); /* 2px placeholder wrapper padding */
+}

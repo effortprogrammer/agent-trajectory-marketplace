@@ -1,0 +1,112 @@
+/**
+ * GenerationCard presentation — a feed / history generation tile (Figma
+ * Supercomputer-2 "Feed/Card" 2001:84301) with a "generating" state (Figma
+ * Cinema-Studio-V4 20037:25838): a radius/300 clipped media box, an optional
+ * bottom title over the scrim, and — while generating — a brand gradient glow
+ * pulsing at the top of the card behind a "Generating" status pill.
+ *
+ * Imported AFTER media.css (components.css order) so the caption paddings and
+ * the generating overlay win over the base `q-media-overlay-*` layers.
+ */
+@source "./generation-card.tsx";
+
+@utility q-generation-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: var(--hf-space-0);
+  overflow: hidden;
+  border-radius: var(--hf-radius-300);
+  background-color: var(--hf-color-background-secondary);
+
+  /* Interactive hosts (render={<button/>} / <a>) — cursor, hover, focus ring. */
+  &:is(button, a) {
+    cursor: pointer;
+    outline: none;
+    text-align: start;
+    @apply q-focus-ring;
+  }
+}
+
+/* The composed Media box fills the tile. */
+@utility q-generation-card-media {
+  width: 100%;
+  height: 100%;
+}
+
+/* Generating canvas — the empty box the glow sits over (5% white surface). */
+@utility q-generation-card-canvas {
+  background-color: var(--hf-color-transparent-light-05);
+}
+
+/* Bottom title row — tighter than the gallery caption (Figma feed: px-12/py-10). */
+@utility q-generation-card-caption {
+  padding: var(--hf-space-250) var(--hf-space-300);
+}
+
+@utility q-generation-card-title {
+  display: block;
+  min-width: var(--hf-space-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── generating state — glow + status pill ────────────────────────────────── */
+
+/* Full-bleed overlay that clips the glow to the card's rounded corners. */
+@utility q-generation-card-generating {
+  position: absolute;
+  inset: var(--hf-space-0);
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* The brand gradient glow bleeding from the TOP edge; opacity pulses. */
+@utility q-generation-card-glow {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  height: 45%;
+  background-image: radial-gradient(
+    120% 100% at 50% 0%,
+    color-mix(in oklab, var(--hf-color-brand-primary) 42%, transparent) 0%,
+    color-mix(in oklab, var(--hf-color-brand-primary) 14%, transparent) 45%,
+    transparent 82%
+  );
+  /* no token: pulse easing keyword (ease-in-out) + duration > 1400ms scale max —
+   * a softer, weaker, slower twinkle. */
+  animation: q-generation-pulse 2600ms ease-in-out infinite;
+}
+
+@keyframes q-generation-pulse {
+  0%,
+  100% {
+    opacity: 0.22;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* The "Generating" pill — glass overlay chip pinned top-left (Figma 21759:51482). */
+@utility q-generation-card-status {
+  position: absolute;
+  inset-block-start: var(--hf-space-200);
+  inset-inline-start: var(--hf-space-200);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hf-space-200);
+  padding: var(--hf-space-150) var(--hf-space-400) var(--hf-space-150) var(--hf-space-250);
+  border-radius: var(--hf-radius-full);
+  background-color: var(--hf-color-overlay-hover);
+  backdrop-filter: blur(var(--hf-space-300));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .q-generation-card-glow {
+    animation: none;
+    opacity: 0.7;
+  }
+}
