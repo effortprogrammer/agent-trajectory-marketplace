@@ -49,38 +49,38 @@ export const createPublishClient = (serverInput: unknown): PublishClient => {
   const server = normalizeAuthServerUrl(serverInput)
   return {
     publish: async (request): Promise<PublishReceipt> => {
-    const signal = AbortSignal.timeout(publishTimeoutMs)
-    let responseStatus = 0
-    try {
-      const frame = createPublishFrameBody(request.candidate, request.archive)
-      const response = await ky(`${server}${publishPath}`, {
-        body: frame.body,
-        headers: {
-          authorization: `Bearer ${request.credential}`,
-          "content-length": String(frame.contentLength),
-          "content-type": "application/octet-stream",
-          "idempotency-key": `archive-${request.candidate.archiveSha256}`,
-        },
-        method: "POST", redirect: "manual", retry: 0, signal, throwHttpErrors: false, timeout: publishTimeoutMs,
-      })
-      responseStatus = response.status
-      if (response.status >= 300 && response.status < 400) {
-        await response.body?.cancel()
-        throw new PublishClientError("redirect_rejected", response.status)
+      const signal = AbortSignal.timeout(publishTimeoutMs)
+      let responseStatus = 0
+      try {
+        const frame = createPublishFrameBody(request.candidate, request.archive)
+        const response = await ky(`${server}${publishPath}`, {
+          body: frame.body,
+          headers: {
+            authorization: `Bearer ${request.credential}`,
+            "content-length": String(frame.contentLength),
+            "content-type": "application/octet-stream",
+            "idempotency-key": `archive-${request.candidate.archiveSha256}`,
+          },
+          method: "POST", redirect: "manual", retry: 0, signal, throwHttpErrors: false, timeout: publishTimeoutMs,
+        })
+        responseStatus = response.status
+        if (response.status >= 300 && response.status < 400) {
+          await response.body?.cancel()
+          throw new PublishClientError("redirect_rejected", response.status)
+        }
+        const parsed = parsePublishResponse(response.status, await boundedBody(response))
+        if ("code" in parsed) throw new PublishClientError(parsed.code, response.status)
+        if (!("statusUrl" in parsed) || parsed.status !== "accepted") {
+          throw new PublishClientError("unexpected_response", response.status)
+        }
+        return parsed
+      } catch (error) {
+        if (error instanceof PublishClientError) throw error
+        if (error instanceof PublishWireContractError) throw new PublishClientError(error.code, responseStatus)
+        if (isTimeoutError(error) || signal.aborted) throw new PublishClientError("timeout", 0)
+        if (isNetworkError(error) || error instanceof TypeError || error instanceof DOMException) throw new PublishClientError("request_failed", 0)
+        throw new PublishClientError("invalid_response", 0)
       }
-      const parsed = parsePublishResponse(response.status, await boundedBody(response))
-      if ("code" in parsed) throw new PublishClientError(parsed.code, response.status)
-      if (!("statusUrl" in parsed) || parsed.status !== "accepted") {
-        throw new PublishClientError("unexpected_response", response.status)
-      }
-      return parsed
-    } catch (error) {
-      if (error instanceof PublishClientError) throw error
-      if (error instanceof PublishWireContractError) throw new PublishClientError(error.code, responseStatus)
-      if (isTimeoutError(error) || signal.aborted) throw new PublishClientError("timeout", 0)
-      if (isNetworkError(error) || error instanceof TypeError || error instanceof DOMException) throw new PublishClientError("request_failed", 0)
-      throw new PublishClientError("invalid_response", 0)
-    }
-  },
+    },
   }
 }
