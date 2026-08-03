@@ -555,6 +555,14 @@ export function ScrollScrub({
     });
 
     layout();
+
+    // Warm-up: load every clip once the initial layout settles so the first
+    // scroll pass never waits on lazy fetches. Proximity loads still win;
+    // loadClip no-ops on segments already loading/ready.
+    const warmupTimers = runtime.map((segment, index) =>
+      window.setTimeout(() => void loadClip(segment), 600 + index * 350)
+    );
+
     frame = window.requestAnimationFrame(tick);
 
     return () => {
@@ -566,6 +574,9 @@ export function ScrollScrub({
       window.removeEventListener("orientationchange", layout);
       window.removeEventListener("pointerdown", onFirstGesture);
       window.removeEventListener("touchstart", onFirstGesture);
+      for (const timer of warmupTimers) {
+        window.clearTimeout(timer);
+      }
       root.style.removeProperty("--ss-progress");
       delete root.dataset.activeSection;
 
