@@ -71,7 +71,11 @@ const resolvePublishCredential = (server: string, apiKey: string | undefined): s
   if (validCredential(environmentCredential)) return environmentCredential;
   try {
     const session = readStoredAuthSession(server);
-    if (session !== undefined && storedAuthSessionStatus(session) === "active") return session.accessToken;
+    if (
+      session !== undefined &&
+      storedAuthSessionStatus(session) === "active" &&
+      validCredential(session.accessToken)
+    ) return session.accessToken;
   } catch {
     throw new MarketplaceCliError("missing_publish_credential");
   }

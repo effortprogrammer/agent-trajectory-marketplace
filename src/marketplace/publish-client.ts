@@ -1,7 +1,8 @@
 import ky, { isNetworkError, isTimeoutError } from "ky"
 
+import { normalizeAuthServerUrl } from "../auth/server-url"
 import { createPublishFrameBody } from "./publish-frame"
-import { parsePublishResponse } from "./publish-contract"
+import { PublishWireContractError, parsePublishResponse } from "./publish-contract"
 import type { PublishCandidate, PublishErrorCode, PublishReceipt } from "./publish-contract"
 
 const responseLimitBytes = 64 * 1024
@@ -44,9 +45,12 @@ const boundedBody = async (response: Response): Promise<Uint8Array> => {
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), length)
 }
 
-export const createPublishClient = (server: string): PublishClient => ({
-  publish: async (request): Promise<PublishReceipt> => {
+export const createPublishClient = (serverInput: unknown): PublishClient => {
+  const server = normalizeAuthServerUrl(serverInput)
+  return {
+    publish: async (request): Promise<PublishReceipt> => {
     const signal = AbortSignal.timeout(publishTimeoutMs)
+    let responseStatus = 0
     try {
       const frame = createPublishFrameBody(request.candidate, request.archive)
       const response = await ky(`${server}${publishPath}`, {
@@ -59,6 +63,7 @@ export const createPublishClient = (server: string): PublishClient => ({
         },
         method: "POST", redirect: "manual", retry: 0, signal, throwHttpErrors: false, timeout: publishTimeoutMs,
       })
+      responseStatus = response.status
       if (response.status >= 300 && response.status < 400) {
         await response.body?.cancel()
         throw new PublishClientError("redirect_rejected", response.status)
@@ -71,9 +76,11 @@ export const createPublishClient = (server: string): PublishClient => ({
       return parsed
     } catch (error) {
       if (error instanceof PublishClientError) throw error
+      if (error instanceof PublishWireContractError) throw new PublishClientError(error.code, responseStatus)
       if (isTimeoutError(error) || signal.aborted) throw new PublishClientError("timeout", 0)
       if (isNetworkError(error) || error instanceof TypeError || error instanceof DOMException) throw new PublishClientError("request_failed", 0)
       throw new PublishClientError("invalid_response", 0)
     }
   },
-})
+  }
+}

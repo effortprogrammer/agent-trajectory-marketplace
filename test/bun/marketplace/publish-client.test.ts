@@ -71,6 +71,71 @@ describe("candidate publish client", () => {
     expect([redirectError.code, oversizedError.code]).toEqual(["redirect_rejected", "invalid_response"])
   })
 
+  test("normalizes the server before retaining a credentialed publish client", () => {
+    // Given: a loopback origin with an unsupported path and a request counter.
+    let hits = 0
+    const server = serve(() => {
+      hits += 1
+      return new Response(null, { status: 503 })
+    })
+
+    // When: a caller tries to construct the credentialed client from that non-origin URL.
+    const create = (): void => {
+      createPublishClient(`http://127.0.0.1:${server.port}/unexpected`)
+    }
+
+    // Then: server validation fails synchronously, before any credential can be retained or sent.
+    expect(create).toThrow()
+    expect(hits).toBe(0)
+  })
+
+  test("preserves the HTTP status when a response violates the wire contract", async () => {
+    // Given: a canonical request followed by malformed response bytes at HTTP 202.
+    const archive = Buffer.from("dataset bytes")
+    const candidate = createCandidateFromExactBytes({ archive, artifactCount: 1, manifest: Buffer.from("manifest") })
+    const server = serve(() => new Response("{malformed", { status: 202 }))
+
+    // When: the bounded response parser rejects those bytes.
+    const error = await expectError(() => createPublishClient(`http://127.0.0.1:${server.port}`).publish({
+      archive,
+      candidate,
+      credential: "flag-sentinel",
+    }))
+
+    // Then: automation retains both the stable response code and the observed HTTP status.
+    expect(error).toMatchObject({ code: "invalid_response", status: 202 })
+  })
+
+  test("preserves local candidate contract errors before transport", async () => {
+    // Given: candidate identity derived from bytes different from the caller-provided archive.
+    const candidateArchive = Buffer.from("candidate archive")
+    const requestArchive = Buffer.from("request archive")
+    const candidate = createCandidateFromExactBytes({
+      archive: candidateArchive,
+      artifactCount: 1,
+      manifest: Buffer.from("manifest"),
+    })
+    let hits = 0
+    const server = serve(() => {
+      hits += 1
+      return new Response(null, { status: 503 })
+    })
+
+    // When: local frame admission rejects the mismatched request.
+    const error = await expectError(() => createPublishClient(`http://127.0.0.1:${server.port}`).publish({
+      archive: requestArchive,
+      candidate,
+      credential: "flag-sentinel",
+    }))
+
+    // Then: the exact contract code survives and no request is made.
+    expect({ code: error.code, hits, status: error.status }).toEqual({
+      code: "invalid_candidate",
+      hits: 0,
+      status: 0,
+    })
+  })
+
   test.each([
     [400, "invalid_candidate"],
     [401, "unauthorized"],
