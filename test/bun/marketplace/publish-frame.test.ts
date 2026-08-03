@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test"
-import { createHash } from "node:crypto"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -15,17 +14,14 @@ import {
   parsePublishFrame,
 } from "../../../src/marketplace/publish-frame"
 
-const archive = Buffer.from("PK\u0003\u0004frozen-dataset", "utf8")
-const archiveSha256 = createHash("sha256").update(archive).digest("hex")
-const manifestBytes = Buffer.from('{"formatVersion":1,"artifacts":[]}', "utf8")
-const manifestSha256 = createHash("sha256").update(manifestBytes).digest("hex")
-const candidate = {
-  protocolVersion: 1,
-  bundleId: `bundle-${archiveSha256}`,
-  archiveSha256,
-  archiveByteCount: archive.length,
-  manifestSha256,
-  artifactCount: 1,
+const fixture = parsePublishFrame(readFileSync("contract/publish-wire/v1/candidate-valid.frame"))
+const { archive, candidate } = fixture
+
+const rawFrame = (input: unknown, archiveBytes: Uint8Array): Buffer => {
+  const candidateBytes = encodeCandidateJson(input)
+  const header = Buffer.allocUnsafe(4)
+  header.writeUInt32BE(candidateBytes.length, 0)
+  return Buffer.concat([header, candidateBytes, archiveBytes])
 }
 
 describe("publish frame", () => {
@@ -88,19 +84,35 @@ describe("publish frame", () => {
     }
   })
 
-  it("streams an admitted archive without materializing a second archive or complete frame", async () => {
-    // Given: a representative large archive and a candidate derived from those exact bytes.
-    const admittedArchive = Buffer.alloc(8 * 1024 * 1024, 0x61)
-    const admittedArchiveSha256 = createHash("sha256").update(admittedArchive).digest("hex")
-    const admittedCandidate = {
-      ...candidate,
-      archiveSha256: admittedArchiveSha256,
-      archiveByteCount: admittedArchive.length,
-      bundleId: `bundle-${admittedArchiveSha256}`,
+  it.each([
+    { field: "manifestSha256", value: "0".repeat(64) },
+    { field: "artifactCount", value: candidate.artifactCount + 1 },
+  ] as const)("binds candidate $field to the embedded dataset ZIP", ({ field, value }) => {
+    // Given: valid archive bytes with canonical but false candidate metadata.
+    const substituted = { ...candidate, [field]: value }
+    const maliciousFrame = rawFrame(substituted, archive)
+
+    // When: both local encoding and received-frame parsing validate those bytes.
+    const encode = (): void => {
+      encodePublishFrame(substituted, archive)
+    }
+    const parse = (): void => {
+      parsePublishFrame(maliciousFrame)
     }
 
+    // Then: neither boundary accepts candidate metadata that does not describe the ZIP.
+    expect(encode).toThrow(PublishWireContractError)
+    expect(parse).toThrow(PublishWireContractError)
+  })
+
+  it("transfers archive ownership before exposing streamed bytes", async () => {
+    // Given: a valid bundle archive whose caller retains a mutable reference.
+    const admittedArchive = Buffer.from(archive)
+    const archiveByteCount = admittedArchive.byteLength
+
     // When: the HTTP body is framed as a bounded stream.
-    const framed = createPublishFrameBody(admittedCandidate, admittedArchive)
+    const framed = createPublishFrameBody(candidate, admittedArchive)
+    if (admittedArchive.byteLength > 0) admittedArchive[admittedArchive.byteLength - 1] ^= 1
     const reader = framed.body.getReader()
     const chunks: Uint8Array[] = []
     for (;;) {
@@ -109,9 +121,13 @@ describe("publish frame", () => {
       chunks.push(result.value)
     }
 
-    // Then: framing retains the caller-owned archive as one stream chunk instead of copying it.
+    // Then: the caller is detached and the internal frame still describes the admitted archive exactly.
+    const emitted = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))
     expect(chunks).toHaveLength(3)
-    expect(chunks[2]).toBe(admittedArchive)
+    expect(admittedArchive.byteLength).toBe(0)
+    expect(chunks[2]).not.toBe(admittedArchive)
+    expect(chunks[2]?.byteLength).toBe(archiveByteCount)
     expect(chunks.reduce((total, chunk) => total + chunk.byteLength, 0)).toBe(framed.contentLength)
+    expect(parsePublishFrame(emitted)).toEqual(fixture)
   })
 })

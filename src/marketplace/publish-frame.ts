@@ -6,6 +6,7 @@ import {
   publishWirePolicy,
 } from "./publish-contract"
 import type { PublishCandidate } from "./publish-contract"
+import { parsePublishBundle } from "./publish-bundle"
 
 const frameHeaderBytes = 4
 
@@ -29,11 +30,33 @@ export type ParsedPublishFrame = Readonly<{
 const bufferView = (input: Uint8Array): Buffer =>
   Buffer.isBuffer(input) ? input : Buffer.from(input.buffer, input.byteOffset, input.byteLength)
 
+const assertCandidateMatchesBundle = (candidate: PublishCandidate, archive: Buffer): void => {
+  try {
+    const expected = parsePublishBundle(archive).candidate
+    if (!encodeCandidateJson(expected).equals(encodeCandidateJson(candidate))) {
+      throw new PublishWireContractError("invalid_candidate")
+    }
+  } catch (error) {
+    if (error instanceof PublishWireContractError) throw error
+    throw new PublishWireContractError("invalid_candidate")
+  }
+}
+
+const transferBufferView = (input: Buffer): Buffer => {
+  if (!(input.buffer instanceof ArrayBuffer)) return Buffer.from(input)
+  const transferred = structuredClone(
+    new Uint8Array(input.buffer, input.byteOffset, input.byteLength),
+    { transfer: [input.buffer] },
+  )
+  return Buffer.from(transferred.buffer, transferred.byteOffset, transferred.byteLength)
+}
+
 const publishFrameParts = (input: unknown, archiveInput: Uint8Array): PublishFrameParts => {
   const candidateJson = encodeCandidateJson(input)
   const candidate = parseCandidateJson(candidateJson)
   const archive = bufferView(archiveInput)
   assertArchiveMatchesCandidate(candidate, archive)
+  assertCandidateMatchesBundle(candidate, archive)
   const header = Buffer.allocUnsafe(frameHeaderBytes)
   header.writeUInt32BE(candidateJson.byteLength, 0)
   return {
@@ -46,7 +69,7 @@ const publishFrameParts = (input: unknown, archiveInput: Uint8Array): PublishFra
 
 export const createPublishFrameBody = (input: unknown, archiveInput: Uint8Array): PublishFrameBody => {
   const parts = publishFrameParts(input, archiveInput)
-  const chunks: readonly Uint8Array[] = [parts.header, parts.candidateJson, parts.archive]
+  const chunks: readonly Uint8Array[] = [parts.header, parts.candidateJson, transferBufferView(parts.archive)]
   let index = 0
   return {
     body: new ReadableStream<Uint8Array>({
@@ -81,5 +104,6 @@ export const parsePublishFrame = (input: Uint8Array): ParsedPublishFrame => {
   const candidate = parseCandidateJson(frame.subarray(frameHeaderBytes, candidateEnd))
   const archive = frame.subarray(candidateEnd)
   assertArchiveMatchesCandidate(candidate, archive)
+  assertCandidateMatchesBundle(candidate, archive)
   return { candidate, archive }
 }
