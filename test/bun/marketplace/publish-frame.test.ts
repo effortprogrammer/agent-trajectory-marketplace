@@ -1,11 +1,19 @@
 import { describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
+import { readPublishBundle } from "../../../src/marketplace/publish-bundle"
 import {
   PublishWireContractError,
   encodeCandidateJson,
 } from "../../../src/marketplace/publish-contract"
-import { encodePublishFrame, parsePublishFrame } from "../../../src/marketplace/publish-frame"
+import {
+  createPublishFrameBody,
+  encodePublishFrame,
+  parsePublishFrame,
+} from "../../../src/marketplace/publish-frame"
 
 const archive = Buffer.from("PK\u0003\u0004frozen-dataset", "utf8")
 const archiveSha256 = createHash("sha256").update(archive).digest("hex")
@@ -60,5 +68,50 @@ describe("publish frame", () => {
         if (error instanceof PublishWireContractError) expect(error.code).toBe("invalid_candidate")
       }
     }
+  })
+
+  it("ships an accepted fixture whose archive satisfies the dataset bundle contract", () => {
+    // Given: the frozen accepted frame and an isolated regular file for its embedded archive.
+    const frame = parsePublishFrame(readFileSync("contract/publish-wire/v1/candidate-valid.frame"))
+    const root = mkdtempSync(join(tmpdir(), "trajectory-publish-fixture-"))
+    const path = join(root, "candidate.zip")
+    writeFileSync(path, frame.archive)
+
+    // When: the same reader used by the public CLI validates the fixture archive.
+    try {
+      const bundle = readPublishBundle(path)
+
+      // Then: the fixture candidate describes the exact valid dataset bundle.
+      expect(bundle).toEqual({ archive: frame.archive, candidate: frame.candidate })
+    } finally {
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  it("streams an admitted archive without materializing a second archive or complete frame", async () => {
+    // Given: a representative large archive and a candidate derived from those exact bytes.
+    const admittedArchive = Buffer.alloc(8 * 1024 * 1024, 0x61)
+    const admittedArchiveSha256 = createHash("sha256").update(admittedArchive).digest("hex")
+    const admittedCandidate = {
+      ...candidate,
+      archiveSha256: admittedArchiveSha256,
+      archiveByteCount: admittedArchive.length,
+      bundleId: `bundle-${admittedArchiveSha256}`,
+    }
+
+    // When: the HTTP body is framed as a bounded stream.
+    const framed = createPublishFrameBody(admittedCandidate, admittedArchive)
+    const reader = framed.body.getReader()
+    const chunks: Uint8Array[] = []
+    for (;;) {
+      const result = await reader.read()
+      if (result.done) break
+      chunks.push(result.value)
+    }
+
+    // Then: framing retains the caller-owned archive as one stream chunk instead of copying it.
+    expect(chunks).toHaveLength(3)
+    expect(chunks[2]).toBe(admittedArchive)
+    expect(chunks.reduce((total, chunk) => total + chunk.byteLength, 0)).toBe(framed.contentLength)
   })
 })

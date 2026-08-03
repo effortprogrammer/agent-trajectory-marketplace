@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto"
 
+import { encodeDatasetManifest } from "../../../src/marketplace/archive-contract"
 import {
   createCandidateFromExactBytes,
   encodePublishResponse,
 } from "../../../src/marketplace/publish-contract"
 import { encodePublishFrame } from "../../../src/marketplace/publish-frame"
+import { writeDatasetZip } from "../../../src/marketplace/stored-zip"
 
 type Fixture = Readonly<{
   file: string
@@ -14,14 +16,34 @@ type Fixture = Readonly<{
 }>
 
 const root = new URL("./", import.meta.url)
-const archive = Buffer.from("PK\u0003\u0004publish-wire-v1-dataset", "utf8")
-const manifest = Buffer.from('{"formatVersion":1,"artifacts":[]}', "utf8")
+const trace = Buffer.from('{"runtime":"codex","status":"collected","eventCount":0,"events":[]}', "utf8")
+const label = `s-${"0".repeat(64)}`
+const path = `traces/${label}.atf.json`
+const manifest = encodeDatasetManifest({
+  artifacts: [{
+    byteCount: trace.length,
+    label,
+    path,
+    sha256: createHash("sha256").update(trace).digest("hex"),
+  }],
+  formatVersion: 1,
+})
+const archive = writeDatasetZip([
+  { data: manifest, name: "dataset-manifest.json" },
+  { data: trace, name: path },
+])
 const candidate = createCandidateFromExactBytes({ archive, manifest, artifactCount: 1 })
 const frame = encodePublishFrame(candidate, archive)
 const malformedLength = Buffer.from(frame)
 malformedLength.writeUInt32BE(frame.readUInt32BE(0) + 1, 0)
-const mutatedZip = Buffer.from(frame)
-mutatedZip[mutatedZip.byteLength - 1] ^= 1
+const invalidCrcArchive = Buffer.from(archive)
+invalidCrcArchive.writeUInt32LE(0, 14)
+const invalidCrcCandidate = createCandidateFromExactBytes({
+  archive: invalidCrcArchive,
+  manifest,
+  artifactCount: 1,
+})
+const mutatedZip = encodePublishFrame(invalidCrcCandidate, invalidCrcArchive)
 const submissionId = "sub_0123456789abcdefghjkmnpqrs"
 const statusUrl = `/v1/marketplace/seller/candidates/${submissionId}`
 

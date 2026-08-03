@@ -1,3 +1,14 @@
+import { createHash } from "node:crypto"
+
+import {
+  ArchiveContractError,
+  assertDatasetArchivePlan,
+  datasetArchivePolicy,
+  datasetManifestPath,
+  datasetManifestSchema,
+} from "./archive-contract"
+import { crc32 } from "./zip-crc32"
+
 const localHeaderSignature = 0x04034b50
 const centralHeaderSignature = 0x02014b50
 const endOfCentralDirectorySignature = 0x06054b50
@@ -22,26 +33,6 @@ export class StoredZipError extends Error {
     super(reason)
     this.name = "StoredZipError"
   }
-}
-
-const crc32Table: Uint32Array = (() => {
-  const table = new Uint32Array(256)
-  for (let index = 0; index < table.length; index += 1) {
-    let value = index
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = (value & 1) === 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1
-    }
-    table[index] = value >>> 0
-  }
-  return table
-})()
-
-const crc32 = (data: Buffer): number => {
-  let crc = 0xffffffff
-  for (const byte of data) {
-    crc = (crc >>> 8) ^ (crc32Table[(crc ^ byte) & 0xff] ?? 0)
-  }
-  return (crc ^ 0xffffffff) >>> 0
 }
 
 const validateName = (name: string): Buffer => {
@@ -175,12 +166,3 @@ export const writeDatasetZip = (entries: readonly StoredZipEntry[]): Buffer => {
   }
   return writeStoredZip(orderedEntries)
 }
-import { createHash } from "node:crypto"
-
-import {
-  ArchiveContractError,
-  assertDatasetArchivePlan,
-  datasetArchivePolicy,
-  datasetManifestPath,
-  datasetManifestSchema,
-} from "./archive-contract"
