@@ -17,6 +17,7 @@ import { createCandidateFromExactBytes } from "./publish-contract"
 import type { PublishCandidate } from "./publish-contract"
 import { crc32 } from "./zip-crc32"
 import {
+  boundedRedactedString,
   harnessTraceDocumentSchema,
   sanitizeHarnessPayload,
 } from "../trajectory/adapters/contract"
@@ -67,7 +68,6 @@ const readEntries = (archive: Buffer): readonly BundleEntry[] => {
   ) return invalid()
   if (centralOffset > endOffset || centralSize !== endOffset - centralOffset) return invalid()
   const entries: BundleEntry[] = []
-  const entriesByOffset = new Map<number, BundleEntry>()
   let offset = 0
   while (offset < centralOffset) {
     if (entries.length >= expectedCount) return invalid()
@@ -103,7 +103,6 @@ const readEntries = (archive: Buffer): readonly BundleEntry[] => {
     if (crc32(data) !== checksum) return invalid()
     const entry = { crc32: checksum, data, name, nameBytes, offset }
     entries.push(entry)
-    entriesByOffset.set(offset, entry)
     offset = dataEnd
   }
   let centralPosition = centralOffset
@@ -142,19 +141,19 @@ const readEntries = (archive: Buffer): readonly BundleEntry[] => {
     const nameBytes = archive.subarray(centralPosition + 46, centralPosition + 46 + nameLength)
     let name: string
     try { name = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(nameBytes) } catch { return invalid() }
-    const local = entriesByOffset.get(localOffset)
+    const local = entries[index]
     if (
       local === undefined ||
+      local.offset !== localOffset ||
       local.name !== name ||
       !local.nameBytes.equals(nameBytes) ||
       local.data.length !== size ||
       local.crc32 !== checksum
     ) return invalid()
-    entriesByOffset.delete(localOffset)
     centralPosition += 46 + nameLength + extraLength + commentLength
   }
   if (centralPosition !== endOffset) return invalid()
-  if (entries.length !== expectedCount || entriesByOffset.size !== 0) return invalid()
+  if (entries.length !== expectedCount) return invalid()
   return entries
 }
 
@@ -163,7 +162,19 @@ const assertTraceAdmission = (data: Buffer): void => {
   try { input = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(data)) } catch { return invalid() }
   const parsed = harnessTraceDocumentSchema.safeParse(input)
   if (!parsed.success) return invalid()
+  const runtime = boundedRedactedString(parsed.data.runtime)
+  if (runtime.truncated || runtime.text !== parsed.data.runtime) return invalid()
   for (const event of parsed.data.events) {
+    const metadata = [
+      event.kind,
+      event.name,
+      ...(event.sourceEventId === undefined ? [] : [event.sourceEventId]),
+      ...(event.parentSourceEventId === undefined ? [] : [event.parentSourceEventId]),
+    ]
+    if (metadata.some((value) => {
+      const sanitized = boundedRedactedString(value)
+      return sanitized.truncated || sanitized.text !== value
+    })) return invalid()
     if (event.payload === undefined) continue
     const sanitized = sanitizeHarnessPayload(event.payload)
     if (sanitized === undefined || !isDeepStrictEqual(sanitized, event.payload)) return invalid()
@@ -197,6 +208,11 @@ export const parsePublishBundle = (archive: Buffer): PublishBundle => {
   try { manifestInput = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(manifestEntry.data)) } catch { return invalid() }
   const manifest = datasetManifestSchema.safeParse(manifestInput)
   if (!manifest.success || entries.length !== manifest.data.artifacts.length + 1) return invalid()
+  const expectedNames = [
+    datasetManifestPath,
+    ...manifest.data.artifacts.map((artifact) => artifact.path).sort(),
+  ]
+  if (entries.some((entry, index) => entry.name !== expectedNames[index])) return invalid()
   try {
     assertDatasetArchivePlan({
       archiveByteCount: archive.byteLength,
