@@ -28,3 +28,17 @@ curl -fsSL https://github.com/effortprogrammer/agent-trajectory-marketplace/rele
 Requires **Git** and **Bun 1.3+**.
 
 The installer starts collection immediately and checks immutable stable GitHub Releases every six hours.
+
+## Candidate publication
+
+Publish one locally validated dataset bundle with:
+
+```bash
+trajectory marketplace seller candidate publish \
+  --bundle /absolute/path/to/candidate.zip \
+  --server https://registry.example.com
+```
+
+Credentials resolve in this order: explicit `--api-key`, `TRAJECTORY_REGISTRY_API_KEY`, then an active stored login for the same server. A defined but invalid higher-priority credential fails locally instead of selecting another identity.
+
+Each invocation validates and consumes one bundle without automatic HTTP retries. Rerun the command to reread and revalidate the file after a retryable server or network error.
