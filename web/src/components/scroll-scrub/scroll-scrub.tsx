@@ -293,6 +293,94 @@ export function ScrollScrub({
       }
     };
 
+    let blobVideoSupport: boolean | undefined;
+    const supportsBlobVideo = () => {
+      if (blobVideoSupport === undefined) {
+        blobVideoSupport =
+          !/^((?!chrome|chromium|android).)*safari/i.test(
+            window.navigator.userAgent
+          );
+      }
+      return blobVideoSupport;
+    };
+
+    const attachVideo = (
+      segment: RuntimeSegment,
+      source: string,
+      src: string,
+      objectUrl?: string
+    ) => {
+      const video = document.createElement("video");
+      video.className = "scroll-scrub__video";
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "auto";
+      video.setAttribute("muted", "");
+      video.setAttribute("playsinline", "");
+      video.src = src;
+
+      video.addEventListener(
+        "loadedmetadata",
+        () => {
+          if (segment.video !== video || segment.loadedSource !== source) {
+            return;
+          }
+          segment.ready = true;
+          segment.loading = false;
+          dirty = true;
+        },
+        { once: true }
+      );
+      video.addEventListener(
+        "loadeddata",
+        () => {
+          if (
+            userReady &&
+            segment.video === video &&
+            segment.loadedSource === source
+          ) {
+            void primeVideo(video);
+          }
+        },
+        { once: true }
+      );
+      video.addEventListener(
+        "error",
+        () => {
+          if (segment.video !== video) {
+            return;
+          }
+          video.remove();
+          if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+          }
+          delete segment.video;
+          delete segment.objectUrl;
+          segment.failed = true;
+          segment.loading = false;
+          segment.ready = false;
+          delete segment.layer.dataset.videoPainted;
+          segment.layer.dataset.videoFailed = "true";
+        },
+        { once: true }
+      );
+      video.addEventListener(
+        "seeked",
+        () => {
+          if (segment.video === video && segment.loadedSource === source) {
+            segment.layer.dataset.videoPainted = "true";
+          }
+        },
+        { once: true }
+      );
+
+      segment.layer.append(video);
+      if (objectUrl) {
+        segment.objectUrl = objectUrl;
+      }
+      segment.video = video;
+    };
+
     const loadClip = async (segment: RuntimeSegment) => {
       const source = sourceFor(segment);
       if (
@@ -311,6 +399,13 @@ export function ScrollScrub({
       segment.abort = new AbortController();
       const request = segment.abort;
 
+      // Safari/WebKit cannot reliably paint blob-backed <video>; serve the
+      // clip directly instead (HTTP range requests cover seeking).
+      if (!supportsBlobVideo()) {
+        attachVideo(segment, source, source);
+        return;
+      }
+
       try {
         const response = await fetch(source, {
           signal: request.signal,
@@ -328,71 +423,7 @@ export function ScrollScrub({
         }
 
         const objectUrl = URL.createObjectURL(blob);
-        const video = document.createElement("video");
-        video.className = "scroll-scrub__video";
-        video.muted = true;
-        video.playsInline = true;
-        video.preload = "auto";
-        video.setAttribute("muted", "");
-        video.setAttribute("playsinline", "");
-        video.src = objectUrl;
-
-        video.addEventListener(
-          "loadedmetadata",
-          () => {
-            if (segment.video !== video || segment.loadedSource !== source) {
-              return;
-            }
-            segment.ready = true;
-            segment.loading = false;
-            dirty = true;
-          },
-          { once: true }
-        );
-        video.addEventListener(
-          "loadeddata",
-          () => {
-            if (
-              userReady &&
-              segment.video === video &&
-              segment.loadedSource === source
-            ) {
-              void primeVideo(video);
-            }
-          },
-          { once: true }
-        );
-        video.addEventListener(
-          "error",
-          () => {
-            if (segment.video !== video) {
-              return;
-            }
-            video.remove();
-            URL.revokeObjectURL(objectUrl);
-            delete segment.video;
-            delete segment.objectUrl;
-            segment.failed = true;
-            segment.loading = false;
-            segment.ready = false;
-            delete segment.layer.dataset.videoPainted;
-            segment.layer.dataset.videoFailed = "true";
-          },
-          { once: true }
-        );
-        video.addEventListener(
-          "seeked",
-          () => {
-            if (segment.video === video && segment.loadedSource === source) {
-              segment.layer.dataset.videoPainted = "true";
-            }
-          },
-          { once: true }
-        );
-
-        segment.layer.append(video);
-        segment.objectUrl = objectUrl;
-        segment.video = video;
+        attachVideo(segment, source, objectUrl, objectUrl);
       } catch (error) {
         if (
           request.signal.aborted ||
