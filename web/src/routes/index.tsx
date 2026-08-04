@@ -148,16 +148,9 @@ function SiteHeader() {
     <header
       className={`atm-chrome fixed inset-x-0 top-0 z-50 ${hidden ? "atm-chrome--docked-atm" : ""}`}
     >
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
         <a href="/" className="flex items-center gap-2.5" aria-label="ATM home">
-          <span
-            className="atm-node-pulse inline-block size-2.5 rounded-sm"
-            style={{ backgroundColor: "var(--atm-teal)" }}
-            aria-hidden="true"
-          />
-          <span className="atm-wordmark text-sm font-bold">
-            ATM <span className="text-atm-muted">· trajectories</span>
-          </span>
+          <span className="atm-wordmark text-sm font-bold">ATM</span>
         </a>
         <nav className="hidden items-center gap-7 text-sm text-atm-muted md:flex" aria-label="Primary">
           <a className="transition-colors hover:text-atm-paper" href="#how">
