@@ -1,0 +1,48 @@
+/**
+ * Slot color system — component-INTERNAL styling primitives (concept ported
+ * from mdigitalcn/uikit). Hand-authored, NOT codegen, NOT golden-gated.
+ *
+ * A component sets ONE private custom property `--q-tint` (plus optional siblings
+ * `--q-tint-bg` / `--q-tint-fg` / `--q-tint-border`, and the shape/motion `--_radius` /
+ * `--_duration` / `--_ease`) inline from a single semantic `color` prop — see
+ * src/components/utils/slot.ts. Every interior surface then derives from it via
+ * these utilities, so changing one prop re-skins the whole control.
+ *
+ * Authored ONLY inside component .tsx, never in app code — the `--q-tint*` props are
+ * a private boundary, not consumer-facing q-* tokens.
+ *
+ * This is the TINT pattern (soft single-accent: toggle/tag/switch/tabs/progress/
+ * loader). Selection controls (checkbox/radio/chip) use a separate per-color
+ * utility table instead — see ai/COMPONENT_STANDARD.md §4 for when to use which.
+ *
+ * CONTRACT: `--q-tint` values MUST reference `--hf-color-*` runtime primitives
+ * (emitted per data-theme), NEVER `--color-q-*` (those are @theme inline-only
+ * and have no runtime value). Copying a `bg-q-*` token name into a SLOT map
+ * silently breaks theming. See ai/AGENTS.md.
+ */
+
+/* Solid fills — bg reads --q-tint-bg, defaulting to --q-tint (uikit-aligned). */
+@utility q-slot-bg    { background-color: var(--q-tint-bg, var(--q-tint)); }
+@utility q-slot-bg-fg { background-color: var(--q-tint-fg, oklch(100% 0 0)); }
+
+/* Soft tints — always derived from --q-tint (the saturated color), never --q-tint-bg. */
+@utility q-slot-bg-10 { background-color: color-mix(in oklch, var(--q-tint) 10%, transparent); }
+@utility q-slot-bg-20 { background-color: color-mix(in oklch, var(--q-tint) 20%, transparent); }
+
+/* Foreground / text */
+@utility q-slot-text    { color: var(--q-tint); }
+@utility q-slot-text-fg { color: var(--q-tint-fg, oklch(100% 0 0)); }
+
+/* Border — defaults to --q-tint when --q-tint-border unset. */
+@utility q-slot-border { border-color: var(--q-tint-border, var(--q-tint)); }
+
+/* Focus ring */
+@utility q-slot-ring    { --tw-ring-color: var(--q-tint); }
+@utility q-slot-ring-40 { --tw-ring-color: color-mix(in oklch, var(--q-tint) 40%, transparent); }
+
+/* ── Shape / motion slots. --_radius/--_duration/--_ease are set inline per
+ * component; until quanta radius/motion tokens are emitted (plan Phase 2)
+ * components may use native utilities (rounded-lg, duration-200) instead. ── */
+@utility q-slot-rounded  { border-radius: var(--_radius); }
+@utility q-slot-duration { transition-duration: var(--_duration); }
+@utility q-slot-ease     { transition-timing-function: var(--_ease); }

@@ -1,0 +1,781 @@
+/**
+ * Sidebar presentation, matched to the Figma Sidebar component set:
+ * primitives 2438:253, variants 2441:1407, cinema instance 2798:8274.
+ *
+ * Most values are emitted design tokens. Literal dimensions appear only where
+ * Figma itself exposes product/frame dimensions or custom assets: product rail
+ * widths, the 810px Storybook frame height, shared-badge custom stroke colors,
+ * and the promo badge gradient/transform geometry.
+ */
+@source "./sidebar.tsx";
+
+@utility q-sidebar {
+  --q-sidebar-radius: var(--hf-radius-400);
+
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: var(--q-sidebar-width);
+  height: 100%;
+  min-height: var(--hf-space-0);
+  overflow: hidden;
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--q-sidebar-radius);
+  background-color: var(--hf-color-background-elevated-end);
+  box-shadow: inset 0 0 0 var(--hf-border-width-thin) var(--hf-color-border-subtle);
+  color: var(--hf-color-text-primary);
+  transition: width var(--hf-duration-220) var(--hf-ease-in-out);
+}
+
+.q-sidebar[data-product="cinema-studio"]:not(.q-sidebar-collapsed) {
+  --q-sidebar-width: 14.4375rem; /* 231px, Figma product=cinema-studio */
+}
+
+.q-sidebar[data-product="marketing-studio"]:not(.q-sidebar-collapsed) {
+  --q-sidebar-width: 14.9375rem; /* 239px, Figma product=marketing-studio */
+}
+
+.q-sidebar[data-product="supercomputer"]:not(.q-sidebar-collapsed) {
+  --q-sidebar-width: 12.5625rem; /* 201px, Figma product=supercomputer */
+}
+
+@utility q-sidebar-flush {
+  --q-sidebar-radius: var(--hf-radius-0);
+}
+
+/* Header: 52px high, 8px padding, then the 36px workspace badge row. */
+@utility q-sidebar-header {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  align-items: center;
+  width: 100%;
+  height: calc(var(--hf-space-1200) + var(--hf-space-100));
+  padding: var(--hf-space-200);
+  gap: var(--hf-space-200);
+}
+
+@utility q-sidebar-switcher {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  align-items: center;
+  height: calc(var(--hf-space-600) + var(--hf-space-300));
+  padding: var(--hf-space-150);
+  gap: var(--hf-space-200);
+  overflow: hidden;
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--hf-radius-300);
+  background-color: transparent;
+  color: var(--hf-color-text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--hf-duration-150) ease;
+
+  &:hover { background-color: var(--hf-color-overlay-hover); }
+  &:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 var(--hf-border-width-thick) var(--hf-color-border-focus);
+  }
+}
+
+@utility q-sidebar-logo {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-600);
+  height: var(--hf-space-600);
+  overflow: visible;
+  border-radius: var(--hf-radius-200);
+
+  & > svg,
+  & > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  & > svg {
+    overflow: visible;
+  }
+}
+
+@utility q-sidebar-switcher-name {
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  align-items: center;
+  gap: var(--hf-space-100);
+  overflow: hidden;
+  color: var(--hf-color-text-primary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  /* The chevron is wrapped in <Icon size="sm" color="secondary"> (icon.css owns
+     svg sizing + the color token); only the flex reset stays component-owned. */
+  & > .q-sidebar-switcher-chevron {
+    flex: none;
+  }
+}
+
+@utility q-sidebar-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-600);
+  height: var(--hf-space-600);
+  padding: var(--hf-space-0);
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--hf-radius-200);
+  background-color: transparent;
+  color: var(--hf-color-icon-secondary);
+  cursor: pointer;
+  transition: color var(--hf-duration-150) ease, background-color var(--hf-duration-150) ease;
+
+  &:hover {
+    color: var(--hf-color-icon-primary);
+    background-color: var(--hf-color-overlay-hover);
+  }
+  &:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 var(--hf-border-width-thick) var(--hf-color-border-focus);
+  }
+  & > svg {
+    width: var(--hf-space-400);
+    height: var(--hf-space-400);
+  }
+}
+
+@utility q-sidebar-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  min-height: var(--hf-space-0);
+  /* Scroll the sections when they exceed the rail (header + footer stay pinned as
+   * flex:none siblings). X stays clipped so collapsing labels still clip cleanly;
+   * `flex:1 1 auto` + `min-height:0` above are what let this shrink-to-scroll. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@utility q-sidebar-section {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 100%;
+  padding: var(--hf-space-200);
+  gap: var(--hf-space-050);
+}
+
+.q-sidebar-section:has(.q-sidebar-section-header) {
+  gap: var(--hf-space-200);
+}
+
+@utility q-sidebar-section-items {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: var(--hf-space-050);
+}
+
+@utility q-sidebar-section-header {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  align-items: center;
+  width: 100%;
+  height: var(--hf-space-700);
+  padding: var(--hf-space-150);
+  gap: var(--hf-space-200);
+  overflow: hidden;
+}
+
+@utility q-sidebar-section-title {
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--hf-color-text-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@utility q-sidebar-section-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--hf-space-100);
+  color: var(--hf-color-icon-secondary);
+
+  & > * {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--hf-space-600);
+    height: var(--hf-space-600);
+    padding: var(--hf-space-0);
+    border: var(--hf-border-width-none) solid transparent;
+    border-radius: var(--hf-radius-200);
+    background-color: transparent;
+    color: inherit;
+  }
+
+  & > button {
+    cursor: pointer;
+  }
+
+  & > button:hover,
+  & > [aria-pressed="true"] {
+    color: var(--hf-color-icon-primary);
+    background-color: var(--hf-color-overlay-hover);
+  }
+}
+
+@utility q-sidebar-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  overflow: hidden;
+  border: var(--hf-border-width-none) solid transparent;
+  background-color: transparent;
+  color: var(--hf-color-text-primary);
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+  gap: var(--hf-space-200);
+  transition: background-color var(--hf-duration-150) ease;
+
+  &:hover { background-color: var(--hf-color-overlay-hover); }
+  &:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 var(--hf-border-width-thick) var(--hf-color-border-focus);
+  }
+}
+
+@utility q-sidebar-selected {
+  background-color: var(--hf-color-transparent-light-10);
+
+  &:hover { background-color: var(--hf-color-transparent-light-10); }
+}
+
+.q-sidebar-item.q-sidebar-selected:not(.q-sidebar-projectitem) .q-sidebar-label {
+  color: var(--hf-color-text-primary);
+}
+
+/* Disabled row — the whole row dims, no hover/pointer (matches the menu row). */
+.q-sidebar-row:disabled,
+.q-sidebar-row[aria-disabled="true"] {
+  opacity: var(--hf-opacity-disabled);
+  pointer-events: none;
+  cursor: default;
+}
+
+@utility q-sidebar-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-650);
+  height: var(--hf-space-650);
+  color: var(--hf-color-icon-primary);
+
+  & > svg,
+  & > img {
+    width: var(--hf-space-650);
+    height: var(--hf-space-650);
+  }
+}
+
+@utility q-sidebar-label {
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  overflow: hidden;
+  color: var(--hf-color-text-primary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@utility q-sidebar-meta {
+  flex: none;
+  overflow: hidden;
+  color: var(--hf-color-transparent-light-30);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The count keeps the Figma project-row's wider tracking; a descendant selector
+   outranks the element-level text-q-caption-sm-regular utility deterministically
+   (so the composite supplies family/size/weight/line-height, this the tracking). */
+.q-sidebar-row .q-sidebar-meta {
+  letter-spacing: var(--hf-type-letter-spacing-wide);
+}
+
+@utility q-sidebar-end {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--hf-space-100);
+  color: var(--hf-color-icon-secondary);
+
+  & > svg {
+    width: var(--hf-space-600);
+    height: var(--hf-space-600);
+  }
+}
+
+@utility q-sidebar-item {
+  min-height: calc(var(--hf-space-600) + var(--hf-space-300));
+  padding: var(--hf-space-150);
+  border-radius: var(--hf-radius-300);
+}
+
+@utility q-sidebar-item-sm {
+  min-height: var(--hf-space-800);
+  padding: var(--hf-space-100) var(--hf-space-150);
+  border-radius: var(--hf-radius-250);
+}
+
+@utility q-sidebar-projectitem {
+  padding: var(--hf-space-150) var(--hf-space-300) var(--hf-space-150) var(--hf-space-150);
+}
+
+.q-sidebar-projectitem.q-sidebar-item-sm {
+  min-height: var(--hf-space-700);
+  padding: var(--hf-space-100) var(--hf-space-300) var(--hf-space-100) var(--hf-space-150);
+  border-radius: var(--hf-radius-200);
+}
+
+@utility q-sidebar-actionrow {
+  position: relative;
+  display: block;
+}
+
+@utility q-sidebar-pinrow {
+  position: relative;
+  display: block;
+}
+
+@utility q-sidebar-action {
+  position: absolute;
+  inset-inline-end: var(--hf-space-150);
+  top: 50%;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transform: translateY(-50%);
+  transition: opacity var(--hf-duration-150) ease, transform var(--hf-duration-150) ease;
+  will-change: opacity, transform;
+}
+
+.q-sidebar-actionrow-project .q-sidebar-action {
+  inset-inline-end: var(--hf-space-300);
+}
+
+.q-sidebar-actionrow-hover .q-sidebar-action {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(var(--hf-space-100));
+}
+
+.q-sidebar-actionrow-hover:hover .q-sidebar-action,
+.q-sidebar-actionrow-hover:focus-within .q-sidebar-action {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(var(--hf-space-0));
+}
+
+.q-sidebar-actionrow-hover:hover .q-sidebar-meta,
+.q-sidebar-actionrow-hover:hover .q-sidebar-end,
+.q-sidebar-actionrow-hover:focus-within .q-sidebar-meta,
+.q-sidebar-actionrow-hover:focus-within .q-sidebar-end {
+  opacity: 0;
+}
+
+@utility q-sidebar-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-600);
+  height: var(--hf-space-600);
+  padding: var(--hf-space-0);
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--hf-radius-150);
+  background-color: transparent;
+  color: var(--hf-color-icon-secondary);
+  cursor: pointer;
+  transition: background-color var(--hf-duration-150) ease, color var(--hf-duration-150) ease, transform var(--hf-duration-150) ease;
+
+  &:hover,
+  &[data-popup-open] {
+    background-color: var(--hf-color-overlay-hover);
+    color: var(--hf-color-icon-primary);
+  }
+  &:active {
+    transform: scale(0.96);
+  }
+  &:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 var(--hf-border-width-thick) var(--hf-color-border-focus);
+  }
+  & > svg {
+    width: var(--hf-space-400);
+    height: var(--hf-space-400);
+  }
+}
+
+@utility q-sidebar-pin {
+  position: absolute;
+  inset-inline-end: var(--hf-space-150);
+  top: 50%;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-500);
+  height: var(--hf-space-500);
+  padding: var(--hf-space-0);
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--hf-radius-150);
+  background-color: transparent;
+  color: var(--hf-color-icon-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-50%) translateX(var(--hf-space-100)) scale(0.96);
+  transition: opacity var(--hf-duration-150) ease, color var(--hf-duration-150) ease, background-color var(--hf-duration-150) ease, transform var(--hf-duration-150) ease;
+  will-change: opacity, transform;
+
+  &:hover {
+    color: var(--hf-color-icon-primary);
+    background-color: var(--hf-color-overlay-hover);
+  }
+  &:focus-visible {
+    opacity: 1;
+    outline: none;
+    box-shadow: inset 0 0 0 var(--hf-border-width-thick) var(--hf-color-border-focus);
+  }
+  &[data-pinned] {
+    opacity: 1;
+    color: var(--hf-color-icon-primary);
+    transform: translateY(-50%) translateX(var(--hf-space-0)) scale(1);
+  }
+  & > svg {
+    width: calc(var(--hf-space-300) + var(--hf-space-050));
+    height: calc(var(--hf-space-300) + var(--hf-space-050));
+  }
+}
+
+.q-sidebar-actionrow-project .q-sidebar-pin {
+  inset-inline-end: var(--hf-space-300);
+}
+
+.q-sidebar-projectitem .q-sidebar-end > svg {
+  width: var(--hf-space-400);
+  height: var(--hf-space-400);
+}
+
+.q-sidebar-actionrow-selected .q-sidebar-pin > svg,
+.q-sidebar-pinned .q-sidebar-pin > svg {
+  width: var(--hf-space-400);
+  height: var(--hf-space-400);
+}
+
+.q-sidebar-pinrow:hover .q-sidebar-pin,
+.q-sidebar-pinrow:focus-within .q-sidebar-pin {
+  opacity: 1;
+  transform: translateY(-50%) translateX(var(--hf-space-0)) scale(1);
+}
+.q-sidebar-pinrow:hover .q-sidebar-meta,
+.q-sidebar-pinrow:hover .q-sidebar-end,
+.q-sidebar-pinrow:focus-within .q-sidebar-meta,
+.q-sidebar-pinrow:focus-within .q-sidebar-end,
+.q-sidebar-pinned .q-sidebar-meta,
+.q-sidebar-pinned .q-sidebar-end { opacity: 0; }
+
+@utility q-sidebar-search {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: calc(var(--hf-space-600) + var(--hf-space-300));
+  padding: var(--hf-space-150);
+  gap: var(--hf-space-200);
+  border-radius: var(--hf-radius-300);
+  background-color: var(--hf-color-overlay-hover);
+  color: var(--hf-color-icon-secondary);
+  animation: q-sidebar-search-enter var(--hf-duration-160) var(--hf-ease-out-expo) both;
+  will-change: opacity, transform;
+
+  /* The default magnifier is wrapped in <Icon size="lg"> (icon.css owns svg
+     sizing); it inherits this container's icon-secondary color via currentColor.
+     A custom `icon` slot (any node) is still sized by this fallback. */
+  & > .q-sidebar-search-icon {
+    flex: none;
+  }
+
+  & > svg {
+    flex: none;
+    width: var(--hf-space-600);
+    height: var(--hf-space-600);
+  }
+}
+
+@keyframes q-sidebar-search-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--hf-space-100))) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(var(--hf-space-0)) scale(1);
+  }
+}
+
+@utility q-sidebar-search-input {
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  padding: var(--hf-space-0);
+  border: var(--hf-border-width-none) solid transparent;
+  outline: none;
+  appearance: none;
+  background: transparent;
+  color: var(--hf-color-text-primary);
+
+  &::placeholder { color: var(--hf-color-text-secondary); }
+}
+
+@utility q-sidebar-footer {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 100%;
+  padding: var(--hf-space-200);
+  gap: var(--hf-space-200);
+}
+
+@utility q-sidebar-footeritem {
+  min-height: calc(var(--hf-space-600) + var(--hf-space-300));
+  padding: var(--hf-space-150);
+  border-radius: var(--hf-radius-300);
+
+  & > .q-sidebar-icon,
+  & > .q-sidebar-icon > svg,
+  & > .q-sidebar-icon > img {
+    width: var(--hf-icon-md);
+    height: var(--hf-icon-md);
+  }
+}
+
+@utility q-sidebar-footeritem-promo {
+  padding: var(--hf-space-100) var(--hf-space-300) var(--hf-space-100) var(--hf-space-150);
+  gap: var(--hf-space-200);
+  background-color: var(--hf-color-transparent-pink-10);
+
+  & .q-sidebar-label {
+    flex: 1 1 var(--hf-space-0);
+    padding-inline: var(--hf-space-100);
+    color: var(--hf-color-brand-pink);
+    letter-spacing: var(--hf-type-letter-spacing-none);
+  }
+  & .q-sidebar-icon { color: var(--hf-color-brand-pink); }
+  &:hover { background-color: var(--hf-color-transparent-pink-10); }
+}
+
+@utility q-sidebar-footeritem-login {
+  padding: var(--hf-space-100) var(--hf-space-150);
+  background-color: var(--hf-color-button-secondary);
+
+  &:hover { background-color: var(--hf-color-button-secondary); }
+}
+
+/* Composite row pieces. */
+@utility q-sidebar-project-thumb {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-600);
+  height: var(--hf-space-600);
+  overflow: visible;
+  border-radius: var(--hf-radius-200);
+  color: var(--hf-color-icon-secondary);
+
+  & > img,
+  & > .q-sidebar-project-thumb-fallback {
+    position: absolute;
+    inset: var(--hf-space-0);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: inherit;
+    background-color: var(--hf-color-transparent-light-05);
+    object-fit: cover;
+    /* no token: drop layer is blur border-width-medium 1.5px and spread space-050 -2px, which matches neither inset-tile (drop blur 2px) nor inset-tile-hairline (drop spread -0.5px); not byte-identical to any shadow role */
+    box-shadow:
+      0 var(--hf-space-050) var(--hf-border-width-medium) calc(-1 * var(--hf-space-050)) var(--hf-color-shadow-sm),
+      inset 0 var(--hf-space-050) var(--hf-space-150) var(--hf-space-0) var(--hf-color-transparent-light-15);
+    backdrop-filter: blur(var(--hf-space-300));
+  }
+
+  & svg {
+    width: var(--hf-space-600);
+    height: var(--hf-space-600);
+  }
+}
+
+@utility q-sidebar-collaborators {
+  display: inline-flex;
+  isolation: isolate;
+  align-items: flex-start;
+}
+
+@utility q-sidebar-collaborator-avatar {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  flex: none;
+  width: 1.125rem; /* no token: 18px avatar — between --hf-space-400 (16) and 500 (20) */
+  height: 1.125rem; /* no token: 18px avatar */
+  margin-inline-end: calc(-1 * var(--hf-space-050));
+  /* Clip to a circle so ANY source image (not just pre-cropped Figma PNGs) is round. */
+  overflow: hidden;
+  border-radius: var(--hf-radius-full);
+
+  & > img {
+    position: absolute;
+    inset: -11.11%;
+    width: 122.22%;
+    height: 122.22%;
+    object-fit: cover;
+  }
+}
+
+@utility q-sidebar-collaborator-count {
+  z-index: 1;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-500);
+  height: 1.125rem; /* no token: 18px count pill — between --hf-space-400 (16) and 500 (20) */
+  padding-inline: var(--hf-space-100);
+  overflow: hidden;
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-default);
+  border-radius: var(--hf-radius-full);
+  background-color: var(--hf-color-transparent-light-10);
+  color: var(--hf-color-transparent-light-50);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@utility q-sidebar-promo-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 3.441125rem; /* renders to 57.834px after the Figma custom skew */
+  height: 0.939375rem; /* renders to 14.73px after the Figma custom scale */
+  overflow: hidden;
+  padding-inline: var(--hf-space-100);
+  border-radius: var(--hf-radius-050);
+  background: var(--hf-gradient-badge-pink);
+  color: var(--hf-color-text-primary);
+  font-family: var(--hf-type-family-grotesk);
+  font-size: var(--hf-type-size-100);
+  font-weight: var(--hf-type-weight-bold);
+  letter-spacing: -0.015rem; /* -0.24px, Figma custom */
+  line-height: normal;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: skewX(-10.89deg) scaleY(0.98); /* Figma custom */
+}
+
+/* Collapsed icon rail. */
+@utility q-sidebar-collapsed {
+  --q-sidebar-width: var(--q-sidebar-width-collapsed); /* collapsed rail; default lives in generated component tier */
+}
+
+.q-sidebar-switcher-name,
+.q-sidebar-label,
+.q-sidebar-meta,
+.q-sidebar-end {
+  transition: opacity var(--hf-duration-160) var(--hf-ease-in-out);
+}
+
+.q-sidebar-collapsed .q-sidebar-switcher-name,
+.q-sidebar-collapsed .q-sidebar-label,
+.q-sidebar-collapsed .q-sidebar-meta,
+.q-sidebar-collapsed .q-sidebar-end {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.q-sidebar-collapsed .q-sidebar-toggle,
+.q-sidebar-collapsed .q-sidebar-pin,
+.q-sidebar-collapsed .q-sidebar-search {
+  display: none;
+}
+
+.q-sidebar-collapsed .q-sidebar-switcher,
+.q-sidebar-collapsed .q-sidebar-row {
+  flex: none;
+  width: calc(var(--hf-space-600) + var(--hf-space-300));
+}
+
+.q-sidebar-collapsed .q-sidebar-row {
+  padding-inline: var(--hf-space-150);
+}
+
+.q-sidebar-collapsed .q-sidebar-section:not(:has(.q-sidebar-section-actions)) .q-sidebar-section-header {
+  height: var(--hf-space-0);
+  padding: var(--hf-space-0);
+}
+
+.q-sidebar-collapsed .q-sidebar-section-title {
+  flex-basis: var(--hf-space-0);
+  display: none;
+}
+
+.q-sidebar-collapsed .q-sidebar-section-actions {
+  width: var(--hf-space-600);
+  overflow: hidden;
+}
+
+.q-sidebar-collapsed .q-sidebar-section-actions > * {
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .q-sidebar,
+  .q-sidebar-action,
+  .q-sidebar-action-button,
+  .q-sidebar-pin,
+  .q-sidebar-switcher-name,
+  .q-sidebar-label,
+  .q-sidebar-meta,
+  .q-sidebar-end {
+    transition: none;
+  }
+
+  .q-sidebar-search {
+    animation: none;
+  }
+}

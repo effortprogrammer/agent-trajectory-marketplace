@@ -1,0 +1,403 @@
+/**
+ * PromptBox presentation — the Studio prompt dock (Figma Marketing-Studio node
+ * 7259:51362; generation-state dock 21768:60842). A horizontal bar composed of a
+ * vertical mode rail plus one shared right-side shell. That shell contains the
+ * prompt content, reference upload tiles, and lime special CTA in a single compact
+ * dock. Tokens only, save the branded lime CTA gradient, Figma's composite
+ * prompt/CTA shadows (no matching shadow tokens), and two documented literal sizes
+ * (70px rail / 112px CTA), which have no spacing-scale equivalent and are exposed
+ * as overridable knobs.
+ */
+@source "./prompt-box.tsx";
+
+@utility q-prompt-box {
+  /* Figma literals with no --hf-space-* equivalent — documented, overridable. */
+  --q-prompt-box-rail-width: 4.375rem; /* 70px */
+  --q-prompt-box-generate-width: 7rem; /* 112px */
+
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--hf-space-200);
+  padding: var(--hf-space-300);
+}
+
+@utility q-prompt-box-dock {
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  padding: var(--hf-space-100);
+  border-radius: var(--hf-radius-600);
+  background-color: var(--hf-color-background-secondary);
+  box-shadow:
+    0 4px 2px rgba(0, 0, 0, 0.16),
+    0 4px 6px rgba(0, 0, 0, 0.08);
+}
+
+@utility q-prompt-box-dock-surface {
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  align-items: flex-start;
+  gap: var(--hf-space-200);
+  min-width: var(--hf-space-0);
+  padding: var(--hf-space-300);
+  overflow: clip;
+  border-radius: var(--hf-radius-500);
+  background-color: var(--hf-color-transparent-light-05);
+}
+
+/* Frosted floating-bar skin (the generation-state dock). */
+@utility q-prompt-box-glass {
+  border: var(--hf-border-width-thin) solid var(--hf-color-transparent-light-30);
+  border-radius: var(--hf-radius-500);
+  background-color: var(--hf-color-background-glass);
+  backdrop-filter: blur(10px) saturate(1.6);
+  box-shadow: var(--hf-shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.32));
+}
+
+/* ── Mode rail + Mode ──────────────────────────────────────────────────────── */
+@utility q-prompt-box-mode-rail {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--hf-space-100);
+  width: var(--q-prompt-box-rail-width);
+  padding: var(--hf-space-100);
+  border-radius: var(--hf-radius-600);
+  background-color: var(--hf-color-background-secondary);
+  box-shadow:
+    0 4px 4px rgba(0, 0, 0, 0.16),
+    0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+@utility q-prompt-box-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--hf-space-100);
+  width: 100%;
+  height: 3.125rem; /* 50px — the Figma mode-button height */
+  padding: var(--hf-space-150) var(--hf-space-300);
+  border-radius: var(--hf-radius-400);
+  background-color: transparent;
+  color: var(--hf-color-text-secondary);
+  cursor: pointer;
+  outline: none;
+  transition-property: background-color, background-image, color, box-shadow;
+
+  &:hover {
+    background-image: linear-gradient(var(--hf-color-overlay-hover), var(--hf-color-overlay-hover));
+  }
+
+  @apply q-focus-ring;
+
+  &:disabled,
+  &[data-disabled] {
+    pointer-events: none;
+    opacity: var(--hf-opacity-disabled);
+  }
+}
+
+@utility q-prompt-box-mode-active {
+  border-radius: var(--hf-radius-500);
+  background-color: var(--hf-color-transparent-light-05);
+  color: var(--hf-color-text-primary);
+}
+
+@utility q-prompt-box-mode-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentcolor;
+
+  & svg {
+    width: var(--hf-icon-md);
+    height: var(--hf-icon-md);
+  }
+}
+
+@utility q-prompt-box-mode-label {
+  @apply text-q-caption-xs-semi-bold;
+}
+
+/* ── Body: prompt content inside the shared right-side shell ───────────────── */
+@utility q-prompt-box-body {
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  border-radius: var(--hf-radius-300);
+}
+
+@utility q-prompt-box-surface {
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  flex-direction: column;
+  gap: var(--hf-space-100);
+  min-width: var(--hf-space-0);
+  padding: var(--hf-space-0);
+  border-radius: var(--hf-radius-300);
+  background-color: transparent;
+  transition-property: background-color, box-shadow;
+}
+
+@utility q-prompt-box-field {
+  --q-prompt-box-field-min-height: calc(var(--hf-space-1200) + var(--hf-space-100));
+
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: var(--q-prompt-box-field-min-height);
+  padding: var(--hf-space-100);
+  appearance: none;
+  border: var(--hf-border-width-none) solid transparent;
+  background: transparent;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  color: var(--hf-color-text-primary);
+  @apply text-q-body-sm-regular;
+
+  &::placeholder {
+    color: var(--hf-color-text-secondary);
+    opacity: 1;
+  }
+}
+
+/* ── Actions (the footer pill row) ─────────────────────────────────────────── */
+@utility q-prompt-box-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--hf-space-100);
+  width: 100%;
+}
+
+/* ── Pill (setting control / dropdown trigger) ─────────────────────────────── */
+@utility q-prompt-box-pill {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--hf-space-100);
+  height: 1.75rem; /* 28px */
+  padding-inline: var(--hf-space-200);
+  border-radius: var(--hf-radius-200);
+  background-color: var(--hf-color-transparent-light-05);
+  color: var(--hf-color-text-primary);
+  cursor: pointer;
+  outline: none;
+  transition-property: background-color, background-image, box-shadow;
+  @apply text-q-caption-sm-medium;
+
+  &:hover {
+    background-image: linear-gradient(var(--hf-color-overlay-hover), var(--hf-color-overlay-hover));
+  }
+
+  &[data-popup-open] {
+    background-image: linear-gradient(var(--hf-color-overlay-hover), var(--hf-color-overlay-hover));
+  }
+
+  &:disabled,
+  &[data-disabled] {
+    pointer-events: none;
+    opacity: var(--hf-opacity-disabled);
+  }
+}
+
+@utility q-prompt-box-pill-icon-only {
+  width: 1.75rem;
+  padding-inline: var(--hf-space-0);
+}
+
+@utility q-prompt-box-pill-start {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--hf-color-icon-primary);
+
+  & svg,
+  & img {
+    width: var(--hf-icon-sm);
+    height: var(--hf-icon-sm);
+  }
+
+  /* A composed Avatar keeps its own size. */
+  & > * {
+    flex-shrink: 0;
+  }
+}
+
+@utility q-prompt-box-pill-label {
+  white-space: nowrap;
+}
+
+@utility q-prompt-box-pill-end {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--hf-color-icon-secondary);
+
+  & svg {
+    width: var(--hf-icon-sm);
+    height: var(--hf-icon-sm);
+  }
+}
+
+/* ── Uploads + Upload (reference-image tiles) ──────────────────────────────── */
+@utility q-prompt-box-uploads {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: var(--hf-space-150);
+}
+
+@utility q-prompt-box-upload {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  justify-content: space-between;
+  width: var(--hf-space-2000); /* 80px */
+  height: var(--hf-space-2000);
+  padding: var(--hf-space-150);
+  overflow: clip;
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+  border-radius: var(--hf-radius-300);
+  background-color: var(--hf-color-transparent-light-05);
+  cursor: pointer;
+  outline: none;
+  transition-property: background-color, background-image, box-shadow;
+
+  &:hover {
+    background-image: linear-gradient(var(--hf-color-overlay-hover), var(--hf-color-overlay-hover));
+  }
+
+  @apply q-focus-ring;
+}
+
+@utility q-prompt-box-upload-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Scrim so the label stays legible over a picked image. */
+@utility q-prompt-box-upload-filled {
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(to top, var(--hf-color-transparent-dark-60), transparent 60%);
+    pointer-events: none;
+  }
+}
+
+@utility q-prompt-box-upload-add {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-500);
+  height: var(--hf-space-500);
+  border-radius: var(--hf-radius-full);
+  background-color: var(--hf-color-transparent-light-05);
+  backdrop-filter: blur(2.5px);
+  color: var(--hf-color-icon-primary);
+  box-shadow: var(--hf-shadow-raised-sm, 0 2px 1.5px -0.5px rgba(0, 0, 0, 0.16));
+
+  & svg {
+    width: var(--hf-icon-sm);
+    height: var(--hf-icon-sm);
+  }
+}
+
+@utility q-prompt-box-upload-label {
+  position: relative;
+  z-index: 1;
+  align-self: flex-start;
+  text-align: left;
+  color: var(--hf-color-text-primary);
+  text-transform: uppercase;
+  font-family: var(--hf-type-family-grotesk);
+  font-size: var(--hf-type-size-050);
+  font-weight: var(--hf-type-weight-bold);
+  line-height: var(--hf-type-line-height-200);
+  letter-spacing: var(--hf-type-letter-spacing-slight);
+}
+
+/* ── Generate (the branded lime CTA) ───────────────────────────────────────── */
+@utility q-prompt-box-generate {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  gap: var(--hf-space-150);
+  width: var(--q-prompt-box-generate-width);
+  padding: var(--hf-space-500) var(--hf-space-500) var(--hf-space-600);
+  overflow: clip;
+  border-radius: var(--hf-radius-300);
+  /* Branded CTA fill — no gradient token exists for this marketing lime sheen. */
+  background-image:
+    linear-gradient(191deg, rgba(255, 255, 20, 0) 12.7%, rgb(255, 255, 20) 75.8%),
+    linear-gradient(90deg, rgb(209, 254, 23) 0%, rgb(209, 254, 23) 100%);
+  color: var(--hf-color-text-inverse);
+  cursor: pointer;
+  outline: none;
+  box-shadow:
+    inset 0 -3px 0 0 rgba(0, 0, 0, 0.32),
+    0 32px 24px rgba(0, 0, 0, 0.15),
+    0 6px 4px rgba(0, 0, 0, 0.25);
+  transition-property: filter, box-shadow;
+
+  &:hover {
+    filter: brightness(1.04);
+  }
+
+  @apply q-focus-ring;
+
+  &:disabled,
+  &[data-disabled] {
+    pointer-events: none;
+    opacity: var(--hf-opacity-disabled);
+  }
+}
+
+@utility q-prompt-box-generate-label {
+  text-transform: uppercase;
+  text-align: center;
+  font-family: var(--hf-type-family-grotesk);
+  font-size: var(--hf-type-size-100);
+  font-weight: var(--hf-type-weight-bold);
+  line-height: var(--hf-type-line-height-100);
+  letter-spacing: var(--hf-type-letter-spacing-none);
+}
+
+@utility q-prompt-box-generate-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hf-space-100);
+  color: var(--hf-color-text-inverse);
+
+  & svg {
+    width: var(--hf-icon-sm);
+    height: var(--hf-icon-sm);
+  }
+}
+
+@utility q-prompt-box-generate-old {
+  text-decoration: line-through;
+  color: rgba(0, 0, 0, 0.2);
+  @apply text-q-caption-sm-medium;
+}
+
+@utility q-prompt-box-generate-cost {
+  @apply text-q-caption-sm-semi-bold;
+}

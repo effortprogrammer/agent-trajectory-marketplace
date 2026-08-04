@@ -1,0 +1,274 @@
+/**
+ * Select presentation utilities (q-select-* namespace).
+ *
+ * The TRIGGER reuses the Input field surface (`q-field-control`, see input.css):
+ * the bordered white-5% box, lime focus ring, and red `q-field-control-invalid`
+ * ring. These rules only add the value/placeholder typography, the flipping
+ * chevron, and the sm/lg height presets.
+ *
+ * The POPUP reuses the Dropdown glass card (`q-dropdown-content`, see
+ * dropdown.css) and the shared `q-menu-item*` row primitives (see menu.css), so
+ * Select options look identical to Dropdown rows. Only Select-specific chrome —
+ * the selected-row glyph alignment, scroll arrows, and group rhythm — lives here.
+ */
+
+@source "./select.tsx";
+
+/* ── Trigger ──────────────────────────────────────────────────────────────────
+ * Built on q-field-control; a button (not an input wrapper), so it owns the
+ * value text directly and stays a single flex row. */
+@utility q-select-trigger {
+  cursor: pointer;
+  text-align: start;
+  appearance: none;
+  color: var(--hf-color-text-primary);
+  @apply text-q-label-sm-regular; /* Inter Regular 14px — matches the input element */
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 var(--hf-border-width-medium) var(--hf-color-border-focus);
+  }
+
+  /* Keep the focus-style ring while the popup is open. */
+  &[data-popup-open] {
+    box-shadow: inset 0 0 0 var(--hf-border-width-medium) var(--hf-color-border-focus);
+  }
+
+  /* Invalid ring beats the open/focus ring (mirrors q-field-control-invalid). */
+  &.q-field-control-invalid[data-popup-open],
+  &.q-field-control-invalid:focus-visible {
+    box-shadow: inset 0 0 0 var(--hf-border-width-medium) var(--hf-color-border-error);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/* Height presets — md (40px) is the default q-field-control height. */
+@utility q-select-trigger-sm {
+  height: var(--hf-space-800); /* 32px */
+  padding-inline: var(--hf-space-200); /* 8px */
+  @apply text-q-caption-sm-regular; /* 12px */
+}
+
+@utility q-select-trigger-lg {
+  height: calc(var(--hf-space-1000) + var(--hf-space-200)); /* 48px */
+  padding-inline: var(--hf-space-400); /* 16px */
+  @apply text-q-body-md-regular; /* 16px */
+}
+
+/* ── Value (selected label / placeholder) ─────────────────────────────────── */
+@utility q-select-value {
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Placeholder tint when no value is selected (Base UI marks the trigger). */
+.q-select-trigger[data-placeholder] .q-select-value {
+  color: var(--hf-color-text-on-overlay-secondary); /* white 50% */
+}
+
+/* ── Trigger chevron ──────────────────────────────────────────────────────── */
+@utility q-select-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-500); /* 20px */
+  height: var(--hf-space-500);
+  color: var(--hf-color-icon-secondary);
+  transition-property: transform;
+  transition-duration: var(--hf-duration-180);
+  transition-timing-function: var(--hf-ease-out-expo);
+
+  & svg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.q-select-trigger[data-popup-open] .q-select-icon {
+  transform: rotate(180deg);
+}
+
+/* ── Popup ────────────────────────────────────────────────────────────────── */
+@utility q-select-content {
+  /* The List owns scrolling; cap the popup so long option sets stay usable. */
+  max-height: var(--available-height, none);
+}
+
+/* ── Connected (nested field) ─────────────────────────────────────────────────
+ * The popup NESTS the field: a wider rounded card that overlaps + sits BEHIND the
+ * still-rounded trigger, which paints on top (higher z-index). The popup is wider
+ * than the field (the field tucks inside, centred) with a min-width floor, and
+ * pads its top so the rows clear the overlapping field. */
+@utility q-select-positioner-connected {
+  /* Wider than the field so it tucks inside (≈ 8px breathing room each side). */
+  width: calc(var(--anchor-width) + 2 * var(--hf-space-200));
+  min-width: var(--q-menu-min-width); /* never narrower than a readable row */
+  z-index: var(--hf-z-index-dropdown);
+}
+
+.q-select-content.q-select-content-connected {
+  width: 100%; /* fill the (field-width + padding) positioner */
+  min-width: var(--hf-space-0); /* defer the floor to the positioner */
+  max-width: none; /* allow matching fields wider than the default menu max */
+  /* Clear the field that overlaps the top (default 40px field + breathing room). */
+  padding-top: calc(var(--hf-space-1000) + var(--hf-space-400));
+}
+
+/* The field paints ON TOP of the popup it nests in; drop its lime open-ring so it
+ * reads as a clean rounded pill (the open popup is the cue). The popup is rendered
+ * without a portal, so this z-index wins in the shared stacking context. Extra
+ * class beats q-select-trigger's open ring. */
+.q-select-trigger.q-select-trigger-connected[data-popup-open] {
+  position: relative;
+  z-index: calc(var(--hf-z-index-dropdown) + 1);
+  box-shadow: none;
+}
+
+@utility q-select-list {
+  display: flex;
+  /* Default flex (0 1 auto) — size to the options' height; the popup's
+   * max-height caps it and this shrinks + scrolls. A `1 1 0` basis would
+   * collapse to ~0 inside the content-sized glass popup. */
+  flex-direction: column;
+  gap: var(--hf-space-050);
+  min-height: var(--hf-space-0);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@utility q-select-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hf-space-050);
+}
+
+@utility q-select-separator {
+  height: var(--hf-border-width-thin);
+  margin: var(--hf-space-100) var(--hf-space-0); /* 4px breathing room */
+  background-color: var(--hf-color-border-subtle);
+  border: var(--hf-border-width-none) solid transparent;
+}
+
+/* ── Option row ───────────────────────────────────────────────────────────── *
+ * Built on q-menu-item: hover/highlight/focus/disabled come for free. Base UI
+ * marks the chosen row with data-selected — keep it readable without a heavy
+ * fill (the trailing check is the primary cue). */
+@utility q-select-item {
+  scroll-margin: var(--hf-space-200);
+}
+
+/* Selected row carries the same highlight fill as hover/keyboard-highlight, so
+ * the current choice reads as an active, rounded pill inside the popup. */
+.q-select-item[data-selected] {
+  background-color: var(--hf-color-overlay-hover);
+  color: var(--hf-color-text-primary);
+}
+
+@utility q-select-item-text {
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Inside an ItemContent column the title sizes naturally — the `flex: 1 1 0`
+ * above is for the ROW layout and would collapse the title's height to 0 in
+ * the column stack. */
+.q-menu-item-label .q-select-item-text {
+  flex: none;
+  width: 100%;
+}
+
+@utility q-select-item-indicator {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  margin-inline-start: auto;
+  color: var(--hf-color-icon-primary);
+}
+
+/* ── Compact builder-picker preset (Figma SC App Builder pickers: Duration /
+ * Aspect Ratio / Voice). Rounded popup (radius/400), 44px radius/250 rows with
+ * body-sm titles, caption secondary description, a subtle selected fill, and
+ * the accent (lime) check. Popup min-width nudged to 200px for readable two-line
+ * rows; max stays the default 400. */
+@utility q-select-content-picker {
+  --q-dropdown-radius: var(--hf-radius-400);
+  --q-dropdown-item-outer-radius: var(--hf-radius-250);
+  --q-menu-min-width: calc(var(--hf-space-2400) * 2 + var(--hf-space-200)); /* 200px */
+}
+
+.q-select-content-picker .q-menu-item {
+  border-radius: var(--hf-radius-250);
+  min-height: calc(var(--hf-space-1000) + var(--hf-space-100)); /* 44px */
+  padding: var(--hf-space-200) var(--hf-space-300); /* 8 × 12 */
+  @apply text-q-body-sm-medium;
+}
+
+.q-select-content-picker .q-menu-item-description {
+  color: var(--hf-color-text-secondary);
+  @apply text-q-caption-sm-regular;
+}
+
+.q-select-content-picker .q-select-item[data-selected] {
+  background-color: var(--hf-color-transparent-light-10);
+}
+
+.q-select-content-picker .q-dropdown-check {
+  color: var(--hf-color-icon-accent); /* lime check — builder pickers */
+}
+
+/* ── Scroll arrows (Base UI ScrollUp/DownArrow) ───────────────────────────── */
+@utility q-select-scroll-arrow {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  height: var(--hf-space-500); /* 20px */
+  color: var(--hf-color-icon-secondary);
+
+  &[data-side] {
+    /* Sit flush with the popup edges. */
+    margin: calc(-1 * var(--hf-space-100)) var(--hf-space-0);
+  }
+}
+
+@utility q-select-scroll-arrow-up {
+  &::before {
+    content: '';
+    width: var(--hf-space-300);
+    height: var(--hf-space-300);
+    border-top: var(--hf-border-width-medium) solid currentColor;
+    border-right: var(--hf-border-width-medium) solid currentColor;
+    transform: rotate(-45deg);
+    margin-top: var(--hf-space-100);
+  }
+}
+
+@utility q-select-scroll-arrow-down {
+  &::before {
+    content: '';
+    width: var(--hf-space-300);
+    height: var(--hf-space-300);
+    border-bottom: var(--hf-border-width-medium) solid currentColor;
+    border-right: var(--hf-border-width-medium) solid currentColor;
+    transform: rotate(45deg);
+    margin-bottom: var(--hf-space-100);
+  }
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .q-select-icon {
+    transition-duration: 1ms; /* no token: 1ms reduced-motion near-disable; smallest duration token is 0ms instant */
+  }
+}

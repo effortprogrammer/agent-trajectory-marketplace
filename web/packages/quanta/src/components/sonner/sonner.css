@@ -1,0 +1,233 @@
+/**
+ * Sonner (toast) presentation — Base UI Toast skinned with quanta tokens.
+ * Registers the colocated source for Tailwind's scanner (quanta is symlinked,
+ * so literal class strings in sonner.tsx must be declared) and authors the
+ * surfaces as `@utility q-sonner-*` rules. The one non-token value is the toast
+ * width, exposed as the overridable `--q-sonner-width` component dimension
+ * whose default lives in the generated component-token tier
+ * (src/css/components/component.css :root).
+ */
+@source "./sonner.tsx";
+
+/* Fixed, corner-anchored region — the positioning context + hover target for
+ * the stack (toasts are absolutely stacked inside). pointer-events pass through
+ * the empty area; only the toasts are interactive. */
+@utility q-sonner-viewport {
+  position: fixed;
+  z-index: var(--hf-z-index-toast);
+  width: min(var(--q-sonner-width), calc(100vw - var(--hf-space-800)));
+  pointer-events: none;
+
+  & > * { pointer-events: auto; }
+
+  &[data-position$="-right"] { right: var(--hf-space-400); }
+  &[data-position$="-left"] { left: var(--hf-space-400); }
+  &[data-position$="-center"] { left: 50%; transform: translateX(-50%); }
+  &[data-position^="top"] { top: var(--hf-space-400); }
+  &[data-position^="bottom"] { bottom: var(--hf-space-400); }
+}
+
+/* The toast card — glassy frosted surface (matches the Modal glass), absolutely
+ * positioned so toasts pile into a stack. Collapsed: behind toasts peek up,
+ * scale down and clip to the front height; expanded (hover/focus, or `expand`)
+ * they spread to natural offsets + heights. Base UI owns the stack vars
+ * (--toast-index / -offset-y / -frontmost-height / -height) + swipe movement. */
+@utility q-sonner {
+  --q-sonner-peek: var(--hf-space-250); /* 10px — collapsed peek per layer */
+  --q-sonner-gap: 0.875rem;  /* 14px — gap between expanded toasts; no token: 0.875rem not in space scale (300=0.75rem→400=1rem) */
+
+  position: absolute;
+  left: var(--hf-space-0);
+  right: var(--hf-space-0);
+  width: 100%;
+  /* front (index 0) paints on top; behind toasts only peek a sliver. */
+  z-index: calc(1000 - var(--toast-index));
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--hf-space-300);
+  height: var(--toast-frontmost-height); /* collapsed: uniform with the front toast */
+  padding: var(--hf-space-300) var(--hf-space-400);
+  border-radius: var(--hf-radius-400);
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+  background-color: var(--hf-color-background-glass);
+  backdrop-filter: blur(var(--hf-space-1000)); /* 40px — glass */
+  color: var(--hf-color-text-primary);
+  overflow: hidden;
+  box-shadow: var(--hf-shadow-overlay);
+
+  transition-property: transform, opacity, height;
+  transition-duration: var(--hf-duration-400);
+  transition-timing-function: var(--hf-ease-out-quart);
+}
+
+/* ── Bottom positions: anchor to the bottom, stack upward ──────────────────── */
+[data-position^="bottom"] .q-sonner {
+  bottom: var(--hf-space-0);
+  transform-origin: bottom center;
+  /* Same size for every stacked toast — only offset (no scale-down). */
+  transform: translateY(calc(var(--toast-index) * var(--q-sonner-peek) * -1));
+}
+[data-position^="bottom"] .q-sonner[data-expanded],
+[data-position^="bottom"][data-expand] .q-sonner {
+  height: var(--toast-height);
+  transform: translateY(calc((var(--toast-offset-y) + var(--toast-index) * var(--q-sonner-gap)) * -1));
+}
+[data-position^="bottom"] .q-sonner[data-starting-style],
+[data-position^="bottom"] .q-sonner[data-ending-style] {
+  opacity: 0;
+  transform: translateY(110%);
+}
+
+/* ── Top positions: anchor to the top, stack downward ──────────────────────── */
+[data-position^="top"] .q-sonner {
+  top: var(--hf-space-0);
+  transform-origin: top center;
+  /* Same size for every stacked toast — only offset (no scale-down). */
+  transform: translateY(calc(var(--toast-index) * var(--q-sonner-peek)));
+}
+[data-position^="top"] .q-sonner[data-expanded],
+[data-position^="top"][data-expand] .q-sonner {
+  height: var(--toast-height);
+  transform: translateY(calc(var(--toast-offset-y) + var(--toast-index) * var(--q-sonner-gap)));
+}
+[data-position^="top"] .q-sonner[data-starting-style],
+[data-position^="top"] .q-sonner[data-ending-style] {
+  opacity: 0;
+  transform: translateY(-110%);
+}
+
+/* Over the configured `limit` → kept mounted for the stack count, but hidden. */
+.q-sonner[data-limited] { opacity: 0; pointer-events: none; }
+
+/* Hover bridge — when expanded the stack spreads apart with a real gap between
+ * cards. The viewport passes pointer events through its empty area (only the
+ * cards are interactive), so the gaps are dead zones: dragging the cursor across
+ * one drops the hover, collapsing the stack, which slides a card back under the
+ * cursor and re-expands → flicker. A transparent pseudo fills each gap so the
+ * hover region stays continuous. `overflow` is relaxed to visible while expanded
+ * (clipping is only needed for the collapsed peek) so the bridge isn't clipped. */
+[data-position] .q-sonner[data-expanded],
+[data-position][data-expand] .q-sonner {
+  overflow: visible;
+}
+[data-position^="bottom"] .q-sonner[data-expanded]::after,
+[data-position^="bottom"][data-expand] .q-sonner::after {
+  content: "";
+  position: absolute;
+  left: var(--hf-space-0);
+  right: var(--hf-space-0);
+  bottom: 100%;
+  height: var(--q-sonner-gap);
+}
+[data-position^="top"] .q-sonner[data-expanded]::after,
+[data-position^="top"][data-expand] .q-sonner::after {
+  content: "";
+  position: absolute;
+  left: var(--hf-space-0);
+  right: var(--hf-space-0);
+  top: 100%;
+  height: var(--q-sonner-gap);
+}
+
+/* Swipe-to-dismiss — the dragged (front) toast follows the pointer. Scoped to
+ * `[data-position]` + placed last so it wins over the stack/expanded transform. */
+[data-position] .q-sonner[data-swiping] {
+  transition-duration: var(--hf-duration-instant);
+  transform: translate(var(--toast-swipe-movement-x, 0), var(--toast-swipe-movement-y, 0));
+}
+
+@utility q-sonner-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--hf-color-text-secondary);
+}
+
+@utility q-sonner-text {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: var(--hf-space-0);
+  flex-direction: column;
+  gap: var(--hf-space-050);
+  padding-top: var(--hf-space-050);
+}
+
+@utility q-sonner-title {
+  @apply text-q-body-sm-medium;
+  color: var(--hf-color-text-primary);
+}
+
+@utility q-sonner-description {
+  @apply text-q-caption-sm-regular;
+  color: var(--hf-color-text-secondary);
+}
+
+@utility q-sonner-action {
+  flex: none;
+  align-self: center;
+  padding: var(--hf-space-100) var(--hf-space-250);
+  border-radius: var(--hf-radius-250);
+  background-color: var(--hf-color-background-inverse);
+  color: var(--hf-color-text-inverse);
+  @apply text-q-label-sm-medium;
+  cursor: pointer;
+  transition: opacity var(--hf-duration-150) ease; /* `ease` keyword not in ease tokens */
+
+  &:hover { opacity: 0.85; }
+}
+
+/* Holds a custom ReactNode action (e.g. a quanta Button) in the same slot as
+ * the built-in action button. Layout only — the node brings its own styling. */
+@utility q-sonner-action-slot {
+  flex: none;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--hf-space-200);
+}
+
+@utility q-sonner-close {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-500);
+  height: var(--hf-space-500);
+  margin: calc(-1 * var(--hf-space-050)) calc(-1 * var(--hf-space-100)) 0 0;
+  border-radius: var(--hf-radius-full);
+  color: var(--hf-color-text-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--hf-duration-150) ease, background-color var(--hf-duration-150) ease, color var(--hf-duration-150) ease; /* `ease` keyword not in ease tokens */
+
+  &:hover {
+    background-color: var(--hf-color-overlay-dim-soft);
+    color: var(--hf-color-text-primary);
+  }
+}
+.q-sonner:hover .q-sonner-close,
+.q-sonner-close:focus-visible {
+  opacity: 1;
+}
+
+/* Variant icon accents (state colors). */
+.q-sonner-success .q-sonner-icon { color: var(--hf-color-state-success-fg); }
+.q-sonner-error .q-sonner-icon { color: var(--hf-color-state-error-fg); }
+.q-sonner-warning .q-sonner-icon { color: var(--hf-color-state-warning-fg); }
+.q-sonner-info .q-sonner-icon { color: var(--hf-color-state-info-fg); }
+
+/* Loading spinner. */
+@utility q-sonner-spinner {
+  animation: q-sonner-spin var(--hf-duration-700) linear infinite; /* `linear` keyword not in ease tokens */
+}
+@keyframes q-sonner-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the stack transforms (they ARE the layout) — just snap instead of animate. */
+  .q-sonner { transition-duration: 1ms; } /* no token: 1ms snap sentinel; instant token is 0ms */
+  .q-sonner-spinner { animation: none; }
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // ── BUILD / DEV CONFIG — NOT the deploy config ───────────────────
+  // Used for local `wrangler dev`. It is NEVER trusted at deploy: the deploy CI
+  // GENERATES a fresh, authoritative wrangler.jsonc from trusted marketplace
+  // metadata (your app.manifest.json + the app row) and ignores everything here.
+  // So `name` and any binding ids below are just BUILD-VALID PLACEHOLDERS — the
+  // real values are injected only at deploy.
+  //
+  // NOTHING is provisioned by default. Declare the infra you want in
+  // app.manifest.json (db / r2 / kv / durableObject); the platform provisions it
+  // and binds it at deploy. For LOCAL `wrangler dev` of an opted-in resource,
+  // uncomment the matching block in the OPT-IN INFRA section below.
+  //
+  // `name` must stay a valid Cloudflare name (lowercase + dashes, 3–63 chars).
+  "name": "app-slug-placeholder",
+
+  // The Worker entry is the TanStack Start SSR server bundle — `vite build`
+  // emits dist/server/server.js (`export default { fetch }`). The deploy CI
+  // rediscovers the real built entry and points `main` at it.
+  "main": "dist/server/server.js",
+  "compatibility_date": "2025-05-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // SSR asset routing: static files in dist/client serve directly (asset-first);
+  // any non-asset path — incl. "/" — falls through to the SSR Worker (no
+  // index.html ships, so "/" never matches an asset). Do NOT set
+  // run_worker_first:true — that makes the Worker intercept /assets/* and 404
+  // them (the SSR handler has no asset route).
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+  },
+
+  // Non-secret identity for local dev/build; the deploy sets the real values.
+  // SECRETS (e.g. the fnf token) are NEVER here and NEVER in the Worker — the
+  // platform Outbound Worker injects them on server-side egress.
+  "vars": { "HF_ENV": "dev", "APP_SLUG": "app-slug-placeholder" },
+
+  // ── OPT-IN INFRA (off by default) ────────────────────────────────
+  // Declare the service in app.manifest.json; the deploy injects the real
+  // binding. For local `wrangler dev` of an opted-in resource, uncomment the
+  // matching block here with a placeholder id (the deploy overwrites it anyway).
+  //
+  // D1 — app.manifest.json "db": true → env.DB. ONE database SHARED by preview +
+  // prod (HF_ENV splits CODE, not DATA — a destructive preview migration hits
+  // prod data). Schema in migrations/000N_*.sql (additive).
+  //   "d1_databases": [
+  //     { "binding": "DB", "database_name": "app-slug-placeholder-db",
+  //       "database_id": "00000000-0000-0000-0000-000000000000" }
+  //   ],
+  //
+  // R2 — app.manifest.json "r2": true → env.STORAGE. Shared by preview + prod.
+  //   "r2_buckets": [
+  //     { "binding": "STORAGE", "bucket_name": "app-slug-placeholder-assets" }
+  //   ],
+  //
+  // KV — app.manifest.json "kv": true → env.KV. ONE namespace shared by preview +
+  // prod (like D1). Eventually consistent (NOT Redis): great for config + cached
+  // reads, NOT for counters/locks/read-after-write (use a Durable Object there).
+  //   "kv_namespaces": [
+  //     { "binding": "KV", "id": "00000000000000000000000000000000" }
+  //   ],
+  //
+  // Durable Object — app.manifest.json "durableObject": "Rooms" → env.ROOMS; ALSO
+  // `export class Rooms extends DurableObject {…}` from src/server.ts so the class
+  // ships. (Containers / code-sandboxes are not wired through the deploy path yet.)
+}

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title description">
+  <title id="title">Template app preview</title>
+  <desc id="description">A neutral dark workspace placeholder that must be replaced during app adaptation.</desc>
+  <rect width="1600" height="900" rx="56" fill="#18181b"/>
+  <rect x="40" y="40" width="300" height="820" rx="32" fill="#232326"/>
+  <rect x="380" y="40" width="1180" height="110" rx="28" fill="#232326"/>
+  <rect x="380" y="190" width="760" height="670" rx="32" fill="#202023"/>
+  <rect x="1180" y="190" width="380" height="320" rx="32" fill="#232326"/>
+  <rect x="1180" y="550" width="380" height="310" rx="32" fill="#232326"/>
+  <circle cx="98" cy="100" r="24" fill="#d9ff3f"/>
+  <rect x="140" y="82" width="142" height="36" rx="18" fill="#3a3a3f"/>
+  <rect x="72" y="190" width="236" height="58" rx="20" fill="#343439"/>
+  <rect x="72" y="270" width="190" height="28" rx="14" fill="#303035"/>
+  <rect x="72" y="322" width="210" height="28" rx="14" fill="#303035"/>
+  <rect x="420" y="75" width="330" height="38" rx="19" fill="#3a3a3f"/>
+  <circle cx="1485" cy="95" r="26" fill="#343439"/>
+  <rect x="430" y="250" width="660" height="48" rx="24" fill="#3a3a3f"/>
+  <rect x="430" y="332" width="660" height="420" rx="28" fill="#29292d"/>
+  <path d="M620 590l115-120 92 84 88-112 125 162H620z" fill="#46464d"/>
+  <circle cx="924" cy="435" r="48" fill="#d9ff3f" opacity=".75"/>
+  <rect x="1225" y="250" width="210" height="34" rx="17" fill="#3a3a3f"/>
+  <rect x="1225" y="320" width="286" height="22" rx="11" fill="#343439"/>
+  <rect x="1225" y="370" width="246" height="22" rx="11" fill="#343439"/>
+  <rect x="1225" y="610" width="210" height="34" rx="17" fill="#3a3a3f"/>
+  <rect x="1225" y="680" width="286" height="22" rx="11" fill="#343439"/>
+  <rect x="1225" y="730" width="246" height="22" rx="11" fill="#343439"/>
+</svg>

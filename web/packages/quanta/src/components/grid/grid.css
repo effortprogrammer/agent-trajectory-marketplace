@@ -1,0 +1,70 @@
+/**
+ * Grid presentation — a pure-quanta CSS-grid layout primitive.
+ *
+ * `q-grid` is the base track. By default it lays out `--q-grid-cols` (default 1)
+ * equal columns via `repeat(n, minmax(0, 1fr))` — the `minmax(0, 1fr)` floor lets
+ * cells shrink below their content (so `min-w-0` / `truncate` work inside). The
+ * column count rides on the private `--q-grid-cols` var that `Grid` sets inline.
+ *
+ * `q-grid-autofit` / `q-grid-autofill` swap the template to a responsive
+ * `repeat(auto-fit|auto-fill, minmax(--q-grid-min, 1fr))` track — the grid fits as
+ * many `--q-grid-min`-wide (default 16rem) columns as the container allows. The
+ * `--q-grid-min` default is a documented component knob (overridable inline /
+ * by an ancestor), the same pattern as `--q-menu-min-width` in menu.css.
+ *
+ * `q-grid-item` is a layout-neutral cell hook — spans/starts ride on inline
+ * `grid-column` / `grid-row` placement; this class exists only as a stable
+ * styling/selector anchor and carries no own visual style.
+ *
+ * Token note: gaps are applied as native Tailwind `gap-N` classes from the .tsx
+ * (the shared spacing scale), not here — so this file owns only the track shape.
+ *
+ * @source points Tailwind's scanner at the colocated source (quanta is a
+ * symlinked dep and Tailwind skips node_modules) — same convention as divider.css.
+ */
+@source "./grid.tsx";
+@source "./grid-gap.ts";
+@source "./virtual-grid.tsx";
+
+@utility q-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--q-grid-cols, 1), minmax(0, 1fr));
+}
+
+@utility q-grid-autofit {
+  grid-template-columns: repeat(auto-fit, minmax(var(--q-grid-min, 16rem), 1fr));
+}
+
+@utility q-grid-autofill {
+  grid-template-columns: repeat(auto-fill, minmax(var(--q-grid-min, 16rem), 1fr));
+}
+
+@utility q-grid-item {
+  min-width: 0;
+}
+
+/* ── Virtual grid (windowed) ──────────────────────────────────────────────────
+ * The viewport is the scroll container; the sizer reserves the FULL scroll
+ * height (so the scrollbar reflects every row); the track is the real `q-grid`,
+ * absolutely positioned and translated to the first visible row by
+ * useGridVirtualizer. Only the windowed rows are mounted. */
+@utility q-virtual-grid {
+  position: relative;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@utility q-virtual-grid-sizer {
+  position: relative;
+  width: 100%;
+}
+
+@utility q-virtual-grid-track {
+  position: absolute;
+  inset-block-start: var(--hf-space-0);
+  inset-inline: var(--hf-space-0);
+  width: 100%;
+  will-change: transform;
+}

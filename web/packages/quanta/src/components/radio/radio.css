@@ -1,0 +1,220 @@
+/**
+ * Radio presentation utilities (q-namespaced). Derived 1:1 from the Checkbox
+ * (checkbox.css, Figma node 481:795) — same target/box ramp, border-width,
+ * colour tokens, hover/focus/disabled treatment and label sub-component — with
+ * two differences that make it a radio:
+ *   • the box (and focus target) are circular (border-radius: full), and
+ *   • the indicator is a centred filled dot instead of a check glyph.
+ * No indeterminate state. A Radio must live inside a RadioGroup.
+ *
+ * Selected mirrors the checkbox: the box fills with the colour's `fill` and the
+ * dot is drawn in the inverse `fg`.
+ */
+
+@source "./radio.tsx";
+
+/* Vertical group stack. */
+@utility q-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hf-space-300);
+}
+
+@utility q-radio {
+  --q-radio-fill: var(--hf-color-icon-accent);
+  --q-radio-fg: var(--hf-color-icon-inverse);
+  --q-radio-hover-border: var(--hf-color-lime-900);
+  --q-radio-focus-ring: var(--hf-color-transparent-lime-20);
+  --q-radio-target-size: var(--hf-space-600);
+  --q-radio-box-size: var(--hf-space-500);
+
+  align-items: center;
+  background-color: transparent;
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--hf-radius-full);
+  box-sizing: border-box;
+  color: var(--q-radio-fg);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: var(--q-radio-target-size);
+  justify-content: center;
+  outline: none;
+  padding: var(--hf-space-0);
+  position: relative;
+  transition-property: background-color, border-color, box-shadow, color;
+  width: var(--q-radio-target-size);
+}
+
+@utility q-radio-box {
+  align-items: center;
+  background-color: transparent;
+  border: var(--hf-border-width-medium) solid var(--hf-color-border-default);
+  border-radius: var(--hf-radius-full);
+  box-sizing: border-box;
+  color: transparent;
+  display: flex;
+  height: var(--q-radio-box-size);
+  justify-content: center;
+  transition-property: background-color, border-color, color;
+  width: var(--q-radio-box-size);
+}
+
+@utility q-radio-indicator {
+  align-items: center;
+  color: currentColor;
+  display: flex;
+  height: var(--q-radio-box-size);
+  justify-content: center;
+  width: var(--q-radio-box-size);
+}
+
+/* The selected dot — currentColor (= the ring colour when checked). Hidden
+ * (scaled to 0) by default; it pops in with a slight overshoot when selected and
+ * scales back out when deselected (the Indicator is keepMounted, so both the
+ * enter and exit transition). */
+@utility q-radio-dot {
+  background-color: currentColor;
+  border-radius: var(--hf-radius-full);
+  height: calc(var(--q-radio-box-size) * 0.6);
+  width: calc(var(--q-radio-box-size) * 0.6);
+  opacity: 0;
+  transform: scale(0);
+  transition-property: transform, opacity;
+  transition-duration: var(--hf-duration-normal);
+  transition-timing-function: var(--hf-ease-spring);
+}
+
+@utility q-radio-sm {
+  --q-radio-target-size: var(--hf-space-500);
+  --q-radio-box-size: calc(var(--hf-space-500) - var(--hf-space-050));
+}
+
+@utility q-radio-md {
+  --q-radio-target-size: var(--hf-space-600);
+  --q-radio-box-size: var(--hf-space-500);
+}
+
+@utility q-radio-lg {
+  --q-radio-target-size: var(--hf-space-700);
+  --q-radio-box-size: var(--hf-space-600);
+}
+
+@utility q-radio-brand {
+  --q-radio-fill: var(--hf-color-icon-accent);
+  --q-radio-fg: var(--hf-color-icon-inverse);
+  --q-radio-hover-border: var(--hf-color-lime-900);
+  --q-radio-focus-ring: var(--hf-color-transparent-lime-20);
+}
+
+@utility q-radio-white {
+  --q-radio-fill: var(--hf-color-palette-white);
+  --q-radio-fg: var(--hf-color-icon-inverse);
+  --q-radio-hover-border: var(--hf-color-palette-white);
+  --q-radio-focus-ring: var(--hf-color-transparent-light-20);
+}
+
+@utility q-radio-neutral {
+  --q-radio-fill: var(--hf-color-background-secondary-strong);
+  --q-radio-fg: var(--hf-color-text-primary);
+  --q-radio-hover-border: var(--hf-color-border-strong);
+  --q-radio-focus-ring: var(--hf-color-transparent-dark-20);
+}
+
+@utility q-radio-success {
+  --q-radio-fill: var(--hf-color-state-success-fg);
+  --q-radio-fg: var(--hf-color-text-inverse);
+  --q-radio-hover-border: var(--hf-color-state-success-fg);
+  --q-radio-focus-ring: var(--hf-color-state-success-glow);
+}
+
+@utility q-radio-error {
+  --q-radio-fill: var(--hf-color-state-error-fg);
+  --q-radio-fg: var(--hf-color-text-inverse);
+  --q-radio-hover-border: var(--hf-color-state-error-fg);
+  --q-radio-focus-ring: var(--hf-color-state-error-glow);
+}
+
+@utility q-radio-warning {
+  --q-radio-fill: var(--hf-color-state-warning-fg);
+  --q-radio-fg: var(--hf-color-text-inverse);
+  --q-radio-hover-border: var(--hf-color-state-warning-fg);
+  --q-radio-focus-ring: var(--hf-color-state-warning-glow);
+}
+
+@utility q-radio-info {
+  --q-radio-fill: var(--hf-color-state-info-fg);
+  --q-radio-fg: var(--hf-color-text-inverse);
+  --q-radio-hover-border: var(--hf-color-state-info-fg);
+  --q-radio-focus-ring: var(--hf-color-state-info-bg);
+}
+
+.q-radio:not([data-checked]):not([data-disabled]):hover .q-radio-box {
+  border-color: var(--q-radio-hover-border);
+}
+
+/* Selected: coloured ring + coloured dot, transparent middle (classic radio). */
+.q-radio[data-checked] .q-radio-box {
+  background-color: transparent;
+  border-color: var(--q-radio-fill);
+  color: var(--q-radio-fill);
+}
+
+.q-radio[data-checked] .q-radio-dot {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.q-radio:focus-visible {
+  background-color: var(--hf-color-background-primary);
+  box-shadow: 0 0 0 var(--hf-border-width-thick) var(--q-radio-focus-ring);
+}
+
+.q-radio[data-disabled] {
+  cursor: not-allowed;
+}
+
+/* Disabled keeps the ring + dot shape, muted (no fill). */
+.q-radio[data-disabled] .q-radio-box {
+  background-color: transparent;
+  border-color: var(--hf-color-icon-disabled);
+  color: var(--hf-color-icon-disabled);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .q-radio-dot {
+    transition: none;
+  }
+}
+
+@utility q-radio-label {
+  align-items: flex-start;
+  color: var(--hf-color-text-primary);
+  cursor: pointer;
+  display: flex;
+  gap: var(--hf-space-300);
+  min-width: var(--hf-space-0);
+}
+
+@utility q-radio-label-left {
+  justify-content: flex-start;
+}
+
+@utility q-radio-label-right {
+  justify-content: space-between;
+}
+
+@utility q-radio-label-text {
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  flex-direction: column;
+  gap: var(--hf-space-100);
+  min-width: var(--hf-space-0);
+  overflow-wrap: anywhere;
+}
+
+/* Title/description colour + composite type are now applied by <Typography>
+ * (color="primary"/"tertiary", variant label-sm-medium/label-md-medium for the
+ * title per size, label-sm-regular for the description) in radio.tsx. Unlike the
+ * checkbox there is no md line-height override, so the q-radio-label-{sm,md}
+ * size classes carry no rules of their own and are no longer emitted. */

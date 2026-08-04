@@ -1,0 +1,28 @@
+/**
+ * Layer 1 — Primitives (manifest)
+ *
+ * The raw hf-* palette and other primitive categories. Final values that
+ * reference nothing. Single source of truth for the whole system.
+ *
+ * One file per category, but only this manifest is exported
+ * (`@higgsfield/quanta/primitives.css`). Granular per-category paths are
+ * not exposed — need a subset? Import the manifest and tree-shake on the
+ * consumer side, or add an export when a use case appears.
+ */
+
+@import "./color.css";
+@import "./border-width.css";
+@import "./breakpoint.css";
+@import "./radius.css";
+@import "./spacing.css";
+@import "./shadow.css";
+@import "./typography.css";
+@import "./z-index.css";
+@import "./motion.css";
+@import "./icon.css";
+@import "./opacity.css";
+@import "./gradient.css";
+
+/* Generated component-override tier — global `--q-<comp>-<dim>` default knobs
+ * on :root. Non-Tailwind consumers get the override variables here too. */
+@import "../components/component.css";

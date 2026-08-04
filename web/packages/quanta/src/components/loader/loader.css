@@ -1,0 +1,149 @@
+/**
+ * Loader presentation — slot-tinted, Base-less indeterminate indicator. The
+ * accent comes from the slot system (`--q-tint`, set by `slotStyle(color)` on the
+ * root); neutral surfaces use `background-tertiary` (same track as Progress).
+ * Size is driven by per-size CSS custom properties. Motion degrades under
+ * `prefers-reduced-motion` and can be disabled per-instance via `data-static`.
+ */
+
+@source "./loader.tsx";
+
+@utility q-loader {
+  /* md defaults — overridden by the size utilities below. */
+  --q-loader-size: var(--hf-space-800); /* 32px box */
+  --q-loader-dot: var(--hf-space-250); /* 10px dot */
+  --q-loader-dot-gap: var(--hf-space-100); /* 4px gap between dots */
+
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--q-loader-size);
+  height: var(--q-loader-size);
+  color: var(--q-tint);
+}
+
+@utility q-loader-xxs {
+  --q-loader-size: var(--hf-space-300); /* 12px */
+  --q-loader-dot: var(--hf-space-100); /* 4px */
+  --q-loader-dot-gap: var(--hf-space-050); /* 2px */
+}
+@utility q-loader-xs {
+  --q-loader-size: var(--hf-space-400); /* 16px */
+  --q-loader-dot: var(--hf-space-150); /* 6px */
+  --q-loader-dot-gap: var(--hf-space-050); /* 2px */
+}
+@utility q-loader-sm {
+  --q-loader-size: var(--hf-space-600); /* 24px */
+  --q-loader-dot: var(--hf-space-200); /* 8px */
+  --q-loader-dot-gap: var(--hf-space-100); /* 4px */
+}
+@utility q-loader-md {
+  --q-loader-size: var(--hf-space-800); /* 32px */
+  --q-loader-dot: var(--hf-space-250); /* 10px */
+  --q-loader-dot-gap: var(--hf-space-100); /* 4px */
+}
+@utility q-loader-lg {
+  --q-loader-size: var(--hf-space-1200); /* 48px */
+  --q-loader-dot: var(--hf-space-400); /* 16px */
+  --q-loader-dot-gap: var(--hf-space-150); /* 6px */
+}
+
+/* ── dots — a tight 2×2 square of dots, blinking clockwise around it ───────── */
+.q-loader-dots {
+  display: grid;
+  grid-template-columns: repeat(2, var(--q-loader-dot));
+  grid-auto-rows: var(--q-loader-dot);
+  gap: var(--q-loader-dot-gap);
+  place-content: center;
+}
+@utility q-loader-dot {
+  width: var(--q-loader-dot);
+  height: var(--q-loader-dot);
+  border-radius: var(--hf-radius-full);
+  background-color: var(--q-tint);
+  animation: q-loader-blink var(--hf-duration-1200) var(--hf-ease-linear) infinite;
+}
+/* Grid order is TL, TR, BL, BR; delay them clockwise (TL→TR→BR→BL). */
+/* no token: stagger delays 0.3s/0.9s/0.6s — 0.9s/0.6s have no matching --hf-duration-*; kept the family raw for consistency */
+.q-loader-dots .q-loader-dot:nth-child(1) { animation-delay: 0s; }
+.q-loader-dots .q-loader-dot:nth-child(2) { animation-delay: 0.3s; } /* no token: stagger delay, no matching --hf-duration-* */
+.q-loader-dots .q-loader-dot:nth-child(3) { animation-delay: 0.9s; } /* no token: stagger delay, no matching --hf-duration-* */
+.q-loader-dots .q-loader-dot:nth-child(4) { animation-delay: 0.6s; } /* no token: stagger delay, no matching --hf-duration-* */
+@keyframes q-loader-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.15; }
+}
+
+/* ── circle — spinning ring (neutral track + accent arc) ──────────────────── */
+@utility q-loader-spinner {
+  width: var(--q-loader-size);
+  height: var(--q-loader-size);
+  animation: q-loader-spin var(--hf-duration-800) var(--hf-ease-linear) infinite;
+}
+.q-loader-spinner-track { stroke: var(--hf-color-transparent-light-10); }
+.q-loader-spinner-arc { stroke: var(--q-tint); }
+@keyframes q-loader-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── stars — twinkling sparkles (the marketing / AI motif) ────────────────── */
+@utility q-loader-star {
+  position: absolute;
+  color: var(--q-tint);
+  /* no token: ease-in-out keyword (cubic-bezier(.42,0,.58,1)) != --hf-ease-in-out (cubic-bezier(.4,0,.2,1)), left as keyword */
+  animation: q-loader-twinkle var(--hf-duration-1400) ease-in-out infinite;
+}
+.q-loader-stars .q-loader-star-main {
+  inset: var(--hf-space-0);
+  width: 100%;
+  height: 100%;
+}
+.q-loader-stars .q-loader-star-sub {
+  top: var(--hf-space-0);
+  right: var(--hf-space-0);
+  width: 45%;
+  height: 45%;
+  animation-delay: var(--hf-duration-700);
+}
+@keyframes q-loader-twinkle {
+  0%, 100% { opacity: 0.35; transform: scale(0.6); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* ── shine — an accent gloss sweeping across a tile (media-grid shimmer) ───── */
+@utility q-loader-shine {
+  border-radius: var(--hf-radius-300);
+  background-color: var(--hf-color-background-tertiary);
+  overflow: hidden;
+}
+.q-loader-shine::after {
+  content: "";
+  position: absolute;
+  inset: var(--hf-space-0);
+  /* Sweep is inlined (was --hf-gradient-loader-sweep): that upstream gradient
+   * token hardcodes the slot var, so the loader owns its sweep here to keep the
+   * slot var name (--q-tint) fully local. Same value, tinted by the slot accent. */
+  background-image: linear-gradient(105deg, transparent 35%, var(--q-tint) 50%, transparent 65%);
+  transform: translateX(-100%);
+  /* no token: ease-in-out keyword (cubic-bezier(.42,0,.58,1)) != --hf-ease-in-out (cubic-bezier(.4,0,.2,1)), left as keyword */
+  animation: q-loader-shine var(--hf-duration-1300) ease-in-out infinite;
+}
+@keyframes q-loader-shine {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* ── Motion off (animated={false}) + reduced-motion ───────────────────────── */
+.q-loader[data-static] .q-loader-dot,
+.q-loader[data-static] .q-loader-spinner,
+.q-loader[data-static] .q-loader-star { animation: none; }
+.q-loader-shine[data-static]::after { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .q-loader-dot,
+  .q-loader-spinner,
+  .q-loader-star { animation: none; }
+  .q-loader-shine::after { animation: none; }
+}

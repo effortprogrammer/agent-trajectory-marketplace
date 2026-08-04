@@ -1,0 +1,5 @@
+# Local scratch scripts stay untracked; the publish tooling is allowlisted
+# because the build/publish workflow (and package.json scripts) depend on it.
+scripts/*
+!scripts/make-publish-package.mjs
+!scripts/smoke-publish.mjs

@@ -1,0 +1,217 @@
+/**
+ * Accordion — quanta skin over Base UI `accordion`. Two looks: a hairline-
+ * separated `list` (default) and standalone glass `separated` cards. The panel
+ * collapse rides the Base UI `--accordion-panel-height` var with a `height`
+ * transition; an inner content wrapper carries the padding so text doesn't
+ * reflow mid-animation. Motion degrades under `prefers-reduced-motion`.
+ *
+ * Tokens only. The glass `separated` surface reuses the same recipe as `q-card`
+ * (background-glass + 40px blur + radius-600).
+ */
+@source "./accordion.tsx";
+
+/* ── Root ───────────────────────────────────────────────────────────────────── */
+@utility q-accordion {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: var(--hf-space-0);
+  color: var(--hf-color-text-primary);
+}
+
+/* Separated cards sit apart from each other. */
+.q-accordion-separated {
+  gap: var(--hf-space-200);
+}
+
+/* ── Item ───────────────────────────────────────────────────────────────────── */
+@utility q-accordion-item {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: var(--hf-space-0);
+}
+
+/* List variant: hairline rule between rows (top border, suppressed on the first
+ * item so the list has no leading rule). */
+.q-accordion-list .q-accordion-item {
+  border-top: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+}
+.q-accordion-list .q-accordion-item:first-child {
+  border-top: var(--hf-border-width-none) solid transparent;
+}
+
+/* Separated variant: each item is its own glass card. */
+.q-accordion-separated .q-accordion-item {
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+  border-radius: var(--hf-radius-600);
+  background-color: var(--hf-color-background-glass);
+  backdrop-filter: blur(var(--hf-space-1000)); /* 40px — matches the q-card glass surface */
+  overflow: hidden;
+}
+
+/* ── Header / Trigger ─────────────────────────────────────────────────────────
+ * Header is the Base UI `<h3>` wrapper — reset its native heading margin/size so
+ * the Trigger button controls the row metrics. */
+@utility q-accordion-header {
+  margin: var(--hf-space-0);
+  font: inherit;
+}
+
+@utility q-accordion-trigger {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--hf-space-300);
+  width: 100%;
+  padding-block: var(--hf-space-400);
+  padding-inline: var(--hf-space-200);
+  background-color: transparent;
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--hf-radius-200);
+  color: var(--hf-color-text-primary);
+  text-align: start;
+  cursor: pointer;
+  outline: none;
+  transition-property: background-color, color, box-shadow, opacity;
+  transition-duration: var(--hf-duration-150);
+  transition-timing-function: var(--hf-ease-out);
+  @apply text-q-body-md-medium;
+}
+
+/* Separated cards already provide the card inset; give the trigger the card
+ * horizontal padding instead of the bare list padding. */
+.q-accordion-separated .q-accordion-trigger {
+  padding-inline: var(--hf-space-500);
+}
+
+.q-accordion-trigger:hover {
+  background-color: var(--hf-color-overlay-hover);
+}
+
+.q-accordion-trigger:focus-visible {
+  box-shadow: inset 0 0 0 var(--hf-border-width-medium) var(--hf-color-border-focus);
+}
+
+.q-accordion-trigger[data-disabled] {
+  opacity: var(--hf-opacity-disabled);
+  pointer-events: none;
+}
+
+/* ── Trigger parts ────────────────────────────────────────────────────────── */
+@utility q-accordion-trigger-start {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--hf-color-icon-primary);
+}
+
+@utility q-accordion-trigger-label {
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+}
+
+@utility q-accordion-trigger-end {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-inline-start: auto;
+  color: var(--hf-color-icon-secondary);
+}
+
+/* Chevron rotates 180° when the item's panel is open. */
+@utility q-accordion-chevron {
+  transition-property: transform;
+  transition-duration: var(--hf-duration-220);
+  transition-timing-function: var(--hf-ease-out-expo);
+}
+.q-accordion-trigger[data-panel-open] .q-accordion-chevron {
+  transform: rotate(180deg);
+}
+
+/* ── Panel ────────────────────────────────────────────────────────────────────
+ * `height` rides the Base UI `--accordion-panel-height` var; `overflow:hidden`
+ * clips the inner content during the collapse so nothing spills. */
+@utility q-accordion-panel {
+  box-sizing: border-box;
+  overflow: hidden;
+  height: var(--accordion-panel-height);
+  transition-property: height;
+  transition-duration: var(--hf-duration-220);
+  transition-timing-function: var(--hf-ease-out-expo);
+}
+
+/* Base UI sets the start/end style heights to 0 for the open/close animation. */
+.q-accordion-panel[data-starting-style],
+.q-accordion-panel[data-ending-style] {
+  height: var(--hf-space-0);
+}
+
+@utility q-accordion-panel-content {
+  padding-block-end: var(--hf-space-400);
+  padding-inline: var(--hf-space-200);
+  color: var(--hf-color-text-secondary);
+  @apply text-q-body-sm-regular;
+}
+
+.q-accordion-separated .q-accordion-panel-content {
+  padding-inline: var(--hf-space-500);
+}
+
+/* ── Sizes ────────────────────────────────────────────────────────────────────
+ * `md` is the baseline above. `sm`/`lg` scale the row padding, the trigger + card
+ * radius, and the typography. Compound selectors (`.q-accordion-sm.q-accordion-
+ * separated …`) beat the variant rules so the separated insets scale too. */
+
+/* sm — denser rows, tighter radius, smaller text. */
+.q-accordion-sm .q-accordion-trigger {
+  gap: var(--hf-space-200);
+  padding-block: var(--hf-space-300);
+  padding-inline: var(--hf-space-150);
+  border-radius: var(--hf-radius-150);
+  @apply text-q-body-sm-medium;
+}
+.q-accordion-sm.q-accordion-separated .q-accordion-trigger {
+  padding-inline: var(--hf-space-400);
+}
+.q-accordion-sm.q-accordion-separated .q-accordion-item {
+  border-radius: var(--hf-radius-400);
+}
+.q-accordion-sm .q-accordion-panel-content {
+  padding-block-end: var(--hf-space-300);
+  padding-inline: var(--hf-space-150);
+  @apply text-q-caption-sm-regular;
+}
+.q-accordion-sm.q-accordion-separated .q-accordion-panel-content {
+  padding-inline: var(--hf-space-400);
+}
+
+/* lg — roomier rows, larger radius, larger text. */
+.q-accordion-lg .q-accordion-trigger {
+  gap: var(--hf-space-400);
+  padding-block: var(--hf-space-500);
+  padding-inline: var(--hf-space-300);
+  border-radius: var(--hf-radius-300);
+  @apply text-q-body-lg-medium;
+}
+.q-accordion-lg.q-accordion-separated .q-accordion-trigger {
+  padding-inline: var(--hf-space-600);
+}
+.q-accordion-lg .q-accordion-panel-content {
+  padding-block-end: var(--hf-space-500);
+  padding-inline: var(--hf-space-300);
+  @apply text-q-body-md-regular;
+}
+.q-accordion-lg.q-accordion-separated .q-accordion-panel-content {
+  padding-inline: var(--hf-space-600);
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .q-accordion-panel,
+  .q-accordion-chevron,
+  .q-accordion-trigger {
+    transition-duration: 1ms; /* no token: reduced-motion snap sentinel, instant token is 0ms */
+  }
+}

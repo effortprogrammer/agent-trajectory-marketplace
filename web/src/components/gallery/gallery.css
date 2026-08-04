@@ -1,0 +1,38 @@
+/**
+ * Justified-masonry History gallery — presentation-only styling that isn't
+ * expressible as plain Tailwind utilities (the content-visibility hint).
+ * Colours reference the global Quanta `--hf-*` custom properties. Imported directly by the gallery
+ * module (Vite injects it); it intentionally does NOT touch the shared
+ * `styles.css` entry. Class names are namespaced `qg-` (quanta-gallery).
+ */
+
+/* Scroll viewport — the windowed content lives inside an absolutely-sized
+ * sizer, so tiles never trigger layout of their neighbours. */
+.qg-viewport {
+  overscroll-behavior: contain;
+  will-change: scroll-position;
+}
+
+/* One tile shell — absolutely positioned by the engine's computed rect.
+ * `content-visibility` lets the browser skip rendering work for the (rare)
+ * off-screen tile still mounted during a fast fling. */
+.qg-tile {
+  position: absolute;
+  overflow: hidden;
+  border-radius: var(--hf-radius-300);
+  background-color: var(--hf-color-background-secondary);
+  content-visibility: auto;
+}
+
+/* Neutral fallback behind media that has not painted yet. */
+.qg-placeholder {
+  position: absolute;
+  inset: 0;
+  background-color: var(--hf-color-background-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qg-viewport {
+    scroll-behavior: auto;
+  }
+}

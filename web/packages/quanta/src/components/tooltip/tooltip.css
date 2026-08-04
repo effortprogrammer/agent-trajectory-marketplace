@@ -1,0 +1,110 @@
+/**
+ * Tooltip presentation utilities (q-tooltip-* namespace) for the Base UI
+ * `Tooltip` primitive. A small, legible inverted surface — `background-inverse`
+ * + `text-inverse` (the standard tooltip look, theme-reactive). The Popup fades
+ * and scales from its anchor-derived origin; the optional Arrow inherits the
+ * same surface. Positioning, side/align, and collision are owned by Base UI.
+ */
+
+@source "./tooltip.tsx";
+
+/* ── Positioner (transform origin + z-stacking; no own surface) ────────────── */
+@utility q-tooltip-positioner {
+  z-index: var(--hf-z-index-tooltip);
+}
+
+/* ── Popup (the inverted surface) ──────────────────────────────────────────── */
+@utility q-tooltip {
+  --q-tooltip-surface: var(--hf-color-background-inverse);
+
+  background-color: var(--q-tooltip-surface);
+  border-radius: var(--hf-radius-200);
+  box-sizing: border-box;
+  color: var(--hf-color-text-inverse);
+  max-width: var(--q-tooltip-max-width, calc(var(--hf-space-2400) * 3)); /* 288px — keep tooltips tight */
+  outline: none;
+  padding: var(--hf-space-100) var(--hf-space-150); /* 4px 6px */
+  width: max-content;
+  @apply text-q-caption-sm-medium;
+
+  /* Open / close: scale + fade from the anchor-derived origin. */
+  transform-origin: var(--transform-origin);
+  transition-property: opacity, transform;
+  transition-duration: var(--hf-duration-180);
+  transition-timing-function: var(--hf-ease-out-expo);
+  will-change: transform, opacity;
+
+  &[data-starting-style],
+  &[data-ending-style] {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+
+  &[data-starting-style][data-side="top"],
+  &[data-ending-style][data-side="top"] {
+    transform: scale(0.92) translateY(var(--hf-space-050));
+  }
+  &[data-starting-style][data-side="bottom"],
+  &[data-ending-style][data-side="bottom"] {
+    transform: scale(0.92) translateY(calc(-1 * var(--hf-space-050)));
+  }
+  &[data-starting-style][data-side="left"],
+  &[data-ending-style][data-side="left"],
+  &[data-starting-style][data-side="inline-start"],
+  &[data-ending-style][data-side="inline-start"] {
+    transform: scale(0.92) translateX(var(--hf-space-050));
+  }
+  &[data-starting-style][data-side="right"],
+  &[data-ending-style][data-side="right"],
+  &[data-starting-style][data-side="inline-end"],
+  &[data-ending-style][data-side="inline-end"] {
+    transform: scale(0.92) translateX(calc(-1 * var(--hf-space-050)));
+  }
+
+  &[data-ending-style] {
+    transition-duration: var(--hf-duration-130);
+    transition-timing-function: var(--hf-ease-in);
+  }
+
+  &[data-instant] {
+    transition-duration: var(--hf-duration-instant);
+  }
+}
+
+/* ── Arrow (same surface; rotated square nub on the anchored side) ─────────── */
+@utility q-tooltip-arrow {
+  background-color: var(--q-tooltip-surface);
+  height: var(--hf-space-200); /* 8px */
+  width: var(--hf-space-200);
+
+  &[data-side="top"] {
+    bottom: calc(-1 * var(--hf-space-050));
+    transform: rotate(45deg);
+  }
+  &[data-side="bottom"] {
+    top: calc(-1 * var(--hf-space-050));
+    transform: rotate(45deg);
+  }
+  &[data-side="left"],
+  &[data-side="inline-start"] {
+    right: calc(-1 * var(--hf-space-050));
+    transform: rotate(45deg);
+  }
+  &[data-side="right"],
+  &[data-side="inline-end"] {
+    left: calc(-1 * var(--hf-space-050));
+    transform: rotate(45deg);
+  }
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .q-tooltip {
+    transition-duration: 1ms; /* no token: reduced-motion snap sentinel, instant token is 0ms */
+  }
+
+  .q-tooltip[data-starting-style],
+  .q-tooltip[data-ending-style] {
+    transform: none;
+  }
+}

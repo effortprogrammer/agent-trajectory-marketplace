@@ -1,0 +1,14 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "fnf-quanta-storybook",
+
+  // Required by wrangler even for assets-only workers.
+  "compatibility_date": "2025-03-01",
+
+  // Assets-only Worker — no `main`, just serves the static Storybook build.
+  // `directory` is relative to this file: packages/quanta/storybook-static.
+  "assets": {
+    "directory": "./storybook-static",
+    "not_found_handling": "single-page-application"
+  }
+}

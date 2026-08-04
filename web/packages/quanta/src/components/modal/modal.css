@@ -1,0 +1,302 @@
+/**
+ * Modal presentation utilities (q-namespaced), pixel-matched to the Figma Modal
+ * system (Components file, node 1947:1403 — container + Header/Body/Footer types).
+ *
+ * Base UI Dialog owns focus trap, scroll lock, escape, ARIA and exit-mount
+ * timing (it holds the popup mounted until these CSS transitions finish via the
+ * Web Animations API), so these utilities only paint and animate.
+ *
+ * Glass model (glass is on the MODAL, not the overlay):
+ *   • Backdrop is a plain dim scrim — NO blur.
+ *   • Popup is the glass: background-glass + backdrop-filter, frosting what's
+ *     behind the panel. Header, Footer and the side-padding strips are this glass.
+ *   • Body is a lighter inset "window" (overlay-dim-soft = white 5%, radius 16).
+ *
+ * radius / motion are NOT emitted as quanta tokens, so — like button.css —
+ * they are authored from spacing tokens (`var(--hf-space-*)`) + native curves.
+ * The glass box-shadow now uses the emitted `var(--hf-shadow-modal)` composite.
+ * Fixed Figma rem widths and sub-pixel geometry are the only literals
+ * (documented exception).
+ */
+
+@source "./modal.tsx";
+
+/* ── Backdrop — dim scrim only (no blur; glass lives on the panel). ─────────── */
+@utility q-modal-backdrop {
+  position: fixed;
+  inset: var(--hf-space-0);
+  z-index: var(--hf-z-index-overlay);
+  background-color: var(--hf-color-overlay-scrim);
+  transition-property: opacity;
+  transition-duration: var(--hf-duration-normal); /* 200ms */
+  transition-timing-function: var(--hf-ease-out); /* cubic-bezier(0, 0, 0.2, 1) */
+
+  &[data-starting-style],
+  &[data-ending-style] {
+    opacity: 0;
+  }
+}
+
+/* ── Popup — centered frosted glass card (container = the glass). ───────────── */
+@utility q-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: var(--hf-z-index-modal);
+
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--hf-space-200); /* 8px */
+  width: min(var(--q-modal-width), calc(100vw - var(--hf-space-800)));
+  max-height: calc(100dvh - var(--hf-space-1600));
+  padding: var(--hf-space-200); /* 8px */
+
+  background-color: var(--hf-color-background-glass);
+  backdrop-filter: blur(var(--hf-space-1000)); /* 40px — Figma _Modal background blur */
+  /* Figma _Modal (1976:1460) carries no border — only the Glass effect. */
+  border-radius: var(--hf-radius-600); /* 24px */
+
+  outline: none;
+  overflow: clip;
+
+  transition-property: opacity, transform;
+  transition-duration: var(--hf-duration-normal); /* 200ms */
+  transition-timing-function: var(--hf-ease-out); /* ease-out (enter) — cubic-bezier(0, 0, 0.2, 1) */
+
+  &[data-starting-style],
+  &[data-ending-style] {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+
+  &[data-ending-style] {
+    transition-duration: var(--hf-duration-150); /* 150ms */
+    transition-timing-function: var(--hf-ease-in); /* ease-in (exit) — cubic-bezier(0.4, 0, 1, 1) */
+  }
+}
+
+/* Figma size variants — each maps the active width to its generated per-size
+ * override knob (defaults live on :root in css/components/component.css). */
+@utility q-modal-size-xs {
+  --q-modal-width: var(--q-modal-width-xs); /* 349px — New folder / Sub window */
+}
+@utility q-modal-size-sm {
+  --q-modal-width: var(--q-modal-width-sm); /* 469px — Small / Medium semantic sizes */
+}
+@utility q-modal-size-md {
+  --q-modal-width: var(--q-modal-width-md); /* 640px — Default / master */
+}
+@utility q-modal-size-lg {
+  --q-modal-width: var(--q-modal-width-lg); /* 708px — Grid / Selector / Search / Tabs */
+}
+@utility q-modal-size-xl {
+  --q-modal-width: var(--q-modal-width-xl); /* 946px — Left sidebar */
+}
+@utility q-modal-size-2xl {
+  --q-modal-width: var(--q-modal-width-2xl); /* 1392px — Large */
+}
+
+/* ── Header — transparent (sits on the container glass). Figma _Modal/Header
+ * (2034:1773): top-level gap 4 / padding 0. Title and controls own their 40px
+ * row geometry. ── */
+@utility q-modal-header {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--hf-space-100);
+  min-height: var(--hf-space-1000);
+  overflow: clip;
+  padding: var(--hf-space-0);
+}
+
+/* Search / tabs headers run flush to the container padding (Figma px 0). */
+@utility q-modal-header-flush {
+  padding: var(--hf-space-0);
+}
+
+/* leading group (back button + title) for the "back" header. */
+@utility q-modal-header-lead {
+  display: flex;
+  align-items: center;
+  flex: 1 1 var(--hf-space-0);
+  gap: var(--hf-space-100);
+  min-width: var(--hf-space-0);
+  overflow: clip;
+}
+
+.q-modal-header > .q-close,
+.q-modal-header-lead > .q-close {
+  margin: var(--hf-space-100);
+}
+
+@utility q-modal-title {
+  align-items: center;
+  flex: 1 1 var(--hf-space-0);
+  display: flex;
+  min-height: var(--hf-space-1000);
+  min-width: var(--hf-space-0);
+  margin: var(--hf-space-0);
+  overflow: hidden;
+  padding: var(--hf-space-200);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--hf-color-text-primary);
+  @apply text-q-body-md-semi-bold; /* Inter Semi Bold 16px */
+}
+
+@utility q-modal-description {
+  margin: var(--hf-space-0);
+  padding: var(--hf-space-0) var(--hf-space-200); /* align under the header (px 8) */
+  color: var(--hf-color-text-secondary);
+  @apply text-q-body-sm-regular;
+}
+
+/* flex spacer that pushes a trailing control to the right. */
+@utility q-modal-spacer {
+  flex: 1 1 var(--hf-space-0);
+}
+
+/* ── Body — neutral scroll region; the caller arranges the Workspaces. ─────── *
+ * The body carries NO window surface and imposes NO layout direction: drop a
+ * single Workspace to fill it, or your own div (flex row / column / grid) that
+ * holds several Workspaces, in any order. It's a vertical-scroll column with
+ * `min-height: 0` so a flex chain shrinks-to-scroll instead of cropping. */
+@utility q-modal-body {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  /* basis auto (NOT 0): size to content so the body doesn't collapse in a
+   * content-sized popup; min-height 0 lets it shrink-to-scroll when capped. */
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  gap: var(--hf-space-200); /* 8px between stacked children */
+  overflow: auto;
+}
+
+/* ── Workspace — the lighter inset "window" (Figma transparent/dark/05 = white 5%). ── */
+@utility q-modal-workspace {
+  box-sizing: border-box;
+  flex: 1 1 auto; /* fills a lone body, shares a row/column; caller can override */
+  min-width: 0;
+  min-height: 0; /* allow shrink so the pane scrolls instead of cropping */
+  overflow: auto;
+  border-radius: var(--hf-radius-400); /* 16px */
+  background-color: var(--hf-color-transparent-light-05);
+  color: var(--hf-color-text-primary);
+}
+
+@utility q-modal-workspace-padded {
+  padding: var(--hf-space-300); /* 12px */
+}
+
+/* ── Footer — transparent; Figma _Modal/Footer = 48px track. Caption/actions
+ * own their inner padding; full footer adds px8/py4 around the filled button. */
+@utility q-modal-footer {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--hf-space-100);
+  min-height: var(--hf-space-1200);
+  overflow: clip;
+}
+
+@utility q-modal-footer-full {
+  gap: var(--hf-space-0);
+  padding: var(--hf-space-100) var(--hf-space-200);
+}
+
+@utility q-modal-caption {
+  align-items: center;
+  flex: 1 1 var(--hf-space-0);
+  display: flex;
+  min-height: var(--hf-space-1200);
+  min-width: var(--hf-space-0);
+  overflow: hidden;
+  padding: var(--hf-space-200);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--hf-color-text-on-overlay-secondary);
+  @apply text-q-caption-sm-regular;
+}
+
+@utility q-modal-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--hf-space-150);
+  margin-inline-start: auto;
+  overflow: clip;
+  padding: var(--hf-space-100);
+}
+
+/* actions that fill the footer width (Figma footer type=full). */
+@utility q-modal-actions-full {
+  flex: 1 1 var(--hf-space-0);
+  padding: var(--hf-space-0);
+
+  & > * {
+    flex: 1 1 var(--hf-space-0);
+  }
+}
+
+/* The close / back disc is the shared CloseButton (q-close, node 2052:109). */
+
+/* ── Search row (header type=search) — Figma _MenuSearch (2034:1718): magnifier
+ * + input, px12, h40, fully-rounded pill, white-5% fill. */
+@utility q-modal-search {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  align-items: center;
+  gap: var(--hf-space-200); /* 8px */
+  min-height: var(--hf-space-1000);
+  min-width: var(--hf-space-0);
+  padding: var(--hf-space-0) var(--hf-space-300);
+  border-radius: var(--hf-radius-full);
+  background-color: var(--hf-color-overlay-dim-soft); /* white 5% */
+  color: var(--hf-color-icon-on-overlay-secondary);
+}
+
+@utility q-modal-search-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  height: var(--hf-icon-md); /* 20px — Figma _MenuSearch keeps the icon at 20px */
+  width: var(--hf-icon-md);
+  /* The glyph is wrapped in <Icon size="md"> (icon.css owns svg sizing). */
+}
+
+@utility q-modal-search-input {
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  appearance: none;
+  border: var(--hf-border-width-none) solid transparent;
+  background: transparent;
+  padding: var(--hf-space-0);
+  outline: none;
+  color: var(--hf-color-text-primary);
+  @apply text-q-body-sm-regular; /* Inter Regular 14px */
+
+  &::placeholder {
+    color: var(--hf-color-text-on-overlay-secondary); /* white 50% */
+  }
+}
+
+/* Respect reduced-motion: snap open/close instead of fading + scaling. */
+@media (prefers-reduced-motion: reduce) {
+  .q-modal-backdrop,
+  .q-modal {
+    transition-duration: 1ms; /* no token: near-instant snap; --hf-duration-instant is 0ms */
+  }
+
+  .q-modal[data-starting-style],
+  .q-modal[data-ending-style] {
+    transform: translate(-50%, -50%);
+  }
+}

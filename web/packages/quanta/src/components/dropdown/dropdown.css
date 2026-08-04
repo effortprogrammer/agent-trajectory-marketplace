@@ -1,0 +1,326 @@
+/**
+ * Dropdown presentation utilities (q-dropdown-* namespace), matched to the
+ * Figma Dropdown/Menu system (Menu / Select board 1302:82, plus _Menu* parts
+ * 236:3238 / 537:346 / 585:1145 / 676:2123 / 650:769 / 995:2266).
+ *
+ * The ROW SHELL is the shared `q-menu-item*` primitive (see menu.css) — the
+ * dropdown and navigation-menu render identical rows. Everything here is
+ * dropdown-specific: the glass popup, search bar, group/label rhythm, leading
+ * media tile, trailing meta, the selection check, and the submenu trigger.
+ * `Dropdown.Item` is composition-only — it renders whatever parts the consumer
+ * nests, so these utilities never assume a fixed row data shape.
+ */
+
+@source "./dropdown.tsx";
+
+/* ── Popup ──────────────────────────────────────────────────────────────────
+ * Centered frosted glass card. Width knobs (--q-menu-min/max-width) live in the
+ * generated component-token tier (css/components/component.css :root). */
+@utility q-dropdown-content {
+  --q-dropdown-radius: var(--hf-radius-300);
+  --q-dropdown-item-outer-radius: var(--hf-radius-200);
+  --q-dropdown-gap: var(--hf-space-050);
+
+  backdrop-filter: blur(var(--hf-space-1000)); /* 40px shared glass radius */
+  background-color: var(--hf-color-background-glass);
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--q-dropdown-radius);
+  box-shadow: 0 0 0 var(--hf-border-width-thin) var(--hf-color-border-subtle);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--q-dropdown-gap);
+  max-width: var(--q-menu-max-width);
+  min-width: var(--q-menu-min-width);
+  outline: none;
+  overflow: clip;
+  overscroll-behavior: none; /* no rubber-band bounce — avoids the clipped glass edge on scroll */
+  padding: var(--hf-space-200);
+
+  /* Open / close: scale + fade from the trigger-anchored origin. */
+  transform-origin: var(--transform-origin);
+  transition-property: opacity, transform;
+  transition-duration: var(--hf-duration-180);
+  transition-timing-function: var(--hf-ease-out-expo);
+  will-change: transform, opacity;
+
+  &[data-starting-style],
+  &[data-ending-style] {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+
+  &[data-starting-style][data-side="bottom"],
+  &[data-ending-style][data-side="bottom"] {
+    transform: scale(0.94) translateY(calc(-1 * var(--hf-space-100)));
+  }
+  &[data-starting-style][data-side="top"],
+  &[data-ending-style][data-side="top"] {
+    transform: scale(0.94) translateY(var(--hf-space-100));
+  }
+  &[data-starting-style][data-side="right"],
+  &[data-ending-style][data-side="right"],
+  &[data-starting-style][data-side="inline-end"],
+  &[data-ending-style][data-side="inline-end"] {
+    transform: scale(0.94) translateX(calc(-1 * var(--hf-space-100)));
+  }
+  &[data-starting-style][data-side="left"],
+  &[data-ending-style][data-side="left"],
+  &[data-starting-style][data-side="inline-start"],
+  &[data-ending-style][data-side="inline-start"] {
+    transform: scale(0.94) translateX(var(--hf-space-100));
+  }
+
+  &[data-ending-style] {
+    transition-duration: var(--hf-duration-130);
+    transition-timing-function: var(--hf-ease-in);
+  }
+
+  &[data-instant] {
+    transition-duration: var(--hf-duration-instant);
+  }
+}
+
+/* First/last rows follow the wrapper radius so their hover/selected fill nests
+ * into the rounded popup. The search layout adds a wrapper, so its trailing rows
+ * are matched through it (the search bar owns the top edge). */
+.q-dropdown-content > .q-menu-item:first-child {
+  border-top-left-radius: var(--q-dropdown-item-outer-radius);
+  border-top-right-radius: var(--q-dropdown-item-outer-radius);
+}
+
+.q-dropdown-content > .q-menu-item:last-child,
+.q-dropdown-content > .q-dropdown-group:last-child > .q-menu-item:last-child,
+.q-dropdown-content > .q-dropdown-search-wrap:last-child > .q-menu-item:last-child,
+.q-dropdown-content > .q-dropdown-search-wrap:last-child > .q-dropdown-group:last-child > .q-menu-item:last-child {
+  border-bottom-left-radius: var(--q-dropdown-item-outer-radius);
+  border-bottom-right-radius: var(--q-dropdown-item-outer-radius);
+}
+
+/* Distinct width presets (default = :root 160–400). compact is narrower than
+ * default and large is wider, on the MIN so they differ even for short content. */
+@utility q-dropdown-content-compact {
+  --q-dropdown-radius: var(--hf-radius-300);
+  --q-menu-min-width: calc(var(--hf-space-2400) + var(--hf-space-1200)); /* 144px */
+  --q-menu-max-width: calc(var(--hf-space-2400) * 2 + var(--hf-space-200)); /* 200px */
+}
+
+@utility q-dropdown-content-large {
+  --q-dropdown-radius: var(--hf-radius-300);
+  --q-menu-min-width: calc(var(--hf-space-2400) * 3 + var(--hf-space-800)); /* 320px */
+  --q-menu-max-width: calc(var(--hf-space-2400) * 5); /* 480px */
+}
+
+@utility q-dropdown-content-panel {
+  --q-dropdown-radius: var(--hf-radius-500);
+  --q-dropdown-item-outer-radius: var(--hf-radius-300);
+}
+
+@utility q-dropdown-content-solid {
+  backdrop-filter: none;
+  background-color: var(--hf-color-background-secondary);
+}
+
+/* Grouped rows share the popup's row rhythm. */
+.q-dropdown-content .q-dropdown-group,
+.q-dropdown-content .q-dropdown-search-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--q-dropdown-gap, var(--hf-space-050));
+}
+
+/* A row carrying a trailing button gets the taller Figma button-row height. */
+.q-dropdown-content .q-menu-item:has(.q-button) {
+  min-height: var(--hf-space-1000); /* 40px */
+}
+
+/* ── Trigger (keeps the hover/open look while its popup is open) ───────────── */
+.q-dropdown-trigger[aria-expanded="true"].q-menu-item,
+.q-dropdown-trigger[data-open].q-menu-item,
+.q-dropdown-trigger[data-popup-open].q-menu-item,
+.q-dropdown-submenu-trigger[aria-expanded="true"].q-menu-item,
+.q-dropdown-submenu-trigger[data-open].q-menu-item,
+.q-dropdown-submenu-trigger[data-popup-open].q-menu-item {
+  background-color: var(--hf-color-overlay-hover);
+}
+
+.q-dropdown-trigger[aria-expanded="true"].q-button-primary,
+.q-dropdown-trigger[data-open].q-button-primary,
+.q-dropdown-trigger[data-popup-open].q-button-primary,
+.q-dropdown-trigger[aria-expanded="true"].q-button-tertiary,
+.q-dropdown-trigger[data-open].q-button-tertiary,
+.q-dropdown-trigger[data-popup-open].q-button-tertiary,
+.q-dropdown-trigger[aria-expanded="true"].q-button-danger,
+.q-dropdown-trigger[data-open].q-button-danger,
+.q-dropdown-trigger[data-popup-open].q-button-danger,
+.q-dropdown-trigger[aria-expanded="true"].q-button-danger-soft,
+.q-dropdown-trigger[data-open].q-button-danger-soft,
+.q-dropdown-trigger[data-popup-open].q-button-danger-soft,
+.q-dropdown-trigger[aria-expanded="true"].q-button-brand-soft,
+.q-dropdown-trigger[data-open].q-button-brand-soft,
+.q-dropdown-trigger[data-popup-open].q-button-brand-soft,
+.q-dropdown-trigger[aria-expanded="true"].q-button-marketing-tertiary,
+.q-dropdown-trigger[data-open].q-button-marketing-tertiary,
+.q-dropdown-trigger[data-popup-open].q-button-marketing-tertiary,
+.q-dropdown-trigger[aria-expanded="true"].q-button-marketing-ghost,
+.q-dropdown-trigger[data-open].q-button-marketing-ghost,
+.q-dropdown-trigger[data-popup-open].q-button-marketing-ghost {
+  background-image: linear-gradient(var(--hf-color-transparent-light-20), var(--hf-color-transparent-light-20));
+}
+
+.q-dropdown-trigger[aria-expanded="true"].q-button-secondary,
+.q-dropdown-trigger[data-open].q-button-secondary,
+.q-dropdown-trigger[data-popup-open].q-button-secondary {
+  background-image: linear-gradient(var(--hf-color-transparent-dark-50), var(--hf-color-transparent-dark-50));
+}
+
+.q-dropdown-trigger[aria-expanded="true"].q-button-outline,
+.q-dropdown-trigger[data-open].q-button-outline,
+.q-dropdown-trigger[data-popup-open].q-button-outline,
+.q-dropdown-trigger[aria-expanded="true"].q-button-ghost,
+.q-dropdown-trigger[data-open].q-button-ghost,
+.q-dropdown-trigger[data-popup-open].q-button-ghost {
+  background-color: var(--hf-color-overlay-dim-strong);
+}
+
+/* ── Search bar (Figma _MenuSearch 676:2123) ──────────────────────────────── */
+@utility q-dropdown-search-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hf-space-050);
+}
+
+@utility q-dropdown-search {
+  align-items: center;
+  background-color: transparent;
+  border-radius: var(--hf-radius-300);
+  box-sizing: border-box;
+  color: var(--hf-color-icon-on-overlay-tertiary);
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--hf-space-200);
+  min-height: var(--hf-space-800);
+  padding: var(--hf-space-150); /* 6px uniform */
+}
+
+@utility q-dropdown-search-icon {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: calc(var(--hf-space-500) - var(--hf-space-050)); /* 18px */
+  justify-content: center;
+  width: calc(var(--hf-space-500) - var(--hf-space-050));
+
+  & svg {
+    height: 100%;
+    width: 100%;
+  }
+}
+
+@utility q-dropdown-search-input {
+  appearance: none;
+  background: transparent;
+  border: var(--hf-border-width-none) solid transparent;
+  color: var(--hf-color-text-primary);
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  outline: none;
+  padding: var(--hf-space-0);
+  @apply text-q-body-sm-regular;
+
+  &::placeholder {
+    color: var(--hf-color-text-on-overlay-secondary);
+  }
+}
+
+/* ── Leading media tile (Figma _MenuItemLarge mediaSlot, 36px) ────────────── *
+ * A row that carries a media tile becomes the rich "large" row: 56px tall, with
+ * a 12px caption title and a grey secondary description — all driven by the
+ * composed parts, no presentation prop. */
+@utility q-dropdown-item-media {
+  align-items: center;
+  background-color: var(--hf-color-background-secondary);
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+  border-radius: var(--hf-radius-200);
+  box-shadow: var(--hf-shadow-inset-tile-hairline);
+  color: var(--hf-color-icon-secondary);
+  display: inline-flex;
+  flex-shrink: 0;
+  height: calc(var(--hf-space-800) + var(--hf-space-100)); /* 36px */
+  justify-content: center;
+  overflow: clip;
+  width: calc(var(--hf-space-800) + var(--hf-space-100));
+
+  & img {
+    height: 100%;
+    object-fit: cover;
+    width: 100%;
+  }
+
+  & svg {
+    height: var(--hf-space-500);
+    width: var(--hf-space-500);
+  }
+}
+
+.q-menu-item:has(.q-dropdown-item-media) {
+  min-height: var(--hf-space-1400); /* 56px — Figma _MenuItemLarge */
+}
+
+.q-menu-item:has(.q-dropdown-item-media) .q-menu-item-title {
+  @apply text-q-caption-sm-medium; /* 12px */
+}
+
+.q-menu-item:has(.q-dropdown-item-media) .q-menu-item-description {
+  color: var(--hf-color-text-secondary); /* #828282 — large-row description */
+}
+
+/* ── Trailing meta (inline count) + inset chip ────────────────────────────── */
+@utility q-dropdown-item-meta {
+  color: var(--hf-color-text-secondary);
+  flex-shrink: 0;
+  white-space: nowrap;
+  @apply text-q-caption-sm-regular;
+}
+
+@utility q-dropdown-meta-chip {
+  align-items: center;
+  background-color: var(--hf-color-transparent-light-05);
+  border-radius: var(--hf-radius-100);
+  color: var(--hf-color-text-on-overlay-secondary);
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--hf-space-100);
+  padding: var(--hf-space-050) var(--hf-space-100);
+  white-space: nowrap;
+  @apply text-q-caption-xs-regular;
+
+  & svg {
+    height: var(--hf-space-300);
+    width: var(--hf-space-300);
+  }
+}
+
+/* ── Selection / submenu glyph ────────────────────────────────────────────── */
+@utility q-dropdown-check {
+  color: var(--hf-color-icon-primary);
+  flex-shrink: 0;
+  height: var(--hf-space-400);
+  width: var(--hf-space-400);
+}
+
+.q-menu-item[data-disabled] .q-dropdown-check {
+  color: var(--hf-color-icon-on-overlay-tertiary);
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .q-dropdown-content {
+    transition-duration: 1ms; /* no token: reduced-motion snap sentinel, instant token is 0ms */
+  }
+
+  .q-dropdown-content[data-starting-style],
+  .q-dropdown-content[data-ending-style] {
+    transform: none;
+  }
+}

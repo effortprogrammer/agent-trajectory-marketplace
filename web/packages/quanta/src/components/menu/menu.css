@@ -1,0 +1,152 @@
+/**
+ * Shared menu ROW primitives (q-menu-* namespace).
+ *
+ * These are the cross-component building blocks for menu-style rows, matched to
+ * the Figma _MenuItem (236:3238) / _MenuLabel (537:346). They are intentionally
+ * presentation-only and data-agnostic: a row is `q-menu-item`, its parts are
+ * `q-menu-item-icon` / `-label` / `-title-row` / `-title` / `-description` /
+ * `-trailing`, and a section heading is `q-menu-group-label`.
+ *
+ * Consumers:
+ *   • dropdown   — composes these inside `Dropdown.Item` (see dropdown.css for
+ *                  the popup / search / media / submenu chrome).
+ *   • navigation-menu — reuses the row + parts.
+ *   • cmdk       — reuses `q-menu-item`, `q-menu-item-icon`, `q-menu-group-label`.
+ *
+ * Keep this file to the SHARED primitives only. Component-specific chrome lives
+ * in that component's own stylesheet.
+ */
+
+/* @source the consumers so Tailwind keeps these utilities (they're referenced
+ * from TSX in sibling packages consumed as a symlink). */
+@source "../dropdown/dropdown.tsx";
+@source "../navigation-menu/navigation-menu.tsx";
+@source "../cmdk/cmdk.tsx";
+
+/* ── Row ──────────────────────────────────────────────────────────────────── */
+@utility q-menu-item {
+  align-items: center;
+  background-color: transparent;
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--hf-radius-200);
+  box-sizing: border-box;
+  color: var(--hf-color-text-primary);
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--hf-space-200);
+  min-height: calc(var(--hf-space-800) + var(--hf-space-100)); /* 36px — Figma _MenuItem */
+  outline: none;
+  padding: var(--hf-space-200); /* 8px uniform */
+  position: relative;
+  text-align: start;
+  transition-property: background-color, box-shadow, color, opacity;
+  user-select: none;
+  cursor: pointer;
+  @apply text-q-body-sm-medium;
+}
+
+.q-menu-item:hover,
+.q-menu-item[data-highlighted],
+.q-menu-item[data-checked],
+.q-menu-item[aria-checked="true"] {
+  background-color: var(--hf-color-overlay-hover);
+}
+
+.q-menu-item:active {
+  background-color: var(--hf-color-transparent-light-10);
+}
+
+/* Focused (Figma _MenuItem 236:3238): a 1.5px lime border/focus ring, NO bg —
+ * inset box-shadow so the ring adds no layout shift. */
+.q-menu-item:focus-visible {
+  box-shadow: inset 0 0 0 var(--hf-border-width-medium) var(--hf-color-border-focus);
+}
+
+/* Disabled (Figma _MenuItem): the whole row at 50% opacity — NOT a colour swap. */
+.q-menu-item[data-disabled] {
+  opacity: var(--hf-opacity-disabled);
+  pointer-events: none;
+}
+
+/* Destructive row (Figma _MenuActions "Delete", 1343:2626): red title + icon.
+ * Hover still layers overlay-hover underneath — the danger colour persists. */
+.q-menu-item-danger {
+  color: var(--hf-color-text-danger);
+}
+.q-menu-item-danger .q-menu-item-icon,
+.q-menu-item-danger .q-menu-item-trailing {
+  color: var(--hf-color-icon-error);
+}
+
+/* ── Parts ──────────────────────────────────────────────────────────────────
+ * Leading icon (Figma _MenuItem leading slot is 20px). */
+@utility q-menu-item-icon {
+  align-items: center;
+  color: var(--hf-color-icon-primary);
+  display: inline-flex;
+  flex-shrink: 0;
+  height: var(--hf-space-500);
+  justify-content: center;
+  width: var(--hf-space-500);
+
+  & > svg,
+  & > img {
+    height: 100%;
+    width: 100%;
+  }
+}
+
+/* Content column — stacks the title row and description (Figma content gap 2px). */
+@utility q-menu-item-label {
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  flex-direction: column;
+  gap: var(--hf-space-050); /* 2px — Figma _MenuItem content gap (title row ↔ description) */
+  min-width: var(--hf-space-0);
+}
+
+@utility q-menu-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Title row — title + inline meta (gap 6px, items center). Holds arbitrary
+ * ReactNodes, so it must not clip or cap height. */
+@utility q-menu-item-title-row {
+  align-items: center;
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  gap: var(--hf-space-150);
+  min-width: var(--hf-space-0);
+}
+
+/* Description line. Holds arbitrary ReactNodes (chips, badges, wrapping text),
+ * so it flows to its natural height. */
+@utility q-menu-item-description {
+  color: var(--hf-color-text-on-overlay-secondary);
+  min-width: var(--hf-space-0);
+  @apply text-q-caption-sm-regular;
+}
+
+/* Trailing slot — pushed to the right (count, indicator, chevron, button…). */
+@utility q-menu-item-trailing {
+  align-items: center;
+  color: var(--hf-color-icon-primary);
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--hf-space-200);
+  margin-inline-start: auto;
+}
+
+/* ── Section heading (Figma _MenuLabel) ───────────────────────────────────── */
+@utility q-menu-group-label {
+  align-items: center;
+  color: var(--hf-color-text-on-overlay-secondary);
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--hf-space-200);
+  min-height: var(--hf-space-800);
+  padding: var(--hf-space-200);
+  @apply text-q-label-xs-medium;
+}
