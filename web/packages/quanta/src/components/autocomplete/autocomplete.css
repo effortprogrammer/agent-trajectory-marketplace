@@ -1,0 +1,131 @@
+/**
+ * Autocomplete presentation utilities (q-autocomplete-* namespace).
+ *
+ * The Autocomplete reuses the quanta primitives wholesale and only adds the
+ * combobox-specific chrome here:
+ *   • INPUT  — the canonical field surface (`q-field-control` / `q-field-input` /
+ *              `q-field-affix` from input.css); this file only adds the clear
+ *              button + the cursor affordance so the whole control reads as a
+ *              type-to-search field.
+ *   • POPUP  — the dropdown glass card (`q-dropdown-content` from dropdown.css);
+ *              this file scopes the filtered list to a scrollable region.
+ *   • ROWS   — the shared `q-menu-item*` rows (menu.css), unchanged.
+ *
+ * Token-only. Animation degrades under prefers-reduced-motion (inherited from
+ * q-dropdown-content).
+ */
+
+@source "./autocomplete.tsx";
+
+/* The field control behaves as a clickable text-search surface. */
+@utility q-autocomplete-control {
+  cursor: text;
+}
+
+/* Auto-hiding clear button (Base UI toggles its [hidden]/visible state). Sits in
+ * the trailing affix slot at the same 20px footprint as q-field-affix. */
+@utility q-autocomplete-clear {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--hf-radius-100);
+  color: var(--hf-color-icon-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: var(--hf-space-500); /* 20px */
+  justify-content: center;
+  outline: none;
+  padding: var(--hf-space-0);
+  transition-property: color, background-color;
+  transition-duration: var(--hf-duration-130);
+  width: var(--hf-space-500);
+
+  &:hover {
+    background-color: var(--hf-color-overlay-hover);
+    color: var(--hf-color-icon-primary);
+  }
+
+  &:focus-visible {
+    box-shadow: inset 0 0 0 var(--hf-border-width-medium) var(--hf-color-border-focus);
+  }
+
+  & svg {
+    height: 100%;
+    width: 100%;
+  }
+}
+
+/* Positioner spans the field width so the popup matches the input, with a
+ * min-width floor so a narrow search field still shows full rows. */
+@utility q-autocomplete-positioner {
+  width: var(--anchor-width);
+  min-width: var(--q-menu-min-width);
+  outline: none;
+}
+
+/* ── Connected (nested field) ─────────────────────────────────────────────────
+ * Mirrors Select: the popup is a WIDER rounded card that overlaps + sits BEHIND
+ * the input, which keeps the higher z-index and stays typable on top. The popup
+ * is anchored to the field WRAPPER (see autocomplete.tsx), centred and wider so
+ * the input tucks inside, with top padding so the rows clear the input. Rendered
+ * without the portal so the input wins the z-index in the shared stacking context. */
+.q-autocomplete-positioner.q-autocomplete-positioner-connected {
+  width: calc(var(--anchor-width) + 2 * var(--hf-space-200)); /* wider than the field */
+  z-index: var(--hf-z-index-dropdown);
+}
+
+.q-autocomplete-content.q-autocomplete-content-connected {
+  width: 100%;
+  min-width: var(--hf-space-0);
+  max-width: none;
+  /* Clear the input that overlaps the top (default 40px field + breathing room). */
+  padding-top: calc(var(--hf-space-1000) + var(--hf-space-400));
+}
+
+/* The input sits ON TOP of the popup it nests in (no-portal shared stacking ctx). */
+.q-autocomplete-control.q-autocomplete-control-connected {
+  position: relative;
+  z-index: calc(var(--hf-z-index-dropdown) + 1);
+}
+
+/* The popup is the dropdown glass card; cap its height and let the list scroll. */
+@utility q-autocomplete-content {
+  max-height: var(--available-height, none);
+  width: 100%;
+}
+
+/* Scrollable list region inside the popup. */
+@utility q-autocomplete-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hf-space-050); /* 2px — dropdown row rhythm */
+  max-height: calc(var(--hf-space-2400) * 4); /* 320px — keeps long lists scrollable */
+  min-width: var(--hf-space-0);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Grouped rows share the popup's row rhythm (mirrors q-dropdown-group). */
+@utility q-autocomplete-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hf-space-050);
+  min-width: var(--hf-space-0);
+}
+
+/* Empty state — centered, with comfortable padding around the NotFound block.
+ * Base UI keeps the (role=status, aria-live) wrapper mounted but EMPTY while there
+ * are matches; collapse it then with :empty so it doesn't show as a stray band
+ * (an apparent divider) above the list. */
+@utility q-autocomplete-empty {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  padding: var(--hf-space-400) var(--hf-space-200); /* 16px / 8px */
+
+  &:empty {
+    display: none;
+  }
+}

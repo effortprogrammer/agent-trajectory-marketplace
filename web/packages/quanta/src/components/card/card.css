@@ -1,0 +1,101 @@
+/**
+ * Card — the shared glass/solid SURFACE that Modal, Vault, Sonner, Dropdown,
+ * cmdk and NavigationMenu each hand-roll today. It consolidates that exact
+ * recipe so new surfaces don't reinvent it. The glass surface is PIXEL-IDENTICAL
+ * to the Modal popup (Figma _Modal 1976:1460 = `q-modal`):
+ *
+ *   background-glass + 40px backdrop blur + radius-600 (24px) — and NOTHING else.
+ *   No border, no box-shadow: the translucent fill + blur ARE the surface (the
+ *   old inner-white "sheen" box-shadow was redundant given the blur/bg, and is
+ *   removed). `q-card-raised` opts into the floating drop shadow used by
+ *   popovers/toasts/sheets; `q-card-solid` swaps to the opaque secondary surface
+ *   (no blur) for in-page panels.
+ *
+ * Composition parts mirror those components: Header / Title / Description / Body
+ * / Footer. Tokens only. This component intentionally does NOT modify
+ * Modal/Vault/etc.; it's the reusable primitive going forward.
+ */
+@source "./card.tsx";
+
+@utility q-card {
+  --q-card-radius: var(--hf-radius-600); /* 24px — the Modal surface radius; overridable per instance */
+
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: var(--hf-space-0);
+  border-radius: var(--q-card-radius);
+  background-color: var(--hf-color-background-glass);
+  backdrop-filter: blur(var(--hf-space-1000)); /* 40px — Figma _Modal background blur */
+  color: var(--hf-color-text-primary);
+  /* No border, no box-shadow — the glass fill + 40px blur ARE the surface,
+   * pixel-identical to the Modal popup. `q-card-raised` opts into elevation. */
+}
+
+/* Opaque secondary surface, no blur — in-page panels / cards on a solid bg. */
+@utility q-card-solid {
+  background-color: var(--hf-color-background-secondary);
+  backdrop-filter: none;
+}
+
+/* Floating elevation — adds the soft drop shadow used by overlays/toasts/sheets. */
+@utility q-card-raised {
+  box-shadow: var(--hf-shadow-raised);
+}
+
+/* ── Composition parts ──────────────────────────────────────────────────────
+ * Header / Footer carry full padding; Body too, but its TOP padding collapses
+ * when it directly follows a Header (the header already provides the top inset)
+ * — so both "Header + Body" and bare "Body" compositions read correctly. */
+@utility q-card-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hf-space-300);
+  padding: var(--hf-space-500);
+}
+
+@utility q-card-heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hf-space-050);
+  min-width: var(--hf-space-0);
+}
+
+@utility q-card-title {
+  @apply text-q-body-md-semi-bold;
+  color: var(--hf-color-text-primary);
+}
+
+@utility q-card-description {
+  @apply text-q-body-sm-regular;
+  color: var(--hf-color-text-secondary);
+}
+
+@utility q-card-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--hf-space-200);
+}
+
+@utility q-card-body {
+  flex: 1 1 auto;
+  min-height: var(--hf-space-0);
+  padding: var(--hf-space-500);
+}
+
+.q-card-header + .q-card-body {
+  padding-top: var(--hf-space-0);
+}
+
+@utility q-card-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hf-space-300);
+  padding: var(--hf-space-500);
+  border-top: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+}

@@ -1,0 +1,98 @@
+/**
+ * Composer presentation — the prompt pane from the Figma builder panel (node
+ * 2950:66575): white-5% surface + subtle border, radius/300, 12px padding;
+ * caption label over a borderless text area; footer action row behind a
+ * subtle top rule. The pane is the field: hover composites the dim overlay,
+ * focus-within draws the lime inset ring (shared field language), disabled
+ * fades the whole surface.
+ */
+@source "./composer.tsx";
+
+@utility q-composer {
+  /* Figma prompt-content minimum (104px free-text region) has no --hf-space-*
+   * equivalent (scale tops out at 96px) — a documented, overridable knob. */
+  --q-composer-min-height: 6.5rem;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--hf-space-300);
+  width: 100%;
+  padding: var(--hf-space-300);
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+  border-radius: var(--hf-radius-300);
+  background-color: var(--hf-color-overlay-dim-soft);
+  transition-property: background-color, box-shadow;
+
+  &:hover {
+    background-image: linear-gradient(var(--hf-color-overlay-hover), var(--hf-color-overlay-hover));
+  }
+
+  &:focus-within {
+    box-shadow: inset 0 0 0 var(--hf-border-width-medium) var(--hf-color-border-focus);
+  }
+
+  &:has(:disabled),
+  &:has([data-disabled]) {
+    opacity: var(--hf-opacity-disabled);
+  }
+}
+
+/* Label + text area stack (Figma "Prompt Content": 8px gap, 4px inline inset). */
+@utility q-composer-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--hf-space-200);
+  padding-inline: var(--hf-space-100);
+}
+
+@utility q-composer-label {
+  color: var(--hf-color-text-secondary);
+  @apply text-q-caption-sm-medium;
+}
+
+/* The borderless control — the pane paints the surface, this only types. */
+@utility q-composer-input {
+  flex: 1 1 var(--hf-space-0);
+  width: 100%;
+  min-height: var(--q-composer-min-height);
+  appearance: none;
+  background: transparent;
+  border: var(--hf-border-width-none) solid transparent;
+  padding: var(--hf-space-0);
+  outline: none;
+  resize: none;
+  color: var(--hf-color-text-primary);
+  @apply text-q-body-sm-medium;
+
+  &::placeholder {
+    color: var(--hf-color-text-tertiary);
+    opacity: 1;
+  }
+}
+
+/* Footer action row behind a subtle rule (Figma "Line 145" + 12px gap). */
+@utility q-composer-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--hf-space-100);
+  padding-top: var(--hf-space-300);
+  border-top: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+}
+
+/* The footer pill — re-skins a Button (ghost/xs): white-5% pill, 8/12 padding,
+ * 12px label at 50% white, primary-tone 16px icons. Behavior stays Button's.
+ * Later-in-bundle than button.css (components.css order), so same-specificity
+ * overrides here win. */
+@utility q-composer-action {
+  padding-inline: var(--hf-space-200) var(--hf-space-300);
+  border-radius: var(--hf-radius-full);
+  background-color: var(--hf-color-overlay-dim-soft);
+  color: var(--hf-color-text-on-overlay-secondary);
+  @apply text-q-label-xs-medium;
+
+  & svg {
+    color: var(--hf-color-icon-primary);
+  }
+}

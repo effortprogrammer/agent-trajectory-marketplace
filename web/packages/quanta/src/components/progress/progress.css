@@ -1,0 +1,226 @@
+/**
+ * Progress presentation — Base-less, slot-tinted indicator (mirrors Slider's
+ * track + accent-fill model). Registers the colocated source for Tailwind's
+ * scanner (quanta is symlinked) and authors every surface as `@utility
+ * q-progress-*`. The accent comes from the slot system (`--q-tint`, set by
+ * `slotStyle(color)` on the root); the track is the neutral
+ * `background-tertiary` (same as the slider track). Size is driven by per-size
+ * CSS custom properties. Motion degrades under `prefers-reduced-motion` and can
+ * be turned off per-instance via `data-static` (the `animated={false}` prop).
+ */
+@source "./progress.tsx";
+
+/* Per-size dimensions. */
+/* --q-progress-ring-stroke is in viewBox-100 units (NOT px): renders as
+ * `value * ring/100` px. Kept in viewBox units so stroke-dasharray (also viewBox
+ * units) stays consistent — see the accuracy note on .q-progress-ring-arc. */
+@utility q-progress-xxs {
+  --q-progress-h: var(--hf-space-050);   /* 2px bar/segment */
+  --q-progress-dot: var(--hf-space-100); /* 4px dot */
+  --q-progress-conn: var(--hf-space-050);
+  --q-progress-gap: var(--hf-space-050);
+  --q-progress-ring: var(--hf-space-800); /* 32px circular diameter */
+  --q-progress-ring-stroke: 10;
+}
+@utility q-progress-xs {
+  --q-progress-h: var(--hf-space-100);   /* 4px */
+  --q-progress-dot: var(--hf-space-150); /* 6px */
+  --q-progress-conn: var(--hf-space-050);
+  --q-progress-gap: var(--hf-space-100);
+  --q-progress-ring: var(--hf-space-1000); /* 40px */
+  --q-progress-ring-stroke: 9;
+}
+@utility q-progress-sm {
+  --q-progress-h: var(--hf-space-150);   /* 6px */
+  --q-progress-dot: var(--hf-space-200); /* 8px */
+  --q-progress-conn: var(--hf-space-050);
+  --q-progress-gap: var(--hf-space-150);
+  --q-progress-ring: var(--hf-space-1200); /* 48px */
+  --q-progress-ring-stroke: 8.5;
+}
+@utility q-progress-md {
+  --q-progress-h: var(--hf-space-200);   /* 8px */
+  --q-progress-dot: var(--hf-space-250); /* 10px */
+  --q-progress-conn: var(--hf-space-050);
+  --q-progress-gap: var(--hf-space-200);
+  --q-progress-ring: var(--hf-space-1600); /* 64px */
+  --q-progress-ring-stroke: 8;
+}
+@utility q-progress-lg {
+  --q-progress-h: var(--hf-space-250);   /* 10px */
+  --q-progress-dot: var(--hf-space-300); /* 12px */
+  --q-progress-conn: var(--hf-space-050);
+  --q-progress-gap: var(--hf-space-250);
+  --q-progress-ring: var(--hf-space-2400); /* 96px */
+  --q-progress-ring-stroke: 7;
+}
+
+/* ── Bar ──────────────────────────────────────────────────────────────────── */
+@utility q-progress {
+  position: relative;
+  width: 100%;
+  height: var(--q-progress-h);
+  border-radius: var(--hf-radius-full);
+  overflow: hidden;
+  background-color: var(--hf-color-background-tertiary);
+}
+@utility q-progress-fill {
+  position: absolute;
+  inset-block: var(--hf-space-0);
+  left: var(--hf-space-0);
+  border-radius: var(--hf-radius-full);
+  background-color: var(--q-tint);
+  transition: width var(--hf-duration-350) var(--hf-ease-in-out-circ);
+  will-change: width;
+}
+@utility q-progress-indeterminate {
+  width: 40%; /* no token: percentage track width, not a spacing px */
+  /* `ease-in-out` left as a standard CSS keyword (no cubic-bezier token equivalent). */
+  animation: q-progress-slide var(--hf-duration-1300) ease-in-out infinite;
+}
+@keyframes q-progress-slide {
+  0% { left: -45%; }
+  100% { left: 100%; }
+}
+
+/* ── Stepped container (dots + line) ──────────────────────────────────────── */
+@utility q-progress-steps {
+  display: flex;
+  align-items: center;
+  gap: var(--q-progress-gap);
+  width: 100%;
+}
+
+/* ── Line segments ────────────────────────────────────────────────────────── */
+@utility q-progress-segment {
+  position: relative;
+  flex: 1 1 auto;
+  height: var(--q-progress-h);
+  border-radius: var(--hf-radius-full);
+  overflow: hidden;
+  background-color: var(--hf-color-background-tertiary);
+}
+@utility q-progress-segment-fill {
+  position: absolute;
+  inset-block: var(--hf-space-0);
+  left: var(--hf-space-0);
+  border-radius: var(--hf-radius-full);
+  background-color: var(--q-tint);
+  transition: width var(--hf-duration-350) var(--hf-ease-in-out-circ);
+}
+
+/* ── Dotted bar (a row of equal dots; the first N filled) ─────────────────────
+ * AUTO-FIT: each dot is absolutely placed at a fraction of the wrapper width
+ * (its `left` is computed inline), so any number of dots span 0→100% and OVERLAP
+ * when crowded (e.g. 100 dots in a narrow track) instead of overflowing — the row
+ * never exceeds the wrapper. Few dots → spread out; many → condensed/overlapping. */
+@utility q-progress-dots {
+  position: relative;
+  width: 100%;
+  height: var(--q-progress-dot);
+}
+@utility q-progress-dot {
+  position: absolute;
+  top: var(--hf-space-0);
+  width: var(--q-progress-dot);
+  height: var(--q-progress-dot);
+  transform: translateX(-50%); /* centre each dot on its computed point */
+  border-radius: var(--hf-radius-full);
+  background-color: var(--hf-color-background-tertiary);
+  transition: background-color var(--hf-duration-slow) ease; /* no token: `ease` keyword has no --hf-ease-* equivalent */
+}
+.q-progress-dot[data-state="complete"] {
+  background-color: var(--q-tint);
+  z-index: 1; /* filled dots paint above pending so the progress edge stays crisp when dots overlap */
+}
+
+/* ── Circular forms (ring / segmented ring / dotted ring) ─────────────────────
+ * One square SVG box (--q-progress-ring). Strokes use `non-scaling-stroke` so the
+ * thickness stays --q-progress-h px regardless of the viewBox scale; arc geometry
+ * (dash lengths, dot positions) is in viewBox units and scales with the box. */
+@utility q-progress-circular {
+  position: relative;
+  display: inline-flex;
+  width: var(--q-progress-ring);
+  height: var(--q-progress-ring);
+}
+.q-progress-ring-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.q-progress-ring-track {
+  fill: none;
+  stroke: var(--hf-color-background-tertiary);
+  stroke-width: var(--q-progress-ring-stroke);
+}
+.q-progress-ring-arc {
+  fill: none;
+  stroke: var(--q-tint);
+  stroke-width: var(--q-progress-ring-stroke);
+  /* Butt cap: the arc ends exactly at the value angle (a round cap overshoots by
+   * half the stroke and collides with the start cap near 100% — the "mustache"). */
+  stroke-linecap: butt;
+  /* stroke-width + dasharray are BOTH in viewBox units (no non-scaling-stroke):
+   * non-scaling-stroke measures the dash in rendered px, which mismatches the
+   * viewBox-unit circumference C → the ring fills wrong (≈full at 60%). */
+  transition: stroke-dashoffset var(--hf-duration-350) var(--hf-ease-in-out-circ);
+}
+.q-progress-ring-indeterminate {
+  /* No value to be accurate about — round caps read nicer on the spinner. */
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: center;
+  /* no token: 0.9s has no --hf-duration-* equivalent */
+  animation: q-progress-spin 0.9s var(--hf-ease-linear) infinite;
+}
+@keyframes q-progress-spin { to { transform: rotate(360deg); } }
+
+/* segmented ring — one stroked arc chunk per segment (butt caps so adjacent
+ * segments never overlap and each chunk is exactly its share of the circle). */
+.q-progress-ring-seg {
+  fill: none;
+  stroke: var(--hf-color-background-tertiary);
+  stroke-width: var(--q-progress-ring-stroke);
+  stroke-linecap: butt;
+  transition: stroke var(--hf-duration-slow) ease; /* no token: `ease` keyword has no --hf-ease-* equivalent */
+}
+.q-progress-ring-seg[data-state="complete"] { stroke: var(--q-tint); }
+
+/* dotted ring — dots arranged around the circle */
+.q-progress-ring-dot {
+  fill: var(--hf-color-background-tertiary);
+  transition: fill var(--hf-duration-slow) ease; /* no token: `ease` keyword has no --hf-ease-* equivalent */
+}
+.q-progress-ring-dot[data-state="complete"] { fill: var(--q-tint); }
+
+/* Center label (circular). */
+@utility q-progress-center {
+  position: absolute;
+  inset: var(--hf-space-0);
+  display: grid;
+  place-items: center;
+  color: var(--hf-color-text-primary);
+  @apply text-q-caption-sm-medium;
+}
+
+/* ── Motion off (animated={false}) ────────────────────────────────────────── */
+.q-progress[data-static] .q-progress-fill,
+.q-progress-steps[data-static] .q-progress-segment-fill { transition: none; }
+.q-progress[data-static] .q-progress-indeterminate { animation: none; left: var(--hf-space-0); width: 100%; }
+.q-progress-dots[data-static] .q-progress-dot { transition: none; }
+.q-progress-circular[data-static] .q-progress-ring-arc,
+.q-progress-circular[data-static] .q-progress-ring-seg,
+.q-progress-circular[data-static] .q-progress-ring-dot { transition: none; }
+.q-progress-circular[data-static] .q-progress-ring-indeterminate { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .q-progress-fill,
+  .q-progress-segment-fill { transition: none; }
+  .q-progress-dot { transition: none; }
+  .q-progress-indeterminate { animation: none; left: var(--hf-space-0); width: 100%; }
+  .q-progress-ring-arc,
+  .q-progress-ring-seg,
+  .q-progress-ring-dot { transition: none; }
+  .q-progress-ring-indeterminate { animation: none; }
+}

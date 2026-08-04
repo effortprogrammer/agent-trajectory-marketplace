@@ -1,0 +1,134 @@
+/**
+ * MediaCard presentation — the framed gallery/cover media tile (Figma preset
+ * tiles 2950:66661…66695 + panel cover 2950:66568): radius/400 clipped frame
+ * with a thin (cover) or thick (gallery) default border, the bottom title row
+ * (scrimmed for tiles, bare for covers), the top-right action slot, and the
+ * on-media dark-glass Action chip (2950:66569).
+ *
+ * Interactivity is CSS-only: a `button`/`a` host (via `render`) gets cursor,
+ * a strong hover border, and the shared lime focus ring — the passive div
+ * host stays inert. Imported AFTER media.css (components.css order) so the
+ * caption paddings here win over `q-media-overlay-bottom`.
+ */
+@source "./media-card.tsx";
+
+@utility q-media-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: var(--hf-space-0);
+  padding: var(--hf-space-0);
+  overflow: hidden;
+  border-radius: var(--hf-radius-400);
+  background-color: transparent;
+  text-align: start;
+  transition-property: border-color, box-shadow;
+
+  /* Interactive hosts only (render={<button/>} / <a>) — cursor, hover, ring. */
+  &:is(button, a) {
+    cursor: pointer;
+    outline: none;
+    @apply q-focus-ring;
+
+    &:hover {
+      border-color: var(--hf-color-border-strong);
+    }
+  }
+}
+
+@utility q-media-card-frame-thin {
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-default);
+}
+
+@utility q-media-card-frame-thick {
+  border: var(--hf-border-width-thick) solid var(--hf-color-border-default);
+}
+
+/* The composed Media box fills the frame; an explicit card height (e.g. a
+ * fixed cover) stretches it via the column flex. */
+@utility q-media-card-media {
+  flex: 1 1 auto;
+  min-height: var(--hf-space-0);
+}
+
+/* Bottom title row — overrides the q-media-overlay-bottom paddings (Figma:
+ * tiles px-16/py-12, covers p-16). */
+@utility q-media-card-caption {
+  padding: var(--hf-space-300) var(--hf-space-400);
+}
+
+@utility q-media-card-caption-accent {
+  padding: var(--hf-space-400);
+  text-transform: uppercase;
+  /* Smooth darkening that hugs the left, right, and bottom edges of the cover
+   * (fading toward the top-center) so the accent title stays legible without a
+   * hard band. Overrides q-media-overlay-bottom's bottom-only scrim. */
+  background-image:
+    linear-gradient(to top, var(--hf-color-transparent-dark-50), transparent),
+    linear-gradient(to right, var(--hf-color-transparent-dark-50), transparent 50%),
+    linear-gradient(to left, var(--hf-color-transparent-dark-50), transparent 50%);
+}
+
+/* Covers drop the gradient scrim (the artwork carries the contrast). */
+@utility q-media-card-caption-bare {
+  background-image: none;
+}
+
+@utility q-media-card-title {
+  display: block;
+  min-width: var(--hf-space-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Top-right slot for the action chip (Figma cover inset: 16px). */
+@utility q-media-card-action-slot {
+  position: absolute;
+  inset-block-start: var(--hf-space-400);
+  inset-inline-end: var(--hf-space-400);
+  display: inline-flex;
+}
+
+/* The on-media dark-glass chip (2950:66569): 28px pill — black-30 glass,
+ * blur 12, hairline default border, top sheen + soft drop, caption/sm text. */
+@utility q-media-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hf-space-150);
+  height: var(--hf-space-700);
+  padding: var(--hf-space-150) var(--hf-space-250);
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-default);
+  border-radius: var(--hf-radius-250);
+  background-color: var(--hf-color-transparent-dark-30);
+  backdrop-filter: blur(var(--hf-space-300));
+  color: var(--hf-color-text-primary);
+  box-shadow:
+    var(--hf-shadow-sheen),
+    0 var(--hf-space-050) var(--hf-space-100) 0 var(--hf-color-transparent-dark-12);
+  cursor: pointer;
+  outline: none;
+  white-space: nowrap;
+  transition-property: background-color, background-image, border-color, box-shadow;
+  @apply text-q-caption-sm-semi-bold;
+  @apply q-focus-ring;
+
+  &:hover {
+    background-image: linear-gradient(
+      var(--hf-color-transparent-light-20),
+      var(--hf-color-transparent-light-20)
+    );
+  }
+
+  &:disabled {
+    pointer-events: none;
+    opacity: var(--hf-opacity-disabled);
+  }
+
+  & svg {
+    flex-shrink: 0;
+    width: var(--hf-icon-sm);
+    height: var(--hf-icon-sm);
+  }
+}

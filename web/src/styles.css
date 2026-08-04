@@ -1,0 +1,439 @@
+/* Cascade layer order: reset lowest, then Tailwind/Quanta base, then
+ * components and finally utilities — so Quanta's q-* utilities (e.g.
+ * q-button-*) always win over global element resets. */
+@layer reset, theme, base, components, utilities;
+
+@import "tailwindcss" source(none);
+@source "../src";
+@source "../packages/app-landing/src";
+@source "../packages/quanta/src";
+@import "@higgsfield/quanta/tailwind.css";
+
+/* New in-app Quanta-style components (moved out of the quanta package). Their
+ * CSS uses Tailwind v4 @utility/@source, so it must load through this tailwind
+ * entry. Ordering mirrors quanta's components.css (composer after button;
+ * media-card + generation-card after media). */
+@import "./components/composer/composer.css";
+@import "./components/media-card/media-card.css";
+@import "./components/generation-card/generation-card.css";
+@import "./components/setting-trigger/setting-trigger.css";
+@import "./components/prompt-box/prompt-box.css";
+@import "./components/icon-tile/icon-tile.css";
+
+@import "tw-animate-css";
+/* shadcn v4 base (scrollbar/scroll-fade utilities, toast base) for src/components/ui */
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:where([data-theme="default-dark"], [data-theme="default-dark"] *));
+
+/*
+ * Quanta is the visual source of truth. This file imports Quanta's Tailwind
+ * entry once; that entry brings in primitives, semantic theme variables,
+ * typography, z-index, border-width, and q-* component utilities.
+ *
+ * Generated app layout should use normal Tailwind spacing (`p-4`, `gap-2`,
+ * `mt-6`, `h-10`) and Quanta semantic utilities for color/type
+ * (`bg-q-background-primary`, `text-q-body-md-regular`). Do not use old numeric
+ * token classes such as `px-400` / `gap-200`, and do not reach for raw
+ * q-spacing vars in app code. Quanta component internals own their q-* classes.
+ *
+ * The `--spacing: 0.25rem` restoration keeps native Tailwind layout utilities
+ * stable for generated apps and legacy scaffold components. The inline theme
+ * aliases below keep shadcn-style imports rendering while new UI migrates to
+ * Quanta components.
+ */
+@theme {
+  --spacing: 0.25rem;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+
+  --color-background: var(--hf-color-background-primary);
+  --color-foreground: var(--hf-color-text-primary);
+  --color-card: var(--hf-color-background-secondary);
+  --color-card-foreground: var(--hf-color-text-primary);
+  --color-popover: var(--hf-color-background-secondary);
+  --color-popover-foreground: var(--hf-color-text-primary);
+  --color-primary: var(--hf-color-button-brand);
+  --color-primary-foreground: var(--hf-color-button-label-brand);
+  --color-secondary: var(--hf-color-background-secondary);
+  --color-secondary-foreground: var(--hf-color-text-primary);
+  --color-muted: var(--hf-color-background-tertiary);
+  --color-muted-foreground: var(--hf-color-text-secondary);
+  --color-accent: var(--hf-color-overlay-hover);
+  --color-accent-foreground: var(--hf-color-text-primary);
+  /* shadcn v4 components use text-destructive on tinted fills — needs the
+   * bright brand red, not the dark error surface */
+  --color-destructive: var(--hf-color-button-destructive);
+  --color-destructive-foreground: var(--hf-color-button-label-destructive);
+  --color-border: var(--hf-color-border-default);
+  --color-input: var(--hf-color-border-default);
+  --color-ring: var(--hf-color-border-focus);
+  --color-ring-offset-background: var(--hf-color-background-primary);
+
+  --color-chart-1: var(--hf-color-lime-500);
+  --color-chart-2: var(--hf-color-pink-500);
+  --color-chart-3: var(--hf-color-blue-500);
+  --color-chart-4: var(--hf-color-yellow-500);
+  --color-chart-5: var(--hf-color-purple-500);
+
+  --color-sidebar: var(--hf-color-background-secondary);
+  --color-sidebar-foreground: var(--hf-color-text-primary);
+  --color-sidebar-primary: var(--hf-color-button-brand);
+  --color-sidebar-primary-foreground: var(--hf-color-button-label-brand);
+  --color-sidebar-accent: var(--hf-color-overlay-hover);
+  --color-sidebar-accent-foreground: var(--hf-color-text-primary);
+  --color-sidebar-border: var(--hf-color-border-default);
+  --color-sidebar-ring: var(--hf-color-border-focus);
+
+  --font-grotesk: var(--hf-type-family-grotesk);
+}
+
+/* Fills used by src/components/ui (badge, tabs, marketing-button), mapped to
+ * Quanta's --hf-gradient-* tokens. */
+@utility badge-gradient-blue {
+  background-image: var(--hf-gradient-badge-blue);
+}
+@utility badge-gradient-pink {
+  background-image: var(--hf-gradient-badge-pink);
+}
+@utility badge-gradient-purple {
+  background-image: var(--hf-gradient-badge-purple);
+}
+@utility glass-sheen {
+  background-image: var(--hf-gradient-glass-sheen);
+}
+@utility gloss-lime {
+  background-image:
+    var(--hf-gradient-special-gloss-lime-angled),
+    linear-gradient(90deg, var(--hf-color-lime-500), var(--hf-color-lime-500));
+}
+@utility gloss-pink {
+  background-image:
+    var(--hf-gradient-special-gloss-pink),
+    linear-gradient(90deg, var(--hf-color-pink-500), var(--hf-color-pink-500));
+}
+
+/* Toast skin (Figma node 4085:2671): compact glass pill, kind-colored fills */
+[data-sonner-toast][data-styled="true"] {
+  width: fit-content;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--hf-color-transparent-light-05);
+  border-radius: var(--hf-radius-300, 12px);
+  background: var(--hf-color-glass-dark);
+  backdrop-filter: blur(40px);
+  box-shadow: 0 6px 6px rgb(0 0 0 / 0.25);
+  color: var(--hf-color-text-primary);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+[data-sonner-toast][data-type="success"] {
+  border-color: var(--hf-color-transparent-light-15);
+  background: #68b922; /* toast/success — raw value in Figma, no hf token */
+  backdrop-filter: none;
+}
+[data-sonner-toast].toast-new {
+  border-color: var(--hf-color-transparent-light-15);
+  background: #7a58ff; /* toast/new — raw value in Figma, no hf token */
+  backdrop-filter: none;
+}
+[data-sonner-toast] [data-close-button] {
+  position: static;
+  order: 9;
+  margin-left: 4px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  transform: none;
+}
+[data-sonner-toast] [data-close-button]:hover {
+  background: var(--hf-color-overlay-hover);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  /* ATM brand tokens. These are the page's own theme layer — they mirror the
+   * locked palette from app/design-brief.md and are the only source of color
+   * truth for the site's chrome (nav, CTA, content sections, footer). The
+   * scroll-scrub engine consumes them via the `scrollScrubTheme` export. */
+  --atm-ink: #0b1226;
+  --atm-paper: #eef2ff;
+  --atm-amber: #f5b544;
+  --atm-teal: #2dd4bf;
+  --atm-indigo: #6366f1;
+  --atm-coral: #fb7185;
+  --atm-muted: #94a3c7;
+
+  --atm-ink-raised: #101a38;
+  --atm-ink-deep: #080d1c;
+
+  --atm-max-w: 72rem;
+}
+
+@theme {
+  --color-atm-ink: #0b1226;
+  --color-atm-paper: #eef2ff;
+  --color-atm-amber: #f5b544;
+  --color-atm-teal: #2dd4bf;
+  --color-atm-indigo: #6366f1;
+  --color-atm-coral: #fb7185;
+  --color-atm-muted: #94a3c7;
+}
+
+body {
+  background-color: var(--atm-ink);
+  color: var(--atm-paper);
+  font-family: var(--atm-font-body, "Inter"), var(--hf-type-family-secondary, system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ATM-specific component primitives the scroll-stub engine does not own. */
+
+.atm-wordmark {
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  letter-spacing: 0.08em;
+}
+
+.atm-eyebrow {
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--atm-teal);
+}
+
+.atm-headline {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 0.96;
+  color: var(--atm-paper);
+}
+
+.atm-body-lead {
+  color: var(--atm-muted);
+  line-height: 1.55;
+}
+
+.atm-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  color: var(--atm-teal);
+  background: rgba(45, 212, 191, 0.08);
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+}
+
+.atm-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  border-radius: 9999px;
+  padding: 0.875rem 2rem;
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+  will-change: transform;
+}
+
+.atm-btn-primary {
+  background: var(--atm-paper);
+  color: var(--atm-ink-deep);
+}
+.atm-btn-primary:hover {
+  background: var(--atm-teal);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 48px -10px rgba(45, 212, 191, 0.55);
+}
+.atm-btn-primary:active {
+  transform: translateY(-1px);
+}
+
+.atm-btn-ghost {
+  color: var(--atm-muted);
+  background: transparent;
+  border: 1px solid rgba(148, 163, 199, 0.3);
+}
+.atm-btn-ghost:hover {
+  color: var(--atm-paper);
+  border-color: rgba(238, 242, 255, 0.55);
+}
+
+/* Sticky bottom bar (scroll-in from below) */
+.atm-stickybar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  transform: translateY(110%);
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+.atm-stickybar[data-visible="true"] {
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.atm-stickybar > div {
+  margin: 0 auto;
+  max-width: var(--atm-max-w);
+  padding: 0.625rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  backdrop-filter: blur(14px);
+  background: rgba(8, 13, 28, 0.72);
+  border-top: 1px solid rgba(148, 163, 199, 0.12);
+}
+
+/* Mobile-safe centering of the film's copy layer. The scroll-scrub copy layer
+ * is absolutely-positioned at the bottom of the viewport by the engine; the
+ * rule below keeps it clear of the device home indicator. The engine's
+ * safe-area awareness handles the rest. */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .atm-stickybar > div {
+    padding-bottom: calc(0.625rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* True hide for the site chrome when the story has taken over the viewport —
+ * we keep the ATM header in the DOM for keyboard users but visually hand the
+ * stage to the film once its fullscreen chapter is engaged. */
+.atm-chrome--docked-atm {
+  transform: translateY(-100%);
+}
+.atm-chrome {
+  transition: transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Reduce motion: let the page read as a calm scroll page, not a motion piece. */
+@media (prefers-reduced-motion: reduce) {
+  .atm-btn,
+  .atm-stickybar,
+  .atm-chrome {
+    transition: none;
+  }
+}
+
+/* Soft focus ring for keyboard users */
+.atm-btn:focus-visible,
+.atm-input:focus-visible {
+  outline: 2px solid var(--atm-teal);
+  outline-offset: 2px;
+}
+
+.atm-input {
+  width: 100%;
+  height: 3rem;
+  border-radius: 9999px;
+  padding: 0 1.25rem;
+  background: rgba(238, 242, 255, 0.06);
+  border: 1px solid rgba(148, 163, 199, 0.22);
+  color: var(--atm-paper);
+  font-size: 0.9375rem;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+.atm-input::placeholder {
+  color: rgba(148, 163, 199, 0.55);
+}
+.atm-input:focus {
+  border-color: var(--atm-teal);
+  background: rgba(45, 212, 191, 0.08);
+  outline: none;
+}
+
+/* Number chips and terminal Romans */
+.atm-kbd {
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+}
+
+/* Cards + hairlines used below the film */
+.atm-hairline {
+  border-top: 1px solid rgba(148, 163, 199, 0.16);
+}
+.atm-card {
+  background: var(--atm-ink-raised);
+  border: 1px solid rgba(148, 163, 199, 0.12);
+  border-radius: 1.25rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .atm-card-hover:hover {
+    border-color: rgba(45, 212, 191, 0.4);
+    transform: translateY(-3px);
+  }
+  .atm-card-hover {
+    transition: transform 240ms ease, border-color 240ms ease;
+  }
+}
+
+@keyframes atm-pulse-teal {
+  0% { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.35); }
+  70% { box-shadow: 0 0 0 14px rgba(45, 212, 191, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0); }
+}
+.atm-node-pulse {
+  animation: atm-pulse-teal 2.2s ease-out infinite;
+}
+
+/* Skip-link: visible only on keyboard focus */
+.atm-skip-link:focus {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 90;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  background: var(--atm-paper);
+  color: var(--atm-ink-deep);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* Deep background used by footer + chips (name survives Tailwind's class util) */
+.atm-ink-deep {
+  background-color: var(--atm-ink-deep);
+}
+
+
+
+@layer base {
+  html {
+    background-color: var(--hf-color-background-primary);
+    color: var(--hf-color-text-primary);
+    color-scheme: dark;
+  }
+
+  body {
+    min-height: 100vh;
+    background-color: var(--hf-color-background-primary);
+    color: var(--hf-color-text-primary);
+    font-family: var(--hf-type-family-secondary);
+  }
+
+  * {
+    border-color: var(--hf-color-border-default);
+  }
+}

@@ -1,0 +1,185 @@
+/**
+ * Switch presentation utilities (q-namespaced), matched to the Figma Switch
+ * component at nodes 285:267-281.
+ */
+
+@source "./switch.tsx";
+
+@utility q-switch {
+  --q-switch-track-bg: var(--hf-color-button-tertiary);
+  --q-switch-track-bg-checked: var(--q-tint, var(--hf-color-button-brand));
+  --q-switch-thumb-bg: var(--hf-color-button-primary);
+  --q-switch-thumb-border: var(--hf-color-transparent-dark-10);
+  --q-switch-thumb-shadow-soft: var(--hf-shadow-thumb-soft);
+  --q-switch-thumb-shadow-strong: var(--hf-shadow-thumb-strong);
+  --q-switch-focus-ring: var(--hf-color-transparent-lime-20);
+  --q-switch-padding: var(--hf-space-050);
+  --q-switch-track-width: var(--hf-space-700);
+  --q-switch-track-height: var(--hf-space-400);
+  --q-switch-thumb-size: var(--hf-space-300);
+  --q-switch-thumb-radius: var(--hf-space-200);
+  --q-switch-thumb-translate: calc(var(--q-switch-track-width) - var(--q-switch-thumb-size) - var(--q-switch-padding) - var(--q-switch-padding));
+  /* Motion: `ease` (swift) decelerates without overshoot so the thumb never
+   * clips at the track edge; `press-scale` stretches the thumb inward on
+   * pointer-down. */
+  --q-switch-duration-track: var(--hf-duration-normal);
+  --q-switch-duration-thumb: var(--hf-duration-260);
+  --q-switch-ease: var(--hf-ease-swift);
+  --q-switch-press-scale: 1.14; /* no token: unitless press-stretch scale factor */
+
+  align-items: center;
+  background-color: var(--q-switch-track-bg);
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--hf-space-300);
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: var(--q-switch-track-height);
+  outline: none;
+  overflow: clip;
+  padding: var(--hf-space-0);
+  position: relative;
+  transition-property: background-color, box-shadow, opacity;
+  transition-duration: var(--q-switch-duration-track);
+  transition-timing-function: var(--q-switch-ease);
+  width: var(--q-switch-track-width);
+}
+
+@utility q-switch-thumb {
+  background-color: var(--q-switch-thumb-bg);
+  border: var(--hf-border-width-none) solid transparent;
+  border-radius: var(--q-switch-thumb-radius);
+  box-shadow: var(--q-switch-thumb-shadow-soft);
+  box-sizing: border-box;
+  display: block;
+  height: var(--q-switch-thumb-size);
+  left: var(--q-switch-padding);
+  position: absolute;
+  top: var(--q-switch-padding);
+  /* Unchecked thumb anchors at its left edge so a press-stretch grows
+   * rightward, toward the track centre (never past the left edge). */
+  transform-origin: left center;
+  transition-property: border-color, box-shadow, transform;
+  transition-duration: var(--q-switch-duration-thumb);
+  transition-timing-function: var(--q-switch-ease);
+  width: var(--q-switch-thumb-size);
+  will-change: transform;
+}
+
+@utility q-switch-small {
+  --q-switch-track-width: var(--hf-space-700);
+  --q-switch-track-height: var(--hf-space-400);
+  --q-switch-thumb-size: var(--hf-space-300);
+  --q-switch-thumb-radius: var(--hf-space-200);
+}
+
+@utility q-switch-medium {
+  --q-switch-track-width: var(--hf-space-1000);
+  --q-switch-track-height: var(--hf-space-500);
+  --q-switch-thumb-size: var(--hf-space-400);
+  --q-switch-thumb-radius: var(--hf-space-200);
+}
+
+@utility q-switch-default {
+  --q-switch-track-width: calc(var(--hf-space-1000) + var(--hf-space-100));
+  --q-switch-track-height: var(--hf-space-600);
+  --q-switch-thumb-size: var(--hf-space-500);
+  --q-switch-thumb-radius: var(--hf-space-300);
+}
+
+/* Track colour eases between unchecked grey and checked brand (the track's
+ * own `transition: background-color` handles the fade). */
+.q-switch[data-checked] {
+  background-color: var(--q-switch-track-bg-checked);
+}
+
+/* Checked thumb anchors at its right edge so a press-stretch grows leftward,
+ * toward the track centre (never past the right edge). */
+.q-switch[data-checked] .q-switch-thumb {
+  transform: translateX(var(--q-switch-thumb-translate));
+  transform-origin: right center;
+}
+
+.q-switch[data-checked]:not([data-disabled]) .q-switch-thumb {
+  border-color: var(--q-switch-thumb-border);
+  border-width: var(--hf-border-width-thin);
+  box-shadow:
+    var(--q-switch-thumb-shadow-strong),
+    var(--q-switch-thumb-shadow-soft);
+}
+
+/* Tactile press: the thumb stretches toward the track centre on pointer-down,
+ * then settles back when released or as it slides to the other end. */
+.q-switch:not([data-disabled]):active .q-switch-thumb {
+  transform: scaleX(var(--q-switch-press-scale));
+}
+
+.q-switch[data-checked]:not([data-disabled]):active .q-switch-thumb {
+  transform: translateX(var(--q-switch-thumb-translate)) scaleX(var(--q-switch-press-scale));
+}
+
+.q-switch:focus-visible {
+  box-shadow:
+    0 0 0 var(--hf-border-width-thick) var(--hf-color-background-primary),
+    0 0 0 var(--hf-space-100) var(--q-switch-focus-ring);
+}
+
+.q-switch[data-disabled] {
+  cursor: not-allowed;
+  opacity: var(--hf-opacity-disabled);
+}
+
+.q-switch[data-disabled] .q-switch-thumb {
+  box-shadow: var(--q-switch-thumb-shadow-soft);
+}
+
+/* ── Labelled switch (SwitchLabel) — mirrors q-checkbox-label* ──────────────── */
+@utility q-switch-label {
+  align-items: flex-start;
+  color: var(--hf-color-text-primary);
+  cursor: pointer;
+  display: flex;
+  gap: var(--hf-space-300);
+  min-width: var(--hf-space-0);
+}
+
+@utility q-switch-label-left {
+  justify-content: flex-start;
+}
+
+@utility q-switch-label-right {
+  justify-content: space-between;
+}
+
+@utility q-switch-label-text {
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  flex-direction: column;
+  gap: var(--hf-space-100);
+  min-width: var(--hf-space-0);
+  overflow-wrap: anywhere;
+}
+
+/* Title, description, and label-size classes (q-switch-label-title /
+ * q-switch-label-description / q-switch-label-sm / q-switch-label-md) are now
+ * plain structural/test marker classes carried on the elements — their
+ * composite typography (label-*-medium / label-sm-regular) and text colour are
+ * owned by the <Typography> the SwitchLabel renders, which picks the variant per
+ * size via LABEL_TITLE_VARIANT. No CSS rules are needed for them here. */
+
+@media (prefers-reduced-motion: reduce) {
+  .q-switch,
+  .q-switch-thumb {
+    transition-duration: 1ms; /* no token: reduced-motion near-instant; --hf-duration-instant is 0ms */
+  }
+
+  /* Skip the press-stretch entirely for motion-sensitive users. */
+  .q-switch:not([data-disabled]):active .q-switch-thumb {
+    transform: none;
+  }
+
+  .q-switch[data-checked]:not([data-disabled]):active .q-switch-thumb {
+    transform: translateX(var(--q-switch-thumb-translate));
+  }
+}

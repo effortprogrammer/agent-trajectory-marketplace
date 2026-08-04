@@ -1,0 +1,10 @@
+/**
+ * Tag presentation — composes only emitted utilities (q-slot-* surfaces, q-*
+ * colors/typography, native spacing/sizing/radius), so there are no @utility
+ * rules here. This file exists solely to point Tailwind's scanner at the
+ * colocated source: quanta is consumed as a symlinked package and Tailwind
+ * skips node_modules during automatic content detection, so the literal class
+ * strings in tag.tsx must be registered explicitly — same convention as
+ * divider.css / dot.css / kbd.css / avatar.css.
+ */
+@source "./tag.tsx";

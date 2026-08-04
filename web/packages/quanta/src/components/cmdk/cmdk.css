@@ -1,0 +1,235 @@
+/**
+ * Command (cmdk) presentation — a hand-rolled command palette skinned with
+ * quanta tokens. Dialog usage composes the shared Modal component, so command
+ * only owns the searchable content layout and item states here.
+ */
+@source "./cmdk.tsx";
+
+/* Inline root (fills its parent; dialog shell/size comes from Modal.Content). */
+@utility q-command {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: var(--hf-space-0);
+  min-width: var(--hf-space-0);
+  flex-direction: column;
+}
+
+@utility q-command-dialog-context {
+  display: contents;
+}
+
+/* Search row. */
+@utility q-command-input-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--hf-space-1400);
+  padding: var(--hf-space-0) var(--hf-space-400);
+  border-bottom: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+}
+
+.q-modal-header .q-command-input-row {
+  flex: 1 1 var(--hf-space-0);
+  height: var(--hf-space-1000);
+  min-width: var(--hf-space-0);
+  padding: var(--hf-space-0);
+  border-bottom: var(--hf-border-width-none) solid transparent;
+}
+
+/* Scroll region. */
+@utility q-command-list {
+  flex: 1 1 auto;
+  min-height: var(--hf-space-0);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--hf-space-200);
+  scroll-padding-block: var(--hf-space-200);
+}
+
+@utility q-command-empty {
+  padding: var(--hf-space-800) var(--hf-space-400);
+  text-align: center;
+  color: var(--hf-color-text-secondary);
+  @apply text-q-body-sm-regular;
+}
+
+@utility q-command-loading {
+  padding: var(--hf-space-600) var(--hf-space-400);
+  text-align: center;
+  color: var(--hf-color-text-secondary);
+  @apply text-q-body-sm-regular;
+}
+
+@utility q-command-group {
+  padding-bottom: var(--hf-space-100);
+}
+/* Auto divider between consecutive VISIBLE groups: a visible group that follows
+ * another visible group gets a top divider. Hidden (empty) groups are skipped by
+ * the `:not([hidden])` match, so filtering never leaves orphan/double dividers
+ * and no manual <Command.Separator> is needed between groups. */
+.q-command-group:not([hidden]) ~ .q-command-group:not([hidden]) {
+  /* Etched 2-line groove, matching the Divider component: a dark line
+   * (transparent-dark-15) over a light line (transparent-light-10). */
+  border-top: var(--hf-border-width-thin) solid var(--hf-color-transparent-dark-15);
+  box-shadow: inset 0 var(--hf-border-width-thin) 0 var(--hf-color-transparent-light-10);
+  margin-top: var(--hf-space-200);
+  padding-top: var(--hf-space-200);
+}
+@utility q-command-group-heading {
+  /* Equal top/bottom padding so the label sits centered in its band. */
+  padding: var(--hf-space-200) var(--hf-space-300);
+  color: var(--hf-color-text-on-overlay-secondary); /* Dropdown q-menu-group-label */
+  @apply text-q-label-xs-medium;
+}
+
+/* A command row. */
+@utility q-command-item {
+  display: flex;
+  align-items: center;
+  gap: var(--hf-space-200); /* 8px — Dropdown q-menu-item */
+  min-height: calc(var(--hf-space-800) + var(--hf-space-100)); /* 36px — Dropdown q-menu-item */
+  padding: var(--hf-space-200); /* 8px uniform — Dropdown q-menu-item */
+  border-radius: var(--hf-radius-200);
+  color: var(--hf-color-text-primary);
+  cursor: pointer;
+  user-select: none;
+  @apply text-q-body-sm-medium;
+
+  &[data-active] {
+    background-color: var(--hf-color-overlay-hover);
+  }
+  &[aria-disabled="true"] {
+    color: var(--hf-color-text-on-overlay-tertiary);
+    cursor: not-allowed;
+  }
+}
+@utility q-command-item-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--hf-color-icon-primary); /* Dropdown q-menu-item-icon */
+}
+@utility q-command-item-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: var(--hf-space-0);
+  flex-direction: column;
+}
+@utility q-command-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A bare ItemTitle (no ItemContent wrapper) grows + truncates within the row;
+ * inside ItemContent it stays a plain block that fills the column. */
+.q-command-item > .q-command-item-title {
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+}
+@utility q-command-item-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--hf-color-text-secondary);
+  @apply text-q-caption-sm-regular;
+}
+@utility q-command-item-trailing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  margin-inline-start: auto; /* push to the trailing edge (Dropdown q-menu-item-trailing) */
+  color: var(--hf-color-text-tertiary);
+  @apply text-q-caption-sm-regular;
+}
+
+/* Spacing wrapper around the Divider component (Command.Separator). */
+@utility q-command-separator {
+  margin-block: var(--hf-space-200);
+}
+
+/* `Command.Shortcut` renders the canonical `Kbd` component (no q-command-shortcut
+ * utility — the reinvented keycap was removed in favour of reusing Kbd). */
+
+/* ── Optional two-pane layout: list sidebar + detail panel + footer ───────────── */
+
+/* Row region between Input and Footer. */
+@utility q-command-body {
+  display: flex;
+  flex: 1 1 auto;
+  gap: var(--hf-space-200);
+  min-height: var(--hf-space-0);
+}
+/* Inside the two-pane body the list becomes a sized sidebar pane. */
+.q-command-body > .q-command-list {
+  flex: 1 1 0;
+  min-width: var(--hf-space-0);
+}
+
+/* Right detail pane. Command.Detail renders this on a Modal.Workspace (frosted
+ * surface + flex sizing + stretch come from `q-modal-workspace`); this only adds
+ * the positioning context for the scroll layer. The content lives in an absolute
+ * layer so the pane contributes NO height to the row — the LIST pane sizes the
+ * palette and this fills that height + scrolls. Showing/hiding it therefore never
+ * resizes the modal (no hover taper/loop): the list rules the height, never this. */
+@utility q-command-detail {
+  position: relative;
+}
+@utility q-command-detail-scroll {
+  position: absolute;
+  inset: var(--hf-space-0);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--hf-space-300);
+}
+
+/* Bottom bar. */
+@utility q-command-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hf-space-300);
+  padding: var(--hf-space-300) var(--hf-space-400);
+  border-top: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+  color: var(--hf-color-text-secondary);
+}
+
+@utility q-command-footer-caption {
+  flex: 1 1 var(--hf-space-0);
+  min-width: var(--hf-space-0);
+}
+
+@utility q-command-footer-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--hf-space-150);
+}
+
+/* Footer confirm action (Enter equivalent). */
+@utility q-command-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hf-space-200);
+  padding: var(--hf-space-100) var(--hf-space-200);
+  border-radius: var(--hf-radius-200);
+  color: var(--hf-color-text-primary);
+  cursor: pointer;
+  /* `ease` is a standard CSS keyword timing-function, not a tokenized cubic-bezier. */
+  transition: background-color var(--hf-duration-150) ease, opacity var(--hf-duration-150) ease;
+  @apply text-q-body-sm-medium;
+
+  &:hover { background-color: var(--hf-color-overlay-hover); }
+  &:disabled { opacity: var(--hf-opacity-muted); cursor: not-allowed; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .q-command-action {
+    /* no token: 1ms reduced-motion near-disable has no duration token (smallest is 0ms instant) */
+    transition-duration: 1ms;
+  }
+}

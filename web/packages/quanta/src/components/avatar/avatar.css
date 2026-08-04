@@ -1,0 +1,28 @@
+/**
+ * Avatar presentation — pinned to the Figma "Avatar" component (node 1405:5456)
+ * and its presence dot (node 1418:94, shipped standalone as Dot).
+ *
+ * The colour / typography / border-width values are emitted q-* token utilities
+ * applied in avatar.tsx; the TS unions there (COLOR_BG / COLOR_FG / SIZE_*) are
+ * the single source of truth. This file points Tailwind's scanner at the
+ * colocated source (Tailwind skips node_modules and quanta is symlinked, so the
+ * literal class strings must be registered explicitly — same as button.css) and
+ * defines the one piece of geometry that has no token: where the dot sits.
+ */
+@source "./avatar.tsx";
+
+/**
+ * Anchors the presence dot on the avatar circle's bottom-right (45°) perimeter
+ * point — matching Figma, where the dot's centre lands on the rim rather than
+ * in the bounding-box corner. The offset is `50% + (√2 / 2) · 50% = 85.355%`,
+ * which is proportional to the diameter, so a single rule fits every size. The
+ * dot is then pulled back by half its own box to centre it on that point.
+ */
+@utility q-avatar-status {
+  position: absolute;
+  /* no token: proportional rim anchor (50% + √2/2·50%), scales with diameter — no px/spacing token applies */
+  left: 85.355%;
+  top: 85.355%;
+  /* no token: self-centering offset is a proportion of the dot's own box, not a fixed length */
+  transform: translate(-50%, -50%);
+}

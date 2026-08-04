@@ -1,0 +1,9 @@
+/**
+ * Kbd presentation — composes only emitted q-* utilities (color, border-width,
+ * typography) plus native spacing/sizing, so there are no @utility rules here.
+ * This file exists solely to point Tailwind's scanner at the colocated source:
+ * quanta is consumed as a symlinked package and Tailwind skips node_modules
+ * during automatic content detection, so the literal class strings in kbd.tsx
+ * must be registered explicitly — same convention as dot.css / avatar.css.
+ */
+@source "./kbd.tsx";

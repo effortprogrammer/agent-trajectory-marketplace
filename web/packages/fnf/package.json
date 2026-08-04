@@ -1,0 +1,46 @@
+{
+  "name": "@higgsfield/fnf",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Isomorphic generation + media client for Higgsfield (fnf)",
+  "author": "support@higgsfield.ai",
+  "license": "UNLICENSED",
+  "sideEffects": [
+    "./src/media/errors.ts"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./jobs": "./src/jobs/index.ts",
+    "./client": "./src/client/index.ts",
+    "./characters": "./src/characters/index.ts",
+    "./references": "./src/references/index.ts",
+    "./realtime": "./src/realtime/index.ts",
+    "./media": "./src/media/index.ts",
+    "./profile": "./src/profile/index.ts",
+    "./observability": "./src/observability/index.ts",
+    "./workflow-platform": "./src/workflow-platform/index.ts",
+    "./errors": "./src/errors.ts",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "publish:prepare": "node scripts/make-publish-package.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "typescript": "^5.8.3",
+    "vite": "^8.1.3",
+    "vite-plugin-dts": "^5.0.3",
+    "vitest": "^4.0.17",
+    "zod": "^4.0.0"
+  }
+}

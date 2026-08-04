@@ -1,0 +1,167 @@
+/**
+ * Chip presentation utilities (q-namespaced).
+ *
+ * Visual language is taken from the Checkbox (node 481:795):
+ *   - SELECTED chip = solid fill of the matching checkbox checked state
+ *     (brand → solid icon/accent #d1fe17 + icon/inverse #1a1a1a text/icon).
+ *   - hover border, focus ring and disabled colors reuse the same tokens
+ *     as the checkbox (lime-900 hover, transparent-lime-20 ring,
+ *     background/secondary-strong #23262a + icon/disabled #484e56 disabled).
+ *   - 1.5px border (border-width/medium), pill radius.
+ *
+ * Sizes: xxs=20 xs=24 sm=28 md=32 (heights → --hf-space-500/600/700/800).
+ */
+
+@source "./chip.tsx";
+
+@utility q-chip {
+  --q-chip-bg: transparent;
+  --q-chip-fg: var(--hf-color-text-secondary);
+  --q-chip-border: var(--hf-color-border-default);
+  --q-chip-hover-bg: var(--hf-color-overlay-hover);
+  --q-chip-hover-fg: var(--hf-color-text-primary);
+  --q-chip-hover-border: var(--hf-color-lime-900);
+  --q-chip-selected-bg: var(--hf-color-icon-accent);
+  --q-chip-selected-fg: var(--hf-color-icon-inverse);
+  --q-chip-ring: var(--hf-color-transparent-lime-20);
+  --q-chip-height: var(--hf-space-700);
+  --q-chip-gap: var(--hf-space-100);
+  --q-chip-padding-x: var(--hf-space-300);
+  --q-chip-icon-size: var(--hf-space-400);
+
+  align-items: center;
+  background-color: var(--q-chip-bg);
+  border: var(--hf-border-width-medium) solid var(--q-chip-border);
+  border-radius: var(--hf-space-2400);
+  box-sizing: border-box;
+  color: var(--q-chip-fg);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--q-chip-gap);
+  height: var(--q-chip-height);
+  justify-content: center;
+  max-width: 100%;
+  min-width: var(--q-chip-height);
+  outline: none;
+  overflow: hidden;
+  padding: var(--hf-space-0) var(--q-chip-padding-x);
+  text-align: center;
+  text-overflow: ellipsis;
+  transition-property: background-color, border-color, box-shadow, color;
+  user-select: none;
+  white-space: nowrap;
+
+  & svg {
+    flex-shrink: 0;
+    height: var(--q-chip-icon-size);
+    width: var(--q-chip-icon-size);
+  }
+}
+
+@utility q-chip-xxs {
+  --q-chip-height: var(--hf-space-500);
+  --q-chip-gap: var(--hf-space-050);
+  --q-chip-padding-x: var(--hf-space-200);
+  --q-chip-icon-size: var(--hf-space-300);
+  @apply text-q-label-xs-medium;
+}
+
+@utility q-chip-xs {
+  --q-chip-height: var(--hf-space-600);
+  --q-chip-gap: var(--hf-space-100);
+  --q-chip-padding-x: var(--hf-space-250);
+  --q-chip-icon-size: var(--hf-space-300);
+  @apply text-q-label-xs-medium;
+}
+
+@utility q-chip-sm {
+  --q-chip-height: var(--hf-space-700);
+  --q-chip-gap: var(--hf-space-100);
+  --q-chip-padding-x: var(--hf-space-300);
+  --q-chip-icon-size: var(--hf-space-400);
+  @apply text-q-label-sm-medium;
+}
+
+@utility q-chip-md {
+  --q-chip-height: var(--hf-space-800);
+  --q-chip-gap: var(--hf-space-150);
+  --q-chip-padding-x: var(--hf-space-400);
+  --q-chip-icon-size: var(--hf-space-500);
+  @apply text-q-label-md-medium;
+}
+
+@utility q-chip-brand {
+  --q-chip-hover-border: var(--hf-color-lime-900);
+  --q-chip-selected-bg: var(--hf-color-icon-accent);
+  --q-chip-selected-fg: var(--hf-color-icon-inverse);
+  --q-chip-ring: var(--hf-color-transparent-lime-20);
+}
+
+@utility q-chip-neutral {
+  --q-chip-hover-border: var(--hf-color-border-strong);
+  --q-chip-selected-bg: var(--hf-color-background-secondary-strong);
+  --q-chip-selected-fg: var(--hf-color-text-primary);
+  --q-chip-ring: var(--hf-color-transparent-dark-20);
+}
+
+@utility q-chip-success {
+  --q-chip-hover-border: var(--hf-color-state-success-fg);
+  --q-chip-selected-bg: var(--hf-color-state-success-fg);
+  --q-chip-selected-fg: var(--hf-color-text-inverse);
+  --q-chip-ring: var(--hf-color-state-success-glow);
+}
+
+@utility q-chip-error {
+  --q-chip-hover-border: var(--hf-color-state-error-fg);
+  --q-chip-selected-bg: var(--hf-color-state-error-fg);
+  --q-chip-selected-fg: var(--hf-color-text-inverse);
+  --q-chip-ring: var(--hf-color-state-error-glow);
+}
+
+@utility q-chip-warning {
+  --q-chip-hover-border: var(--hf-color-state-warning-fg);
+  --q-chip-selected-bg: var(--hf-color-state-warning-fg);
+  --q-chip-selected-fg: var(--hf-color-text-inverse);
+  --q-chip-ring: var(--hf-color-state-warning-glow);
+}
+
+@utility q-chip-info {
+  --q-chip-hover-border: var(--hf-color-state-info-fg);
+  --q-chip-selected-bg: var(--hf-color-state-info-fg);
+  --q-chip-selected-fg: var(--hf-color-text-inverse);
+  --q-chip-ring: var(--hf-color-state-info-bg);
+}
+
+.q-chip:not([data-selected]):not(:disabled):hover {
+  background-color: var(--q-chip-hover-bg);
+  border-color: var(--q-chip-hover-border);
+  color: var(--q-chip-hover-fg);
+}
+
+.q-chip[data-selected],
+.q-chip-selected {
+  background-color: var(--q-chip-selected-bg);
+  border-color: var(--q-chip-selected-bg);
+  color: var(--q-chip-selected-fg);
+}
+
+.q-chip:focus-visible {
+  box-shadow:
+    0 0 0 var(--hf-border-width-thick) var(--hf-color-background-primary),
+    0 0 0 var(--hf-space-100) var(--q-chip-ring);
+}
+
+.q-chip:disabled {
+  background-color: transparent;
+  border-color: var(--hf-color-border-subtle);
+  color: var(--hf-color-text-disabled);
+  cursor: not-allowed;
+}
+
+.q-chip:disabled[data-selected],
+.q-chip:disabled.q-chip-selected {
+  background-color: var(--hf-color-background-secondary-strong);
+  border-color: var(--hf-color-background-secondary-strong);
+  color: var(--hf-color-icon-disabled);
+}

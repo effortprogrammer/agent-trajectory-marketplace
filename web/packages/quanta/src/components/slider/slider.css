@@ -1,0 +1,29 @@
+/**
+ * Slider presentation.
+ *
+ * Most surfaces compose emitted q-* utilities (background, border and
+ * border-width tokens) plus native spacing/sizing inline in slider.tsx — this
+ * file registers those literal strings for Tailwind's scanner (quanta is a
+ * symlinked package, which automatic content detection skips; same convention
+ * as dot.css / kbd.css / divider.css).
+ *
+ * It also defines the default track WIDTH and the glass surface. The Figma
+ * CardSizeControl track is 184px (11.5rem) — a fixed component dimension with no
+ * matching spacing token (the scale jumps 64px → 96px), so it lives here as a
+ * documented `--q-slider-width` default rather than an inline arbitrary
+ * `w-[184px]`. Callers override by passing any width utility/class
+ * (e.g. `className="w-[280px]"` or a token width), or by setting `--q-slider-width`.
+ *
+ * The track is a frosted-glass surface (same recipe as Modal / Sonner / Vault):
+ * `background-glass` + 40px backdrop-blur + a `border-subtle` edge. The fill
+ * (white-5% `overlay-hover`) and the ticks / current-divider (white-20%
+ * `border-strong`) are authored as q-* utilities inline in slider.tsx.
+ */
+@source "./slider.tsx";
+
+@utility q-slider {
+  width: var(--q-slider-width);
+  background-color: var(--hf-color-background-glass);
+  backdrop-filter: blur(var(--hf-space-1000)); /* 40px */
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+}

@@ -1,0 +1,110 @@
+/**
+ * SettingTrigger presentation — the compact labelled picker row from the Figma
+ * builder panels (nodes 2950:66590 / 2950:66597 / 2950:66603): white-5% surface
+ * + same-tone subtle border, radius/300, 12×8 padding; a caption label over the
+ * body/sm value (secondary tone while empty), trailing 16px chevron.
+ *
+ * States follow the shared field language: hover composites the dim overlay
+ * (like `q-field-control`), keyboard focus uses the lime `q-focus-ring`,
+ * disabled fades via the opacity token.
+ */
+@source "./setting-trigger.tsx";
+
+@utility q-setting-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--hf-space-200);
+  width: 100%;
+  min-width: var(--hf-space-0);
+  padding: var(--hf-space-200) var(--hf-space-300);
+  border: var(--hf-border-width-thin) solid var(--hf-color-border-subtle);
+  border-radius: var(--hf-radius-300);
+  background-color: var(--hf-color-overlay-dim-soft);
+  text-align: start;
+  cursor: pointer;
+  outline: none;
+  transition-property: background-color, background-image, border-color, box-shadow;
+
+  &:hover {
+    background-image: linear-gradient(var(--hf-color-overlay-hover), var(--hf-color-overlay-hover));
+  }
+
+  @apply q-focus-ring;
+
+  &:disabled,
+  &[data-disabled] {
+    pointer-events: none;
+    opacity: var(--hf-opacity-disabled);
+  }
+}
+
+/* Leading slot — 20px glyph box, secondary tone (mirrors q-field-affix). The
+ * extra inline-end margin adds breathing room after the icon before the
+ * label/value (on top of the row's base gap). */
+@utility q-setting-trigger-start {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-500);
+  height: var(--hf-space-500);
+  margin-inline-end: var(--hf-space-200);
+  color: var(--hf-color-icon-secondary);
+
+  & svg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* Label + value stack. Figma: 2px gap, fills the row, truncates. */
+@utility q-setting-trigger-body {
+  display: flex;
+  flex: 1 1 var(--hf-space-0);
+  flex-direction: column;
+  gap: var(--hf-space-050);
+  min-width: var(--hf-space-0);
+}
+
+@utility q-setting-trigger-label {
+  color: var(--hf-color-text-secondary);
+  @apply text-q-caption-sm-medium;
+}
+
+@utility q-setting-trigger-value {
+  overflow: hidden;
+  color: var(--hf-color-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  @apply text-q-body-sm-medium;
+}
+
+/* Empty state — the placeholder takes the secondary tone (Figma "Select voice"). */
+@utility q-setting-trigger-placeholder {
+  color: var(--hf-color-text-secondary);
+}
+
+/* Popup-trigger states (Base UI sets the data-attributes when the row hosts a
+ * Select/Dropdown trigger): open keeps the hover fill; the placeholder tint
+ * follows data-placeholder when the value is a `Select.Value`. */
+.q-setting-trigger[data-popup-open] {
+  background-image: linear-gradient(var(--hf-color-overlay-hover), var(--hf-color-overlay-hover));
+}
+
+.q-setting-trigger[data-placeholder] .q-setting-trigger-value {
+  color: var(--hf-color-text-secondary);
+}
+
+/* Trailing slot — the 16px chevron (or any node), primary icon tone. */
+@utility q-setting-trigger-end {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--hf-color-icon-primary);
+
+  & svg {
+    width: var(--hf-icon-sm);
+    height: var(--hf-icon-sm);
+  }
+}

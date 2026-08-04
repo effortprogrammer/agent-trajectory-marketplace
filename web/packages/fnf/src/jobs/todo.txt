@@ -1,0 +1,160 @@
+PRE-SUBMIT VALIDATION — TODO
+============================
+Bring fnf-web's client-side, pre-network generation validation into the SDK.
+Grounded in the real fnf code (refs below) + a design pass; this file is the
+spec for the work. Paths are relative to the fnf-web repo root unless marked SDK.
+
+STATUS (2026-06-11): sections B and C are SHIPPED — defineJob has the
+cross-field `validate` hook, media declarations carry counts/rules
+(checkMedia + the cardinality/meta combinators in src/groups/media.ts), and
+buildWireParams aggregates everything into one typed ValidationError before
+any I/O. What remains from this spec is section A only: the injected
+entitlement/plan policy (EntitlementPolicy, PreflightError) — deferred; the
+backend is authoritative and rejects with the typed billing errors the
+catalog already maps.
+
+
+ERROR / VALIDATION CATEGORIES
+=============================
+
+A) ENTITLEMENT / PLAN GUARDS  ->  NOT in SDK core. Injected policy (caller-supplied).
+   Reads user context the SDK structurally lacks: plan_type, cohort,
+   workspace_type, upsell grants. Bypassed for workspace==='shared'. Gated by a
+   `withGuards` flag in the submit path.
+   - VideoModelGuardError       guard.ts:26-37 (assertSubscriptionPlan, videoModelPlans);
+                                invoked: abstract.ts:115-119 (ensureSubmitRequest),
+                                guard/video.ts:40-106 (useVideoModelGuard.mustPass/canPass),
+                                module/job/job/model/use-submit-job-set-mutation.ts:104.
+   - VideoUseCaseGuardError     guard.ts:54-62 (videoUseCasePlans: videoStartEndFrame,
+                                mixedMedia, voiceElement, vibeChat, viral, veoInstructCanvas...);
+                                submit/video.ts:48, mix.ts:48, veo.ts:37, sora2-video.ts:50,
+                                minimax.ts:81; hooks guard/video.ts:108-176.
+   - ChatModelGuardError        module/assist-chat/entities/chat/error/guard.ts:23-29;
+                                hooks/useChatFetch.ts:16-22 (pre-fetch).
+   - MobileGuardError           entities/image/model/use-image-page-submit.ts:21-26,116;
+                                entities/job/model/plan/image-product-plans.ts:244-295.
+   - UpscaleUseCaseGuardError   entities/upscale/error/guard.ts; entities/upscale/model/guard/upscale.ts:36,61.
+   Context source: model/submit/types/user-payload.ts:3-14 (UserPayload),
+                   SubscriptionWeights.isEqualOrHigherPlans subscription-weights.ts:20-77.
+   On fail: throws a GuardError subclass carrying (model|useCase, current plan);
+            UI listener shows an upgrade modal (dispatchVideoModelEvent, error-event-target.ts:76).
+
+B) REQUIRED / CROSS-FIELD / CONDITIONAL PARAM RULES  ->  SDK defineJob `validate(input) -> Issue[]`.
+   Live in each model's submit() body; ALWAYS run (not guard-gated).
+   - required prompt (conditional):
+       sora2 unless is_sketch         submit/sora2-video.ts:60-62 (+ sketch-fields.ts:3-6)
+       wan2-5 derived mutual-excl.    submit/wan2-5-video.ts:54-63 (prompt optional if image+draw, or enhance+image)
+       veo3-1 mode + media branches   submit/veo3-1-video.ts:66-85
+   - prompt length (min/max):
+       veo3-1  3..4000 chars          submit/veo3-1-video.ts:54-64
+       kling   < 2000 when present    submit/kling.ts:54-56
+   - required media:
+       veo  start frame always        submit/veo.ts:46-48 (ToastError 'Start frame required')
+       minimax  start-OR-end          submit/minimax.ts:57-74 (skip for minimax-2.3)
+       veo3-1  end requires start     submit/veo3-1-video.ts:68-72
+   - cross-field required:
+       aspect_ratio required w/o image  submit/wan2-5-video.ts:65-67, sora2-video.ts:64-66
+   - cross-field lock (coerce in UI; SDK = reject or opt-in coerce):
+       aspectRatio -> 'auto' when start/end frame present
+       module/.../gen-panel-model-video-seedance-2-0/fields.ts:34-54
+   On fail: throws ToastError / ToastMinimaxError (minimax.ts:49,53,64) /
+            ToastInfiniteTalkError (infinite-talk.ts:41) — first-throw-wins.
+
+C) MEDIA ROLE / COUNT  ->  SDK declarative MediaConfig.requiredRoles + counts:{role:{min,max}};
+                           cross-role rules go in the validate hook (B).
+   - max images per add        entities/job/model/.../api-submit-model-media-helpers.ts:122-124,193-195
+   - "audio requires image|video" (cross-role)   seedance 2.0 form (video-form-seedance-2-0.tsx)
+   - per-image size / aspect (ASYNC, network getImageSize -> keep in media pipeline, not job validate):
+       minimax >=300px, ratio 2:5..5:2   submit/minimax.ts:44-55; is-aspect-ratio-in-range.ts:1-8
+   - audio format WAV-only       submit/infinite-talk.ts:36-46  (candidate: MediaConfig accept? OR upload policy)
+   - upload-time policy (size/ratio/dims/contentType)  entities/input-media/model/input-media-policy.ts
+
+D) DERIVED / COERCED PARAMS  ->  NOT errors. fnf silently coerces; SDK keeps normalize() or opt-in coerce.
+   - model normalization        submit/veo.ts:51-53, minimax.ts:99-100
+   - end-frame nullification     submit/kling.ts:84-92 (isEndFrameWorks, end-frame-policy.ts:18-36), minimax.ts:98
+   - enhance_prompt derivation   submit/veo.ts:56-61, kling.ts:69-75
+
+E) CONTENT / NSFW  ->  media-upload pipeline (already in SDK media half), NOT job submit.
+   - image NSFW (async, forceNsfwCheck on upload)  features/video/ui/video-form.tsx:847-851;
+       nsfwFlags disable submit  video-form.tsx:1046; video-form-nsfw-store.ts:5-11
+   - IP / ownership check         video-form.tsx:805-845 (uploadImageWithIpCheckMutation)
+   - prompt moderation            SERVER-SIDE only (no client check). prompt_nsfw -> PromptNsfwError via errorFromResponse.
+
+F) FORM-LEVEL SUBMIT GATING (/ai/video)  ->  caller/UI concern, informs (A)+(B) above.
+   - Generate button disabled ONLY on NSFW-in-image or in-flight
+       features/video/ui/video-form.tsx:1046; entities/.../job-generate-btn.tsx:156
+   - everything else aborts-with-toast on click   handleSubmit video-form.tsx:887-933
+   - enum values constrained by option lists (AspectRatio/Duration/ResolutionSelect)
+   - aspect/resolution -> width/height mappers toast on invalid combo
+       forms/video-form-seedance-1-5.tsx:152-155, seedance-2-0.tsx:704-707, grok-video.tsx:127-128
+   - guest validation   entities/guest/model/guest-form-validation.ts:120-242
+
+
+SDK IMPLEMENTATION PLAN
+=======================
+SDK files relative to packages/fnf/src/.
+
+1. ERROR MODEL (errors.ts)
+   - NEW: class PreflightError extends ApiJobError<{ issues: Issue[] }>
+       code 'preflight', status 422, data:{issues}. Aggregates ALL issues (vs fnf first-throw).
+       Register in CODE_TO_CLASS + export from index.ts + ./errors subpath.
+   - Issue = { path?: string; code: 'required'|'too_long'|'too_short'|'conflict'|'too_few'|'too_many'|'invalid'; message: string }
+   - Entitlement verdicts REUSE MinimumPlanError / RateLimitError / OutOfCreditsError (no new class).
+   - ValidationError (existing) stays the BACKEND-422 mapper; PreflightError is the LOCAL one.
+
+2. defineJob (define-job.ts)
+   - DefineJobConfig + JobEntry gain:  validate?: (input: GenerationInput) => Issue[] | void   (SYNC, returns issues)
+   - MediaConfigFor<Roles> + MediaConfig gain (optional, additive):
+       requiredRoles?: readonly Roles[]
+       counts?: Partial<Record<Roles, { min?: number; max?: number }>>
+
+3. media (groups/media.ts)
+   - NEW pure fn checkMedia(cfg, media) -> Issue[] (requiredRoles + counts). Codec stays a dumb mapper.
+
+4. spec.ts
+   - parseSettings(input, entry) already exists and already wraps the zod throw
+     into ValidationError. DECIDE: does runPreflight re-wrap/aggregate that into
+     PreflightError, or does a local parse failure stay a ValidationError?
+     (todo item 1 says ValidationError = the BACKEND-422 mapper — resolve the tension.)
+
+5. client/preflight.ts (NEW)
+   - runPreflight(ctx, entry, input): parseSettings -> checkMedia -> entry.validate
+       (aggregate -> throw one PreflightError) -> await ctx.entitlements?.(...) -> throw verdict.error.
+
+6. client/submit.ts
+   - Insert `await runPreflight(ctx, entry, input)` between entryFor and buildWireParams,
+     BEFORE the count fan-out (all-or-nothing; never a partial batch).
+   - safeSubmit UNCHANGED (PreflightError is a ApiJobError, maps via toJSON).
+
+7. ClientConfig + GenerationContext (client/types.ts) + createContext (client/context.ts)
+   - entitlements?: EntitlementPolicy   (optional; omitted => no-op)
+       EntitlementContext = { model, jobSetType, settings, media?, count }
+       EntitlementVerdict  = { ok:true } | { ok:false, error: ApiJobError }
+       EntitlementPolicy   = (ctx) => Verdict | Promise<Verdict>   (ASYNC-capable)
+   - Caller (fnf-web) closes over UserPayload + SubscriptionWeights + upsell; returns MinimumPlanError etc.
+
+8. estimateCost (client/cost.ts)
+   - Run the STRUCTURAL validation (runPreflight w/o entitlements); skip plan-gating for cost previews.
+
+9. Tests
+   - required/conditional/cross-field via validate; media counts/required; PreflightError aggregation +
+     toJSON/errorFromJSON round-trip; entitlement policy {ok:false} -> error surfaces via safeSubmit;
+     entitlement omitted => no-op.
+
+
+OPEN QUESTIONS
+==============
+- validate hook is SYNC. fnf's per-image dimension/aspect check is async (network getImageSize,
+  minimax.ts:44-55) -> keep in media-upload pipeline (dims known at confirm), NOT job validate. Confirm.
+- Cross-field lock (aspectRatio->auto, fields.ts:34-54): SDK headless can REJECT (PreflightError) or
+  SILENTLY COERCE (like normalize). Add opt-in coerce mode for MCP/agent callers?
+- WAV-only (infinite-talk.ts:36-46): MediaConfig.accept? here, or upload policy (where the real file is)?
+  Leaning upload policy.
+- New 422 code 'preflight' alongside 'validation' — OK for existing error consumers? (recommend: yes, distinct.)
+
+
+PROVENANCE
+==========
+Grounded via workflow analysis of fnf guard/submit/ai-video layers + SDK surface; design
+adversarially verified (architecture sound; entitlement-needs-user-context confirmed).
+Decisive boundary: A) entitlement = injected caller policy; B)+C) structural = declarative in SDK.

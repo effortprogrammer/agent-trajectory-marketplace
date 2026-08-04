@@ -1,0 +1,66 @@
+/**
+ * IconTile presentation — the 24px leading tile (Figma "Share Modal" leading
+ * tile 2125:15286 + neutral "New folder" tile 2125:15346). Shared footprint:
+ * space/600 box, radius/200 corners. The `gradient` look layers two blended
+ * white sheens over an inline-style brand gradient (the base fill is set via
+ * `style` since the stops are bespoke); the `neutral` look is the white-5%
+ * raised box the sidebar's project thumbnail uses.
+ *
+ * The gradient border / drop+inset sheen / blended overlay+hard-light sheens
+ * are the one necessary literal — branded fills with no exact Quanta token.
+ */
+@source "./icon-tile.tsx";
+
+@utility q-icon-tile {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--hf-space-600);
+  height: var(--hf-space-600);
+  overflow: hidden;
+  border-radius: var(--hf-radius-200);
+}
+
+/* Neutral raised box (matches the sidebar project-thumbnail surface). */
+@utility q-icon-tile-neutral {
+  background-color: var(--hf-color-transparent-light-05);
+  box-shadow: var(--hf-shadow-raised-sm);
+}
+
+/* Colored brand tile: white glyph, hairline light border, drop + inset
+ * highlight, and two blended white sheens (::before overlay, ::after
+ * hard-light) over the inline-style gradient base. Values are bespoke branded
+ * literals — no exact Quanta token for these fills. */
+@utility q-icon-tile-gradient {
+  border: var(--hf-border-width-thin) solid rgba(197, 197, 197, 0.24);
+  color: #fff;
+  box-shadow:
+    0 4px 2px rgba(0, 0, 0, 0.08),
+    inset 0 2px 4px rgba(255, 255, 255, 0.24);
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  &::before {
+    background-image: linear-gradient(to top, transparent, rgba(255, 255, 255, 0.2));
+    mix-blend-mode: overlay;
+  }
+
+  &::after {
+    background-image: linear-gradient(to top, transparent, rgba(255, 255, 255, 0.32));
+    mix-blend-mode: hard-light;
+  }
+}
+
+/* Lift the glyph above the gradient sheens. */
+@utility q-icon-tile-glyph {
+  position: relative;
+  z-index: 1;
+}

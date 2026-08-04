@@ -1,0 +1,51 @@
+/**
+ * Component styles aggregator.
+ *
+ * Each component colocates its presentation CSS (q-* @utility rules) next to
+ * its source. They're collected here — one @import per component — so the whole
+ * set lands in the Tailwind bundle from a single entry point. Add a line here
+ * when you add a component with its own .css.
+ *
+ * Pulled into the Tailwind bridge by ./index.css.
+ */
+
+@import "../../components/menu/menu.css";
+@import "../../components/dropdown/dropdown.css";
+@import "../../components/avatar/avatar.css";
+@import "../../components/button/button.css";
+@import "../../components/close-button/close-button.css";
+@import "../../components/loader/loader.css";
+@import "../../components/sidebar/sidebar.css";
+@import "../../components/checkbox/checkbox.css";
+@import "../../components/radio/radio.css";
+@import "../../components/chip/chip.css";
+@import "../../components/dot/dot.css";
+@import "../../components/badge/badge.css";
+@import "../../components/switch/switch.css";
+@import "../../components/tabs/tabs.css";
+@import "../../components/modal/modal.css";
+@import "../../components/input/input.css";
+@import "../../components/textarea/textarea.css";
+@import "../../components/kbd/kbd.css";
+@import "../../components/divider/divider.css";
+@import "../../components/slider/slider.css";
+@import "../../components/not-found/not-found.css";
+@import "../../components/tag/tag.css";
+@import "../../components/toggle/toggle.css";
+@import "../../components/sonner/sonner.css";
+@import "../../components/vault/vault.css";
+@import "../../components/cmdk/cmdk.css";
+@import "../../components/progress/progress.css";
+@import "../../components/navigation-menu/navigation-menu.css";
+@import "../../components/card/card.css";
+@import "../../components/icon/icon.css";
+@import "../../components/typography/typography.css";
+@import "../../components/tooltip/tooltip.css";
+@import "../../components/select/select.css";
+@import "../../components/autocomplete/autocomplete.css";
+@import "../../components/media/media.css";
+@import "../../components/grid/grid.css";
+@import "../../components/accordion/accordion.css";
+@import "../../components/button-group/button-group.css";
+@import "../../components/glass/glass.css";
+@import "./slot.css";   /* slot system — component-internal styling primitives */
