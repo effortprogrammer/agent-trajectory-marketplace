@@ -33,7 +33,7 @@
     "pretrajectory": "bun run build:collector",
     "trajectory": "bun dist/collector.js",
     "typecheck": "bunx tsc --noEmit",
-    "verify:publish-wire": "bun contract/publish-wire/v1/verify.ts --manifest contract/publish-wire/v1/manifest.json",
+    "verify:publish-wire": "bun contract/publish-wire/v1/generate.ts --check contract/publish-wire/v1 && bun contract/publish-wire/v1/verify.ts --manifest contract/publish-wire/v1/manifest.json",
     "test": "bun test test/bun",
     "check": "bun run typecheck && bun run verify:publish-wire && bun test test/bun && bun run build:collector"
   },
