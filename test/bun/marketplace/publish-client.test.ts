@@ -29,8 +29,13 @@ describe("candidate publish client", () => {
     const sentinels = ["flag-sentinel", "environment-sentinel", "stored-sentinel"]
     const submissionId = `sub_${"0".repeat(26)}`
     const authorizations: string[] = []
-    const server = serve((request) => {
+    const lengths: Readonly<{ declared: number; received: number }>[] = []
+    const server = serve(async (request) => {
       authorizations.push(request.headers.get("authorization") ?? "")
+      lengths.push({
+        declared: Number(request.headers.get("content-length")),
+        received: (await request.arrayBuffer()).byteLength,
+      })
       return Response.json({
         protocolVersion: 1,
         submissionId,
@@ -49,10 +54,12 @@ describe("candidate publish client", () => {
     expect({
       authorization: authorizations[0],
       count: authorizations.length,
+      lengths,
       receipt,
     }).toEqual({
       authorization: "Bearer flag-sentinel",
       count: 1,
+      lengths: [{ declared: 1115, received: 1115 }],
       receipt: expect.objectContaining({ protocolVersion: 1, status: "accepted" }),
     })
     expect(JSON.stringify({ authorizations, receipt })).not.toContain(sentinels[1] ?? "")
@@ -119,8 +126,9 @@ describe("candidate publish client", () => {
     // Given: one admitted bundle and a canonical unavailable response.
     const request = validRequest()
     let hits = 0
-    const server = serve(() => {
+    const server = serve(async (serverRequest) => {
       hits += 1
+      await serverRequest.arrayBuffer()
       return Response.json({ protocolVersion: 1, code: "unavailable" }, { status: 503 })
     })
 
@@ -133,13 +141,18 @@ describe("candidate publish client", () => {
       ...request,
       credential: "flag-sentinel",
     }))
+    const third = await expectError(() => createPublishClient(`http://127.0.0.1:${server.port}`).publish({
+      ...validRequest(),
+      credential: "flag-sentinel",
+    }))
 
-    // Then: retryable server status survives once and reuse fails locally without another request.
-    expect({ first: first.code, hits, second: second.code, status: second.status }).toEqual({
+    // Then: reuse fails locally, while a freshly admitted bundle makes an explicit second request.
+    expect({ first: first.code, hits, second: second.code, status: second.status, third: third.code }).toEqual({
       first: "unavailable",
-      hits: 1,
+      hits: 2,
       second: "invalid_candidate",
       status: 0,
+      third: "unavailable",
     })
   })
 
