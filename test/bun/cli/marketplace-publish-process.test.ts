@@ -30,7 +30,7 @@ const bundle = (root: string): string => {
   return output
 }
 
-const runCli = async (argumentsList: readonly string[], environment: Readonly<Record<string, string>>): Promise<Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>> => {
+const runCli = async (argumentsList: readonly string[], environment: Readonly<Record<string, string | undefined>>): Promise<Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>> => {
   const child = Bun.spawn([process.execPath, "dist/collector.js", ...argumentsList], {
     cwd: process.cwd(),
     env: environment,
@@ -140,15 +140,16 @@ describe("marketplace candidate publish process boundary", () => {
     }, { storePath: join(root, "agent-trajectory-marketplace", "auth.json") })
 
     // When: publish resolves that session after the flag and environment sources are omitted.
+    const environment: Record<string, string | undefined> = {
+      ...process.env,
+      TRAJECTORY_MARKETPLACE_CONFIG_HOME: root,
+    }
+    delete environment["TRAJECTORY_REGISTRY_API_KEY"]
     const result = await runCli([
       "marketplace", "seller", "candidate", "publish",
       "--bundle", bundle(root),
       "--server", `http://127.0.0.1:${server.port}`,
-    ], {
-      ...process.env,
-      TRAJECTORY_MARKETPLACE_CONFIG_HOME: root,
-      TRAJECTORY_REGISTRY_API_KEY: "",
-    })
+    ], environment)
     server.stop(true)
 
     // Then: the invalid stored value is rejected with the stable local credential error and zero requests.

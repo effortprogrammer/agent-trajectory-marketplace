@@ -7,7 +7,7 @@ import { datasetArchivePolicy } from "../marketplace/archive-contract";
 import { writeCandidateBundle } from "../marketplace/bundle-service";
 import { MarketplaceError } from "../marketplace/error";
 import { readPublishBundle } from "../marketplace/publish-bundle";
-import { createPublishClient } from "../marketplace/publish-client";
+import { createPublishClient, validPublishCredential } from "../marketplace/publish-client";
 import { runFrozenReview } from "../marketplace/review-loop";
 import type { ReviewIO } from "../marketplace/review-loop";
 import {
@@ -59,22 +59,24 @@ const parseFrozenTrace = (frozenTrace: FrozenTrace): ValidatedTrace => {
   return { frozenTrace, document: document.data };
 };
 
-const validCredential = (value: string | undefined): value is string =>
-  value !== undefined && value.length > 0 && value.trim() === value && !/[\u0000-\u0020\u007f]/u.test(value);
-
 const resolvePublishCredential = (server: string, apiKey: string | undefined): string => {
   if (apiKey !== undefined) {
-    if (!validCredential(apiKey)) throw new MarketplaceCliError("missing_publish_credential");
+    if (!validPublishCredential(apiKey)) throw new MarketplaceCliError("missing_publish_credential");
     return apiKey;
   }
   const environmentCredential = process.env["TRAJECTORY_REGISTRY_API_KEY"];
-  if (validCredential(environmentCredential)) return environmentCredential;
+  if (environmentCredential !== undefined) {
+    if (!validPublishCredential(environmentCredential)) {
+      throw new MarketplaceCliError("missing_publish_credential");
+    }
+    return environmentCredential;
+  }
   try {
     const session = readStoredAuthSession(server);
     if (
       session !== undefined &&
       storedAuthSessionStatus(session) === "active" &&
-      validCredential(session.accessToken)
+      validPublishCredential(session.accessToken)
     ) return session.accessToken;
   } catch {
     throw new MarketplaceCliError("missing_publish_credential");
@@ -120,7 +122,10 @@ export const isMarketplaceInvocation = (argumentsList: readonly string[]): boole
   return argumentsList[offset] === "marketplace";
 };
 
-export const runMarketplaceCli = async (argumentsList: readonly string[]): Promise<void> => {
+export const runMarketplaceCli = async (
+  argumentsList: readonly string[],
+  signal: AbortSignal,
+): Promise<void> => {
   const executableOffset = argumentsList[0] === "trajectory" ? 1 : 0;
   const marketplaceArguments = argumentsList.slice(executableOffset);
   if (marketplaceArguments.join(" ") === "marketplace seller candidate publish --help") {
@@ -180,8 +185,8 @@ export const runMarketplaceCli = async (argumentsList: readonly string[]): Promi
           ]);
         },
       };
-      process.once("SIGINT", cancel);
-      process.once("SIGTERM", cancel);
+      signal.addEventListener("abort", cancel, { once: true });
+      if (signal.aborted) cancel();
       try {
         const outcome = await runFrozenReview({
           traces: snapshot.traces,
@@ -201,8 +206,7 @@ export const runMarketplaceCli = async (argumentsList: readonly string[]): Promi
         console.log(JSON.stringify({ status: outcome.kind }));
         return;
       } finally {
-        process.removeListener("SIGINT", cancel);
-        process.removeListener("SIGTERM", cancel);
+        signal.removeEventListener("abort", cancel);
         lineReader.close();
       }
     }
@@ -213,6 +217,7 @@ export const runMarketplaceCli = async (argumentsList: readonly string[]): Promi
       const receipt = await createPublishClient(server).publish({
         bundle,
         credential,
+        signal,
       });
       console.log(JSON.stringify(receipt));
       return;
