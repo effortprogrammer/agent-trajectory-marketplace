@@ -439,6 +439,87 @@ describe("publish bundle ZIP integrity", () => {
     expect(parse).toThrow(PublishBundleError)
   })
 
+  test.each([
+    ["top-level", '{"runtime":"Bearer TOP_SECRET_123456789","runtime":"codex","status":"collected","eventCount":0,"events":[]}'],
+    ["escaped-equivalent", '{"runtime":"codex","\\u0072untime":"Bearer TOP_SECRET_123456789","status":"collected","eventCount":0,"events":[]}'],
+    ["nested-payload", '{"runtime":"codex","status":"collected","formatVersion":2,"eventCount":1,"events":[{"kind":"tool","name":"read","payload":{"label":"Bearer TOP_SECRET_123456789","label":"safe"}}]}'],
+  ] as const)("rejects duplicate %s JSON keys before admission", (_case, traceText) => {
+    // Given: exact trace bytes whose duplicate keys hide credential material from JSON.parse.
+    const archive = archiveForTrace(Buffer.from(traceText, "utf8"))
+
+    // When: direct publication admission parses the trace.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: discarded parser values cannot smuggle retained credential bytes.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
+  test("rejects duplicate manifest JSON keys before admission", () => {
+    // Given: a manifest whose duplicate formatVersion collapses to a valid parse but taints raw bytes.
+    const trace = Buffer.from('{"runtime":"codex","status":"collected","eventCount":0,"events":[]}', "utf8")
+    const label = `s-${"0".repeat(64)}`
+    const path = `traces/${label}.atf.json`
+    const sha256 = createHash("sha256").update(trace).digest("hex")
+    const manifest = Buffer.from(
+      `{"formatVersion":0,"formatVersion":1,"artifacts":[{"path":"${path}","label":"${label}","sha256":"${sha256}","byteCount":${trace.length}}]}`,
+      "utf8",
+    )
+    const archive = writeDatasetZip([{ data: manifest, name: "dataset-manifest.json" }, { data: trace, name: path }])
+
+    // When: direct admission parses the manifest.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: duplicate manifest keys cannot cross the boundary.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
+  test.each(["manifest", "trace"] as const)("rejects UTF-8 BOM prefixed %s bytes", (location) => {
+    // Given: otherwise valid JSON bytes prefixed with a UTF-8 BOM.
+    const bom = Buffer.from([0xef, 0xbb, 0xbf])
+    const trace = Buffer.from('{"runtime":"codex","status":"collected","eventCount":0,"events":[]}', "utf8")
+    const label = `s-${"0".repeat(64)}`
+    const path = `traces/${label}.atf.json`
+    const traceEntry = location === "trace" ? Buffer.concat([bom, trace]) : trace
+    const manifest = encodeDatasetManifest({
+      artifacts: [{ byteCount: traceEntry.length, label, path, sha256: createHash("sha256").update(traceEntry).digest("hex") }],
+      formatVersion: 1,
+    })
+    const manifestEntry = location === "manifest" ? Buffer.concat([bom, manifest]) : manifest
+    const archive = writeDatasetZip([{ data: manifestEntry, name: "dataset-manifest.json" }, { data: traceEntry, name: path }])
+
+    // When: direct admission decodes the entry bytes.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: BOM parser differentials are rejected at the boundary.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
+  test("rejects traces beyond the event admission bound", () => {
+    // Given: a schema-valid trace with more events than the publish admission budget.
+    const events = Array.from({ length: 65_537 }, () => ({ kind: "a", name: "b" }))
+    const trace = Buffer.from(JSON.stringify({
+      runtime: "codex",
+      status: "collected",
+      eventCount: events.length,
+      events,
+    }), "utf8")
+    const archive = archiveForTrace(trace)
+
+    // When: direct admission validates the trace.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: unbounded event arrays cannot consume publisher resources.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
   test("preserves safe noncanonical ATF bytes exactly", () => {
     // Given: semantically valid, redaction-fixed-point trace bytes with noncanonical whitespace.
     const trace = Buffer.from('{\n  "runtime": "codex",\n  "status": "collected",\n  "eventCount": 0,\n  "events": []\n}', "utf8")
