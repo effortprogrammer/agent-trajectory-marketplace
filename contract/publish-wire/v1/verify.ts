@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { readdirSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -25,6 +26,12 @@ const expectedFixtureFiles = [
   "error-503.json",
   "receipt-unknown-field-202.json",
 ] as const
+const expectedDirectoryFiles = [
+  ...expectedFixtureFiles,
+  "generate.ts",
+  "manifest.json",
+  "verify.ts",
+].sort()
 
 const fixtureSchema = z
   .object({
@@ -95,7 +102,15 @@ if (!parsedManifest.success) throw new FixtureVerificationError(manifestPath, "i
 if (parsedManifest.data.fixtures.some((fixture, index) => fixture.file !== expectedFixtureFiles[index])) {
   throw new FixtureVerificationError(manifestPath, "fixture set mismatch")
 }
-const root = pathToFileURL(`${dirname(resolve(manifestPath))}/`)
+const fixtureRoot = dirname(resolve(manifestPath))
+const actualDirectoryFiles = readdirSync(fixtureRoot).sort()
+if (
+  actualDirectoryFiles.length !== expectedDirectoryFiles.length ||
+  actualDirectoryFiles.some((file, index) => file !== expectedDirectoryFiles[index])
+) {
+  throw new FixtureVerificationError(manifestPath, "fixture set mismatch")
+}
+const root = pathToFileURL(`${fixtureRoot}/`)
 
 for (const fixture of parsedManifest.data.fixtures) {
   const bytes = Buffer.from(await Bun.file(new URL(fixture.file, root)).arrayBuffer())

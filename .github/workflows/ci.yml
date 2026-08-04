@@ -28,6 +28,9 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
+      - name: Verify publish wire fixtures
+        run: bun run verify:publish-wire
+
       - name: Test
         run: bun test test/bun
 
