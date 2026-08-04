@@ -36,6 +36,12 @@ type CandidatePublishCommand = Readonly<{
   readonly server: string;
 }>;
 
+type WalletBalanceCommand = Readonly<{
+  readonly apiKey: string | undefined;
+  readonly command: "wallet-balance";
+  readonly server: string;
+}>;
+
 type InvalidCommand = Readonly<{ readonly command: "invalid_command" }>;
 type InvalidBundleRequest = Readonly<{
   readonly command: "invalid_bundle_request";
@@ -47,6 +53,7 @@ export type MarketplaceCommand =
   | InteractiveCandidateBundleCommand
   | ExplicitCandidateBundleCommand
   | CandidatePublishCommand
+  | WalletBalanceCommand
   | InvalidCommand
   | InvalidBundleRequest;
 
@@ -180,6 +187,21 @@ const parseCandidatePublish = (argumentsList: readonly string[]): MarketplaceCom
       : { apiKey, bundle, command: "candidate-publish", server };
 };
 
+const parseWalletBalance = (argumentsList: readonly string[]): MarketplaceCommand => {
+  if (argumentsList.length !== 2 && argumentsList.length !== 4) return invalidCommand();
+  const [serverFlag, server, apiKeyFlag, apiKey] = argumentsList;
+  if (
+    serverFlag !== "--server" ||
+    server === undefined ||
+    server.length === 0 ||
+    server.startsWith("--")
+  ) return invalidCommand();
+  if (argumentsList.length === 2) return { apiKey: undefined, command: "wallet-balance", server };
+  return apiKeyFlag === "--api-key" && apiKey !== undefined && apiKey.length > 0 && !apiKey.startsWith("--")
+    ? { apiKey, command: "wallet-balance", server }
+    : invalidCommand();
+};
+
 export const parseMarketplaceCommand = (
   argumentsList: readonly string[],
 ): MarketplaceCommand => {
@@ -207,6 +229,9 @@ export const parseMarketplaceCommand = (
   }
   if (group === "candidate" && action === "publish") {
     return parseCandidatePublish(argumentsWithoutExecutable.slice(4));
+  }
+  if (group === "wallet" && action === "balance") {
+    return parseWalletBalance(argumentsWithoutExecutable.slice(4));
   }
   return invalidCommand();
 };
