@@ -103,7 +103,11 @@ describe("bounded aggregate client", () => {
     // When: the request is in flight and the caller aborts.
     const pending = failure(() => createWalletBalanceClient(`http://127.0.0.1:${server.port}`)
       .read({ credential: "stored-sentinel", signal: controller.signal }))
-    await Promise.race([arrival, Bun.sleep(5_000).then(() => { throw new Error("request never arrived") })])
+    await new Promise<void>((resolve, reject) => {
+      const deadline = AbortSignal.timeout(5_000)
+      void arrival.then(resolve)
+      deadline.addEventListener("abort", () => reject(new Error("request never arrived")), { once: true })
+    })
     controller.abort()
     const error = await pending
 
@@ -141,6 +145,30 @@ describe("bounded aggregate client", () => {
 
     // Then: automation can distinguish the remote 500 from a local failure.
     expect({ code: error.code, status: error.status }).toEqual({ code: "invalid_response", status: 500 })
+  })
+
+  test("rejects a streamed response beyond the cap without a declared length", async () => {
+    // Given: an endless chunked JSON response with no Content-Length.
+    let requests = 0
+    const server = Bun.serve({ fetch() {
+      requests += 1
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(131_072))
+        },
+      })
+      return new Response(body, { headers: { "content-type": "application/json" }, status: 200 })
+    }, hostname: "127.0.0.1", port: 0 })
+    servers.push(server)
+    root()
+
+    // When: the client reads the unbounded stream.
+    const error = await failure(() => createWalletBalanceClient(`http://127.0.0.1:${server.port}`)
+      .read({ credential: "stored-sentinel" }))
+
+    // Then: the streamed cap rejects before the ten-second timeout could fire.
+    expect({ code: error.code, requests, status: error.status })
+      .toEqual({ code: "invalid_response", requests: 1, status: 200 })
   })
 
   test("fails closed before parsing a large or noncanonical response", async () => {

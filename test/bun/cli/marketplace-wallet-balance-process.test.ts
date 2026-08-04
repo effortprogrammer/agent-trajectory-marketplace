@@ -159,4 +159,41 @@ describe("marketplace wallet balance process boundary", () => {
     // Then: the malformed stored credential fails locally with zero transport.
     expect({ hits, output }).toEqual({ hits: 0, output: { exitCode: 1, stderr: "{\"error\":\"missing_wallet_credential\"}\n", stdout: "" } })
   })
+
+  test("treats an empty defined environment credential as an invalid override", async () => {
+    // Given: an empty but defined environment credential and a valid stored session.
+    let hits = 0
+    const server = Bun.serve({ fetch() { hits += 1; return Response.json(result) }, hostname: "127.0.0.1", port: 0 })
+    const config = root()
+    const serverUrl = `http://127.0.0.1:${server.port}`
+    storeSession(config, serverUrl)
+
+    // When: the command runs with the empty override defined.
+    const output = await run(
+      ["marketplace", "seller", "wallet", "balance", "--server", serverUrl],
+      { ...environment(config), TRAJECTORY_REGISTRY_API_KEY: "" },
+    )
+    server.stop(true)
+
+    // Then: the defined override fails closed instead of falling back.
+    expect({ hits, output }).toEqual({ hits: 0, output: { exitCode: 1, stderr: "{\"error\":\"missing_wallet_credential\"}\n", stdout: "" } })
+  })
+
+  test("never uses a stored session bound to a different server", async () => {
+    // Given: a valid stored session for another origin only.
+    let hits = 0
+    const server = Bun.serve({ fetch() { hits += 1; return Response.json(result) }, hostname: "127.0.0.1", port: 0 })
+    const other = Bun.serve({ fetch() { return Response.json(result) }, hostname: "127.0.0.1", port: 0 })
+    const config = root()
+    const serverUrl = `http://127.0.0.1:${server.port}`
+    storeSession(config, `http://127.0.0.1:${other.port}`)
+
+    // When: the command targets the origin without a session.
+    const output = await run(["marketplace", "seller", "wallet", "balance", "--server", serverUrl], environment(config))
+    server.stop(true)
+    other.stop(true)
+
+    // Then: the foreign token is never offered to this server.
+    expect({ hits, output }).toEqual({ hits: 0, output: { exitCode: 1, stderr: "{\"error\":\"missing_wallet_credential\"}\n", stdout: "" } })
+  })
 })

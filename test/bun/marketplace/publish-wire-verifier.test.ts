@@ -40,6 +40,26 @@ afterEach(() => {
 })
 
 describe("frozen publish wire verifier", () => {
+  test("rejects a manifest with duplicate JSON keys", () => {
+    // Given: a copied manifest whose duplicate schemaVersion collapses to a valid parse.
+    const fixtureRoot = copyFixtureDirectory()
+    const manifestPath = join(fixtureRoot, "manifest.json")
+    const original = readFileSync(manifestPath, "utf8")
+    writeFileSync(manifestPath, original.replace('"schemaVersion": 1', '"schemaVersion": 0,\n  "schemaVersion": 1'))
+
+    // When: the verifier parses the manifest.
+    const duplicate = verify(fixtureRoot)
+
+    // Then: parser differentials in the frozen manifest are rejected.
+    expect({
+      exitCode: duplicate.exitCode,
+      stderr: new TextDecoder().decode(duplicate.stderr),
+    }).toEqual({
+      exitCode: 1,
+      stderr: expect.stringContaining("invalid manifest"),
+    })
+  })
+
   test("rejects fixture-directory files not declared by the exact v1 set", () => {
     // Given: a byte-identical copied v1 fixture directory that verifies successfully.
     const fixtureRoot = copyFixtureDirectory()
