@@ -16,6 +16,7 @@ import type { PublishBundleReadOptions } from "./publish-bundle-file"
 import { createCandidateFromExactBytes } from "./publish-contract"
 import type { PublishCandidate } from "./publish-contract"
 import { crc32 } from "./zip-crc32"
+import { parseAdmissionJson } from "./json-preflight"
 import {
   boundedRedactedString,
   harnessTraceDocumentSchema,
@@ -27,6 +28,7 @@ const centralHeader = 0x02014b50
 const endHeader = 0x06054b50
 const endBytes = 22
 const maxEntryCount = datasetArchivePolicy.maxTraces + 1
+const maxTraceEvents = 65_536
 
 export { PublishBundleError } from "./publish-bundle-file"
 export type { PublishBundleReadOptions } from "./publish-bundle-file"
@@ -158,10 +160,10 @@ const readEntries = (archive: Buffer): readonly BundleEntry[] => {
 }
 
 const assertTraceAdmission = (data: Buffer): void => {
-  let input: unknown
-  try { input = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(data)) } catch { return invalid() }
+  const input = parseAdmissionJson(data)
+  if (input === undefined) return invalid()
   const parsed = harnessTraceDocumentSchema.safeParse(input)
-  if (!parsed.success) return invalid()
+  if (!parsed.success || parsed.data.events.length > maxTraceEvents) return invalid()
   const runtime = boundedRedactedString(parsed.data.runtime)
   if (runtime.truncated || runtime.text !== parsed.data.runtime) return invalid()
   for (const event of parsed.data.events) {
@@ -204,8 +206,8 @@ export const parsePublishBundle = (archive: Buffer): PublishBundle => {
   if (entriesByName.size !== entries.length) return invalid()
   const manifestEntry = entriesByName.get(datasetManifestPath)
   if (manifestEntry === undefined || manifestEntry.data.length > datasetArchivePolicy.maxManifestBytes) return invalid()
-  let manifestInput: unknown
-  try { manifestInput = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(manifestEntry.data)) } catch { return invalid() }
+  const manifestInput = parseAdmissionJson(manifestEntry.data)
+  if (manifestInput === undefined) return invalid()
   const manifest = datasetManifestSchema.safeParse(manifestInput)
   if (!manifest.success || entries.length !== manifest.data.artifacts.length + 1) return invalid()
   const expectedNames = [
