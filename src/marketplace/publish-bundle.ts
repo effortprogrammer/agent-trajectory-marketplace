@@ -37,26 +37,45 @@ type BundleEntry = Readonly<{
   readonly offset: number
 }>
 export type PublishBundle = Readonly<{ readonly archive: Buffer; readonly candidate: PublishCandidate }>
+export type PublishBundleReadOptions = Readonly<{ readonly afterInitialStat?: () => void }>
 
 const invalid = (): never => { throw new PublishBundleError("invalid_bundle_request") }
 
-const sameFile = (left: Readonly<{ readonly dev: number; readonly ino: number; readonly size: number }>, right: Readonly<{ readonly dev: number; readonly ino: number; readonly size: number }>): boolean => left.dev === right.dev && left.ino === right.ino && left.size === right.size
+type FileVersion = Readonly<{
+  readonly ctimeNs: bigint
+  readonly dev: bigint
+  readonly ino: bigint
+  readonly mtimeNs: bigint
+  readonly size: bigint
+}>
 
-const readBundle = (path: string): Buffer => {
+const sameFile = (left: FileVersion, right: FileVersion): boolean =>
+  left.dev === right.dev &&
+  left.ino === right.ino &&
+  left.size === right.size &&
+  left.mtimeNs === right.mtimeNs &&
+  left.ctimeNs === right.ctimeNs
+
+const readBundle = (path: string, options: PublishBundleReadOptions): Buffer => {
   if (!isAbsolute(path) || path.includes("\0")) return invalid()
   let descriptor: number | undefined
   try {
     descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
-    const before = fstatSync(descriptor)
-    if (!before.isFile() || before.size <= 0 || before.size > datasetArchivePolicy.maxArchiveBytes) return invalid()
-    const bytes = Buffer.allocUnsafe(before.size)
+    const before = fstatSync(descriptor, { bigint: true })
+    if (
+      !before.isFile() ||
+      before.size <= 0n ||
+      before.size > BigInt(datasetArchivePolicy.maxArchiveBytes)
+    ) return invalid()
+    options.afterInitialStat?.()
+    const bytes = Buffer.allocUnsafeSlow(Number(before.size))
     let offset = 0
     while (offset < bytes.length) {
       const count = readSync(descriptor, bytes, offset, bytes.length - offset, offset)
       if (count <= 0) return invalid()
       offset += count
     }
-    if (!sameFile(before, fstatSync(descriptor))) return invalid()
+    if (!sameFile(before, fstatSync(descriptor, { bigint: true }))) return invalid()
     return bytes
   } catch (error) {
     if (error instanceof PublishBundleError) throw error
@@ -221,4 +240,7 @@ export const parsePublishBundle = (archive: Buffer): PublishBundle => {
   return { archive, candidate: createCandidateFromExactBytes({ archive, artifactCount: manifest.data.artifacts.length, manifest: manifestEntry.data }) }
 }
 
-export const readPublishBundle = (path: string): PublishBundle => parsePublishBundle(readBundle(path))
+export const readPublishBundle = (
+  path: string,
+  options: PublishBundleReadOptions = {},
+): PublishBundle => parsePublishBundle(readBundle(path, options))
