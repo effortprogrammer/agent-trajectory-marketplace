@@ -4,14 +4,17 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { encodeDatasetManifest } from "../../../src/marketplace/archive-contract"
-import { PublishBundleError, readPublishBundle } from "../../../src/marketplace/publish-bundle"
+import { datasetArchivePolicy, encodeDatasetManifest } from "../../../src/marketplace/archive-contract"
+import {
+  PublishBundleError,
+  parsePublishBundle,
+  readPublishBundle,
+} from "../../../src/marketplace/publish-bundle"
 import { writeDatasetZip } from "../../../src/marketplace/stored-zip"
 
 const roots: string[] = []
 
-const validArchive = (): Buffer => {
-  const trace = Buffer.from('{"runtime":"codex","status":"collected","eventCount":0,"events":[]}', "utf8")
+const archiveForTrace = (trace: Buffer): Buffer => {
   const label = `s-${"0".repeat(64)}`
   const path = `traces/${label}.atf.json`
   const manifest = encodeDatasetManifest({
@@ -19,6 +22,41 @@ const validArchive = (): Buffer => {
     formatVersion: 1,
   })
   return writeDatasetZip([{ data: manifest, name: "dataset-manifest.json" }, { data: trace, name: path }])
+}
+
+const validArchive = (): Buffer =>
+  archiveForTrace(Buffer.from('{"runtime":"codex","status":"collected","eventCount":0,"events":[]}', "utf8"))
+
+const fixedMetadata = (
+  archive: Buffer,
+  field:
+    | "central_date"
+    | "central_external_attributes"
+    | "central_internal_attributes"
+    | "central_made_by"
+    | "central_time"
+    | "central_version"
+    | "local_date"
+    | "local_time"
+    | "local_version",
+): Buffer => {
+  const mutated = Buffer.from(archive)
+  const centralOffset = mutated.readUInt32LE(mutated.length - 6)
+  const positions = {
+    central_date: [centralOffset + 14, 2],
+    central_external_attributes: [centralOffset + 38, 4],
+    central_internal_attributes: [centralOffset + 36, 2],
+    central_made_by: [centralOffset + 4, 2],
+    central_time: [centralOffset + 12, 2],
+    central_version: [centralOffset + 6, 2],
+    local_date: [12, 2],
+    local_time: [10, 2],
+    local_version: [4, 2],
+  } as const
+  const [offset, width] = positions[field]
+  if (width === 2) mutated.writeUInt16LE(0x1234, offset)
+  else mutated.writeUInt32LE(0x12345678, offset)
+  return mutated
 }
 
 const corruptCrc = (archive: Buffer, location: "both" | "central" | "local"): Buffer => {
@@ -195,5 +233,85 @@ describe("publish bundle ZIP integrity", () => {
 
     // Then: raw filename bytes must match the canonical reviewed path exactly.
     expect(read).toThrow(PublishBundleError)
+  })
+
+  test("rejects archive policy overflow before reading ZIP fields", () => {
+    // Given: an oversized Buffer-shaped input that traps every field except byteLength.
+    const oversized = new Proxy({ byteLength: datasetArchivePolicy.maxArchiveBytes + 1 }, {
+      get(target, property) {
+        if (property === "byteLength") return target.byteLength
+        throw new Error(`unexpected archive field access: ${String(property)}`)
+      },
+    }) as unknown as Buffer
+
+    // When: the direct parser receives bytes beyond the public archive policy.
+    const parse = (): void => {
+      parsePublishBundle(oversized)
+    }
+
+    // Then: policy rejection occurs before any ZIP scan.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
+  test.each([
+    "local_version",
+    "local_time",
+    "local_date",
+    "central_made_by",
+    "central_version",
+    "central_time",
+    "central_date",
+    "central_internal_attributes",
+    "central_external_attributes",
+  ] as const)("rejects noncanonical %s fixed metadata", (field) => {
+    // Given: a valid archive with one ignored fixed-width metadata field changed.
+    const archive = fixedMetadata(validArchive(), field)
+
+    // When: direct admission validates the complete archive representation.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: only canonical writer metadata can cross the boundary.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
+  test.each([
+    ["invalid_json", Buffer.from("{", "utf8")],
+    ["invalid_schema", Buffer.from('{"runtime":"codex","status":"collected","eventCount":1,"events":[]}', "utf8")],
+    ["unsafe_payload", Buffer.from(JSON.stringify({
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 1,
+      events: [{
+        kind: "tool",
+        name: "credential-bearing-input",
+        payload: { input: { apiKey: "review-secret-314159" } },
+      }],
+    }), "utf8")],
+  ] as const)("rejects %s ATF admission", (_case, trace) => {
+    // Given: manifest-consistent trace bytes that fail semantic or redaction admission.
+    const archive = archiveForTrace(trace)
+
+    // When: direct publication admission parses the trace.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: hash consistency alone is insufficient.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
+  test("preserves safe noncanonical ATF bytes exactly", () => {
+    // Given: semantically valid, redaction-fixed-point trace bytes with noncanonical whitespace.
+    const trace = Buffer.from('{\n  "runtime": "codex",\n  "status": "collected",\n  "eventCount": 0,\n  "events": []\n}', "utf8")
+    const archive = archiveForTrace(trace)
+
+    // When: the bundle is admitted.
+    const bundle = parsePublishBundle(archive)
+
+    // Then: admission validates without rewriting the caller's exact bytes.
+    expect(bundle.archive).toBe(archive)
   })
 })
