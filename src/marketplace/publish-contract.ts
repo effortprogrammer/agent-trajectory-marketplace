@@ -169,10 +169,11 @@ export type PublishCandidateDerivation = Readonly<{
 }>
 
 export const createCandidateFromExactBytes = (input: PublishCandidateDerivation): PublishCandidate => {
+  const archiveSha256 = createHash("sha256").update(input.archive).digest("hex")
   return toCandidate({
     protocolVersion: 1,
-    bundleId: `bundle-${createHash("sha256").update(input.archive).digest("hex")}`,
-    archiveSha256: createHash("sha256").update(input.archive).digest("hex"),
+    bundleId: `bundle-${archiveSha256}`,
+    archiveSha256,
     archiveByteCount: input.archive.byteLength,
     manifestSha256: createHash("sha256").update(input.manifest).digest("hex"),
     artifactCount: input.artifactCount,

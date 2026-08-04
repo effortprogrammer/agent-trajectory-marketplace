@@ -6,7 +6,12 @@ import {
   publishWirePolicy,
 } from "./publish-contract"
 import type { PublishCandidate } from "./publish-contract"
-import { parsePublishBundle } from "./publish-bundle"
+import {
+  PublishBundleError,
+  parsePublishBundle,
+  takePublishBundle,
+} from "./publish-bundle"
+import type { PublishBundle } from "./publish-bundle"
 
 const frameHeaderBytes = 4
 
@@ -43,20 +48,24 @@ const assertCandidateMatchesBundle = (candidate: PublishCandidate, archive: Buff
 }
 
 const transferBufferView = (input: Buffer): Buffer => {
-  if (!(input.buffer instanceof ArrayBuffer)) return Buffer.from(input)
+  if (
+    !(input.buffer instanceof ArrayBuffer) ||
+    input.byteOffset !== 0 ||
+    input.byteLength !== input.buffer.byteLength
+  ) {
+    const isolated = Buffer.allocUnsafeSlow(input.byteLength)
+    isolated.set(input)
+    return isolated
+  }
   const transferred = structuredClone(
-    new Uint8Array(input.buffer, input.byteOffset, input.byteLength),
+    new Uint8Array(input.buffer),
     { transfer: [input.buffer] },
   )
-  return Buffer.from(transferred.buffer, transferred.byteOffset, transferred.byteLength)
+  return Buffer.from(transferred.buffer)
 }
 
-const publishFrameParts = (input: unknown, archiveInput: Uint8Array): PublishFrameParts => {
-  const candidateJson = encodeCandidateJson(input)
-  const candidate = parseCandidateJson(candidateJson)
-  const archive = bufferView(archiveInput)
-  assertArchiveMatchesCandidate(candidate, archive)
-  assertCandidateMatchesBundle(candidate, archive)
+const assemblePublishFrame = (candidate: PublishCandidate, archive: Buffer): PublishFrameParts => {
+  const candidateJson = encodeCandidateJson(candidate)
   const header = Buffer.allocUnsafe(frameHeaderBytes)
   header.writeUInt32BE(candidateJson.byteLength, 0)
   return {
@@ -67,9 +76,28 @@ const publishFrameParts = (input: unknown, archiveInput: Uint8Array): PublishFra
   }
 }
 
-export const createPublishFrameBody = (input: unknown, archiveInput: Uint8Array): PublishFrameBody => {
-  const parts = publishFrameParts(input, archiveInput)
-  const chunks: readonly Uint8Array[] = [parts.header, parts.candidateJson, transferBufferView(parts.archive)]
+const rawPublishFrameParts = (input: unknown, archiveInput: Uint8Array): PublishFrameParts => {
+  const candidate = parseCandidateJson(encodeCandidateJson(input))
+  const archive = bufferView(archiveInput)
+  assertCandidateMatchesBundle(candidate, archive)
+  return assemblePublishFrame(candidate, archive)
+}
+
+export const createPublishFrameBody = (bundle: PublishBundle): PublishFrameBody => {
+  let candidate: PublishCandidate
+  let archive: Buffer
+  try {
+    const admitted = takePublishBundle(bundle)
+    candidate = admitted.candidate
+    archive = transferBufferView(admitted.archive)
+    assertArchiveMatchesCandidate(candidate, archive)
+  } catch (error) {
+    if (error instanceof PublishWireContractError) throw error
+    if (error instanceof PublishBundleError) throw new PublishWireContractError("invalid_candidate")
+    throw error
+  }
+  const parts = assemblePublishFrame(candidate, archive)
+  const chunks: readonly Uint8Array[] = [parts.header, parts.candidateJson, parts.archive]
   let index = 0
   return {
     body: new ReadableStream<Uint8Array>({
@@ -88,7 +116,7 @@ export const createPublishFrameBody = (input: unknown, archiveInput: Uint8Array)
 }
 
 export const encodePublishFrame = (input: unknown, archiveInput: Uint8Array): Buffer => {
-  const parts = publishFrameParts(input, archiveInput)
+  const parts = rawPublishFrameParts(input, archiveInput)
   return Buffer.concat([parts.header, parts.candidateJson, parts.archive], parts.length)
 }
 
@@ -103,7 +131,6 @@ export const parsePublishFrame = (input: Uint8Array): ParsedPublishFrame => {
   if (candidateEnd > frame.byteLength) throw new PublishWireContractError("invalid_candidate")
   const candidate = parseCandidateJson(frame.subarray(frameHeaderBytes, candidateEnd))
   const archive = frame.subarray(candidateEnd)
-  assertArchiveMatchesCandidate(candidate, archive)
   assertCandidateMatchesBundle(candidate, archive)
   return { candidate, archive }
 }

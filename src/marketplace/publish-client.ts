@@ -1,9 +1,10 @@
 import ky, { isNetworkError, isTimeoutError } from "ky"
 
 import { normalizeAuthServerUrl } from "../auth/server-url"
+import type { PublishBundle } from "./publish-bundle"
 import { createPublishFrameBody } from "./publish-frame"
 import { PublishWireContractError, parsePublishResponse } from "./publish-contract"
-import type { PublishCandidate, PublishErrorCode, PublishReceipt } from "./publish-contract"
+import type { PublishErrorCode, PublishReceipt } from "./publish-contract"
 
 const responseLimitBytes = 64 * 1024
 const publishTimeoutMs = 15 * 60 * 1000
@@ -22,7 +23,7 @@ export class PublishClientError extends Error {
   constructor(readonly code: PublishClientErrorCode, readonly status: number) { super(code) }
 }
 
-type PublishRequest = Readonly<{ readonly archive: Uint8Array; readonly candidate: PublishCandidate; readonly credential: string }>
+type PublishRequest = Readonly<{ readonly bundle: PublishBundle; readonly credential: string }>
 export type PublishClient = Readonly<{ publish(request: PublishRequest): Promise<PublishReceipt> }>
 
 const boundedBody = async (response: Response): Promise<Uint8Array> => {
@@ -52,14 +53,15 @@ export const createPublishClient = (serverInput: unknown): PublishClient => {
       const signal = AbortSignal.timeout(publishTimeoutMs)
       let responseStatus = 0
       try {
-        const frame = createPublishFrameBody(request.candidate, request.archive)
+        const archiveSha256 = request.bundle.candidate.archiveSha256
+        const frame = createPublishFrameBody(request.bundle)
         const response = await ky(`${server}${publishPath}`, {
           body: frame.body,
           headers: {
             authorization: `Bearer ${request.credential}`,
             "content-length": String(frame.contentLength),
             "content-type": "application/octet-stream",
-            "idempotency-key": `archive-${request.candidate.archiveSha256}`,
+            "idempotency-key": `archive-${archiveSha256}`,
           },
           method: "POST", redirect: "manual", retry: 0, signal, throwHttpErrors: false, timeout: publishTimeoutMs,
         })
