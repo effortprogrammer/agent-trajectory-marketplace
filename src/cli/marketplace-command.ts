@@ -29,6 +29,13 @@ type ExplicitCandidateBundleCommand = Readonly<{
   readonly traces: readonly string[];
 }>;
 
+type CandidatePublishCommand = Readonly<{
+  readonly apiKey?: string;
+  readonly bundle: string;
+  readonly command: "candidate-publish";
+  readonly server: string;
+}>;
+
 type InvalidCommand = Readonly<{ readonly command: "invalid_command" }>;
 type InvalidBundleRequest = Readonly<{
   readonly command: "invalid_bundle_request";
@@ -39,6 +46,7 @@ export type MarketplaceCommand =
   | SessionsInspectCommand
   | InteractiveCandidateBundleCommand
   | ExplicitCandidateBundleCommand
+  | CandidatePublishCommand
   | InvalidCommand
   | InvalidBundleRequest;
 
@@ -151,6 +159,27 @@ const parseCandidateBundle = (
     : { command: "candidate-bundle", excludes, mode: "interactive", out, root };
 };
 
+const parseCandidatePublish = (argumentsList: readonly string[]): MarketplaceCommand => {
+  let apiKey: string | undefined;
+  let bundle: string | undefined;
+  let server: string | undefined;
+  for (let index = 0; index < argumentsList.length; index += 1) {
+    const option = argumentsList[index];
+    const value = argumentsList[index + 1];
+    if (value === undefined || value.startsWith("--")) return invalidCommand();
+    if (option === "--bundle" && bundle === undefined && isAbsolutePath(value)) bundle = value;
+    else if (option === "--server" && server === undefined) server = value;
+    else if (option === "--api-key" && apiKey === undefined && value.length > 0) apiKey = value;
+    else return invalidCommand();
+    index += 1;
+  }
+  return bundle === undefined || server === undefined
+    ? invalidCommand()
+    : apiKey === undefined
+      ? { bundle, command: "candidate-publish", server }
+      : { apiKey, bundle, command: "candidate-publish", server };
+};
+
 export const parseMarketplaceCommand = (
   argumentsList: readonly string[],
 ): MarketplaceCommand => {
@@ -175,6 +204,9 @@ export const parseMarketplaceCommand = (
   }
   if (group === "candidate" && action === "bundle") {
     return parseCandidateBundle(argumentsWithoutExecutable.slice(4));
+  }
+  if (group === "candidate" && action === "publish") {
+    return parseCandidatePublish(argumentsWithoutExecutable.slice(4));
   }
   return invalidCommand();
 };
