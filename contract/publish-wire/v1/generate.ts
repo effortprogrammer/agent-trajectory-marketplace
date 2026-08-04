@@ -36,14 +36,9 @@ const candidate = createCandidateFromExactBytes({ archive, manifest, artifactCou
 const frame = encodePublishFrame(candidate, archive)
 const malformedLength = Buffer.from(frame)
 malformedLength.writeUInt32BE(frame.readUInt32BE(0) + 1, 0)
-const invalidCrcArchive = Buffer.from(archive)
-invalidCrcArchive.writeUInt32LE(0, 14)
-const invalidCrcCandidate = createCandidateFromExactBytes({
-  archive: invalidCrcArchive,
-  manifest,
-  artifactCount: 1,
-})
-const mutatedZip = encodePublishFrame(invalidCrcCandidate, invalidCrcArchive)
+const mutatedZip = Buffer.from(frame)
+const archiveOffset = 4 + frame.readUInt32BE(0)
+mutatedZip[archiveOffset + 30] ^= 1
 const submissionId = "sub_0123456789abcdefghjkmnpqrs"
 const statusUrl = `/v1/marketplace/seller/candidates/${submissionId}`
 

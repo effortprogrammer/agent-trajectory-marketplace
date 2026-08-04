@@ -15,7 +15,7 @@
     },
     {
       "file": "candidate-mutated-zip.frame",
-      "sha256": "c47c4f557e9208bea5555832061c2310c06ff0323c542bf65553e05548f97849",
+      "sha256": "f0cc065e9a86a5c02f452959a32d7bea4bc0a95a4e887ef8dfdc4e823c739d90",
       "verdict": "reject",
       "code": "invalid_candidate"
     },
