@@ -31,6 +31,9 @@ jobs:
       - name: Verify publish wire fixtures
         run: bun run verify:publish-wire
 
+      - name: Verify wallet balance fixtures
+        run: bun run verify:wallet-balance
+
       - name: Test
         run: bun test test/bun
 

@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto"
-import { readdirSync } from "node:fs"
-import { dirname, resolve } from "node:path"
+import { lstatSync, readdirSync } from "node:fs"
+import { dirname, join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { z } from "zod"
 
+import { parseAdmissionJson } from "../../../src/marketplace/json-preflight"
 import { parseWalletBalanceResponse } from "../../../src/marketplace/wallet-balance-contract"
 
 const expectedFixtureFiles = [
@@ -60,19 +61,34 @@ const verifyFixture = (fixture: Fixture, bytes: Uint8Array): void => {
   }
 }
 
+const regularFile = (path: string): boolean => {
+  try {
+    const stat = lstatSync(path)
+    return stat.isFile() && !stat.isSymbolicLink()
+  } catch {
+    return false
+  }
+}
+
 const manifestPath = argumentValue("--manifest")
-const manifestFile = Bun.file(manifestPath)
-const rawManifest = await manifestFile.json()
-const parsedManifest = manifestSchema.safeParse(rawManifest)
+if (!regularFile(manifestPath)) throw new FixtureVerificationError(manifestPath, "manifest is not a regular file")
+const manifestInput = parseAdmissionJson(Buffer.from(await Bun.file(manifestPath).arrayBuffer()))
+if (manifestInput === undefined) throw new FixtureVerificationError(manifestPath, "invalid manifest")
+const parsedManifest = manifestSchema.safeParse(manifestInput)
 if (!parsedManifest.success) throw new FixtureVerificationError(manifestPath, "invalid manifest")
 if (parsedManifest.data.fixtures.some((fixture, index) => fixture.file !== expectedFixtureFiles[index])) {
   throw new FixtureVerificationError(manifestPath, "fixture set mismatch")
 }
 const fixtureRoot = dirname(resolve(manifestPath))
+const rootStat = lstatSync(fixtureRoot)
+if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+  throw new FixtureVerificationError(manifestPath, "fixture root is not a regular directory")
+}
 const actualDirectoryFiles = readdirSync(fixtureRoot).sort()
 if (
   actualDirectoryFiles.length !== expectedDirectoryFiles.length ||
-  actualDirectoryFiles.some((file, index) => file !== expectedDirectoryFiles[index])
+  actualDirectoryFiles.some((file, index) => file !== expectedDirectoryFiles[index]) ||
+  actualDirectoryFiles.some((file) => !regularFile(join(fixtureRoot, file)))
 ) {
   throw new FixtureVerificationError(manifestPath, "fixture set mismatch")
 }
