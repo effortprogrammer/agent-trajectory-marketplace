@@ -3,7 +3,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { readPublishBundle } from "../../../src/marketplace/publish-bundle"
+import {
+  parsePublishBundle,
+  readPublishBundle,
+} from "../../../src/marketplace/publish-bundle"
 import {
   PublishWireContractError,
   encodeCandidateJson,
@@ -78,7 +81,8 @@ describe("publish frame", () => {
       const bundle = readPublishBundle(path)
 
       // Then: the fixture candidate describes the exact valid dataset bundle.
-      expect(bundle).toEqual({ archive: frame.archive, candidate: frame.candidate })
+      expect(bundle.archive).toEqual(frame.archive)
+      expect(bundle.candidate).toEqual(frame.candidate)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
@@ -107,11 +111,13 @@ describe("publish frame", () => {
 
   it("transfers archive ownership before exposing streamed bytes", async () => {
     // Given: a valid bundle archive whose caller retains a mutable reference.
-    const admittedArchive = Buffer.from(archive)
+    const admittedArchive = Buffer.allocUnsafeSlow(archive.byteLength)
+    admittedArchive.set(archive)
     const archiveByteCount = admittedArchive.byteLength
+    const bundle = parsePublishBundle(admittedArchive)
 
     // When: the HTTP body is framed as a bounded stream.
-    const framed = createPublishFrameBody(candidate, admittedArchive)
+    const framed = createPublishFrameBody(bundle)
     if (admittedArchive.byteLength > 0) admittedArchive[admittedArchive.byteLength - 1] ^= 1
     const reader = framed.body.getReader()
     const chunks: Uint8Array[] = []
@@ -129,5 +135,45 @@ describe("publish frame", () => {
     expect(chunks[2]?.byteLength).toBe(archiveByteCount)
     expect(chunks.reduce((total, chunk) => total + chunk.byteLength, 0)).toBe(framed.contentLength)
     expect(parsePublishFrame(emitted)).toEqual(fixture)
+  })
+
+  it("isolates archive subviews without detaching sibling storage", async () => {
+    // Given: a valid archive in the middle of caller-owned backing storage.
+    const backing = Buffer.allocUnsafeSlow(archive.byteLength + 16)
+    backing.fill(0x7a)
+    archive.copy(backing, 8)
+    const prefix = backing.subarray(0, 8)
+    const selected = backing.subarray(8, 8 + archive.byteLength)
+    const suffix = backing.subarray(8 + archive.byteLength)
+    const expectedPrefix = Buffer.from(prefix)
+    const expectedSuffix = Buffer.from(suffix)
+    const bundle = parsePublishBundle(selected)
+
+    // When: only the selected archive view is framed.
+    const framed = createPublishFrameBody(bundle)
+    const reader = framed.body.getReader()
+    while (!(await reader.read()).done) {
+      // Drain the exact framed stream.
+    }
+
+    // Then: unrelated caller storage stays attached and byte-identical.
+    expect(backing.byteLength).toBe(archive.byteLength + 16)
+    expect(prefix).toEqual(expectedPrefix)
+    expect(suffix).toEqual(expectedSuffix)
+    expect(selected.byteLength).toBe(archive.byteLength)
+  })
+
+  it("consumes an admitted bundle exactly once", () => {
+    // Given: one bundle admitted from exact archive bytes.
+    const bundle = parsePublishBundle(Buffer.from(archive))
+
+    // When: framing consumes its ownership token.
+    createPublishFrameBody(bundle)
+    const reuse = (): void => {
+      createPublishFrameBody(bundle)
+    }
+
+    // Then: a second attempt must perform a fresh bundle admission.
+    expect(reuse).toThrow(PublishWireContractError)
   })
 })

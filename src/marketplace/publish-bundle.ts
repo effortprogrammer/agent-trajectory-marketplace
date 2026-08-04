@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto"
-import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs"
-import { isAbsolute } from "node:path"
 import { isDeepStrictEqual } from "node:util"
 
 import {
@@ -10,6 +8,11 @@ import {
   datasetManifestPath,
   datasetManifestSchema,
 } from "./archive-contract"
+import {
+  PublishBundleError,
+  readBundleFile,
+} from "./publish-bundle-file"
+import type { PublishBundleReadOptions } from "./publish-bundle-file"
 import { createCandidateFromExactBytes } from "./publish-contract"
 import type { PublishCandidate } from "./publish-contract"
 import { crc32 } from "./zip-crc32"
@@ -24,10 +27,8 @@ const endHeader = 0x06054b50
 const endBytes = 22
 const maxEntryCount = datasetArchivePolicy.maxTraces + 1
 
-export class PublishBundleError extends Error {
-  readonly name = "PublishBundleError"
-  constructor(readonly code: "invalid_bundle_request") { super(code) }
-}
+export { PublishBundleError } from "./publish-bundle-file"
+export type { PublishBundleReadOptions } from "./publish-bundle-file"
 
 type BundleEntry = Readonly<{
   readonly crc32: number
@@ -36,54 +37,15 @@ type BundleEntry = Readonly<{
   readonly nameBytes: Buffer
   readonly offset: number
 }>
-export type PublishBundle = Readonly<{ readonly archive: Buffer; readonly candidate: PublishCandidate }>
-export type PublishBundleReadOptions = Readonly<{ readonly afterInitialStat?: () => void }>
-
-const invalid = (): never => { throw new PublishBundleError("invalid_bundle_request") }
-
-type FileVersion = Readonly<{
-  readonly ctimeNs: bigint
-  readonly dev: bigint
-  readonly ino: bigint
-  readonly mtimeNs: bigint
-  readonly size: bigint
+declare const publishBundleBrand: unique symbol
+export type PublishBundle = Readonly<{
+  readonly archive: Buffer
+  readonly candidate: PublishCandidate
+  readonly [publishBundleBrand]: true
 }>
 
-const sameFile = (left: FileVersion, right: FileVersion): boolean =>
-  left.dev === right.dev &&
-  left.ino === right.ino &&
-  left.size === right.size &&
-  left.mtimeNs === right.mtimeNs &&
-  left.ctimeNs === right.ctimeNs
-
-const readBundle = (path: string, options: PublishBundleReadOptions): Buffer => {
-  if (!isAbsolute(path) || path.includes("\0")) return invalid()
-  let descriptor: number | undefined
-  try {
-    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
-    const before = fstatSync(descriptor, { bigint: true })
-    if (
-      !before.isFile() ||
-      before.size <= 0n ||
-      before.size > BigInt(datasetArchivePolicy.maxArchiveBytes)
-    ) return invalid()
-    options.afterInitialStat?.()
-    const bytes = Buffer.allocUnsafeSlow(Number(before.size))
-    let offset = 0
-    while (offset < bytes.length) {
-      const count = readSync(descriptor, bytes, offset, bytes.length - offset, offset)
-      if (count <= 0) return invalid()
-      offset += count
-    }
-    if (!sameFile(before, fstatSync(descriptor, { bigint: true }))) return invalid()
-    return bytes
-  } catch (error) {
-    if (error instanceof PublishBundleError) throw error
-    return invalid()
-  } finally {
-    if (descriptor !== undefined) closeSync(descriptor)
-  }
-}
+const invalid = (): never => { throw new PublishBundleError("invalid_bundle_request") }
+const admittedBundles = new WeakSet<PublishBundle>()
 
 const readEntries = (archive: Buffer): readonly BundleEntry[] => {
   const endOffset = archive.length - endBytes
@@ -208,6 +170,22 @@ const assertTraceAdmission = (data: Buffer): void => {
   }
 }
 
+const admitPublishBundle = (archive: Buffer, candidate: PublishCandidate): PublishBundle => {
+  const bundle = Object.freeze({
+    archive,
+    candidate: Object.freeze(candidate),
+  }) as PublishBundle
+  admittedBundles.add(bundle)
+  return bundle
+}
+
+export const takePublishBundle = (
+  bundle: PublishBundle,
+): Readonly<{ readonly archive: Buffer; readonly candidate: PublishCandidate }> => {
+  if (!admittedBundles.delete(bundle)) return invalid()
+  return bundle
+}
+
 export const parsePublishBundle = (archive: Buffer): PublishBundle => {
   if (archive.byteLength <= 0 || archive.byteLength > datasetArchivePolicy.maxArchiveBytes) return invalid()
   const entries = readEntries(archive)
@@ -237,10 +215,17 @@ export const parsePublishBundle = (archive: Buffer): PublishBundle => {
     if (entry === undefined || entry.data.length !== artifact.byteCount || createHash("sha256").update(entry.data).digest("hex") !== artifact.sha256) return invalid()
     assertTraceAdmission(entry.data)
   }
-  return { archive, candidate: createCandidateFromExactBytes({ archive, artifactCount: manifest.data.artifacts.length, manifest: manifestEntry.data }) }
+  return admitPublishBundle(
+    archive,
+    createCandidateFromExactBytes({
+      archive,
+      artifactCount: manifest.data.artifacts.length,
+      manifest: manifestEntry.data,
+    }),
+  )
 }
 
 export const readPublishBundle = (
   path: string,
   options: PublishBundleReadOptions = {},
-): PublishBundle => parsePublishBundle(readBundle(path, options))
+): PublishBundle => parsePublishBundle(readBundleFile(path, options))

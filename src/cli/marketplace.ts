@@ -211,8 +211,7 @@ export const runMarketplaceCli = async (argumentsList: readonly string[]): Promi
       const bundle = readPublishBundle(command.bundle);
       const credential = resolvePublishCredential(server, command.apiKey);
       const receipt = await createPublishClient(server).publish({
-        archive: bundle.archive,
-        candidate: bundle.candidate,
+        bundle,
         credential,
       });
       console.log(JSON.stringify(receipt));
