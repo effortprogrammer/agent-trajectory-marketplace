@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto"
+import { resolve } from "node:path"
+import { pathToFileURL } from "node:url"
 
 import { encodeDatasetManifest } from "../../../src/marketplace/archive-contract"
 import {
@@ -14,6 +16,13 @@ type Fixture = Readonly<{
   code: string
   bytes: Uint8Array
 }>
+
+class FixtureGenerationError extends Error {
+  public constructor(public readonly file: string) {
+    super(`${file}: fixture generation mismatch`)
+    this.name = "FixtureGenerationError"
+  }
+}
 
 const root = new URL("./", import.meta.url)
 const trace = Buffer.from('{"runtime":"codex","status":"collected","eventCount":0,"events":[]}', "utf8")
@@ -111,8 +120,6 @@ const fixtures: readonly Fixture[] = [
   },
 ]
 
-for (const fixture of fixtures) await Bun.write(new URL(fixture.file, root), fixture.bytes)
-
 const manifestDocument = {
   schemaVersion: 1,
   fixtures: fixtures.map((fixture) => ({
@@ -122,4 +129,25 @@ const manifestDocument = {
     code: fixture.code,
   })),
 }
-await Bun.write(new URL("manifest.json", root), `${JSON.stringify(manifestDocument, null, 2)}\n`)
+const generatedFiles = [
+  ...fixtures.map((fixture) => ({ file: fixture.file, bytes: fixture.bytes })),
+  {
+    file: "manifest.json",
+    bytes: Buffer.from(`${JSON.stringify(manifestDocument, null, 2)}\n`, "utf8"),
+  },
+] as const
+const checkIndex = Bun.argv.indexOf("--check")
+const checkRoot = checkIndex === -1 ? undefined : Bun.argv[checkIndex + 1]
+if (checkIndex !== -1 && checkRoot === undefined) throw new FixtureGenerationError("arguments")
+
+if (checkRoot === undefined) {
+  for (const generated of generatedFiles) await Bun.write(new URL(generated.file, root), generated.bytes)
+} else {
+  const destination = pathToFileURL(`${resolve(checkRoot)}/`)
+  for (const generated of generatedFiles) {
+    const file = Bun.file(new URL(generated.file, destination))
+    if (!await file.exists()) throw new FixtureGenerationError(generated.file)
+    const current = Buffer.from(await file.arrayBuffer())
+    if (!current.equals(generated.bytes)) throw new FixtureGenerationError(generated.file)
+  }
+}

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -18,6 +18,17 @@ const verify = (fixtureRoot: string) => Bun.spawnSync([
   "contract/publish-wire/v1/verify.ts",
   "--manifest",
   join(fixtureRoot, "manifest.json"),
+], {
+  cwd: process.cwd(),
+  stderr: "pipe",
+  stdout: "pipe",
+})
+
+const checkGenerated = (fixtureRoot: string) => Bun.spawnSync([
+  process.execPath,
+  "contract/publish-wire/v1/generate.ts",
+  "--check",
+  fixtureRoot,
 ], {
   cwd: process.cwd(),
   stderr: "pipe",
@@ -52,6 +63,27 @@ describe("frozen publish wire verifier", () => {
     }).toEqual({
       exitCode: 1,
       stderr: expect.stringContaining("fixture set mismatch"),
+    })
+  })
+
+  test("rejects checked-in fixtures that differ from generator output", () => {
+    // Given: a copied fixture corpus whose accepted frame differs from current generator output.
+    const fixtureRoot = copyFixtureDirectory()
+    const framePath = join(fixtureRoot, "candidate-valid.frame")
+    const frame = readFileSync(framePath)
+    frame[frame.length - 1] ^= 1
+    writeFileSync(framePath, frame)
+
+    // When: generator reproducibility is checked without rewriting the corpus.
+    const generated = checkGenerated(fixtureRoot)
+
+    // Then: stale checked-in output fails the machine-observable generation gate.
+    expect({
+      exitCode: generated.exitCode,
+      stderr: new TextDecoder().decode(generated.stderr),
+    }).toEqual({
+      exitCode: 1,
+      stderr: expect.stringContaining("fixture generation mismatch"),
     })
   })
 })
