@@ -1,11 +1,22 @@
 import { createHash } from "node:crypto"
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs"
 import { isAbsolute } from "node:path"
+import { isDeepStrictEqual } from "node:util"
 
-import { datasetArchivePolicy, datasetManifestPath, datasetManifestSchema } from "./archive-contract"
+import {
+  ArchiveContractError,
+  assertDatasetArchivePlan,
+  datasetArchivePolicy,
+  datasetManifestPath,
+  datasetManifestSchema,
+} from "./archive-contract"
 import { createCandidateFromExactBytes } from "./publish-contract"
 import type { PublishCandidate } from "./publish-contract"
 import { crc32 } from "./zip-crc32"
+import {
+  harnessTraceDocumentSchema,
+  sanitizeHarnessPayload,
+} from "../trajectory/adapters/contract"
 
 const localHeader = 0x04034b50
 const centralHeader = 0x02014b50
@@ -80,14 +91,25 @@ const readEntries = (archive: Buffer): readonly BundleEntry[] => {
   while (offset < centralOffset) {
     if (entries.length >= expectedCount) return invalid()
     if (offset + 30 > centralOffset || archive.readUInt32LE(offset) !== localHeader) return invalid()
+    const version = archive.readUInt16LE(offset + 4)
     const flags = archive.readUInt16LE(offset + 6)
     const compression = archive.readUInt16LE(offset + 8)
+    const modificationTime = archive.readUInt16LE(offset + 10)
+    const modificationDate = archive.readUInt16LE(offset + 12)
     const checksum = archive.readUInt32LE(offset + 14)
     const compressedSize = archive.readUInt32LE(offset + 18)
     const size = archive.readUInt32LE(offset + 22)
     const nameLength = archive.readUInt16LE(offset + 26)
     const extraLength = archive.readUInt16LE(offset + 28)
-    if (flags !== 0 || compression !== 0 || compressedSize !== size || extraLength !== 0) return invalid()
+    if (
+      version !== 20 ||
+      flags !== 0 ||
+      compression !== 0 ||
+      modificationTime !== 0 ||
+      modificationDate !== 0 ||
+      compressedSize !== size ||
+      extraLength !== 0
+    ) return invalid()
     const nameStart = offset + 30
     const dataStart = nameStart + nameLength + extraLength
     const dataEnd = dataStart + size
@@ -106,8 +128,12 @@ const readEntries = (archive: Buffer): readonly BundleEntry[] => {
   let centralPosition = centralOffset
   for (let index = 0; index < expectedCount; index += 1) {
     if (centralPosition + 46 > endOffset || archive.readUInt32LE(centralPosition) !== centralHeader) return invalid()
+    const madeByVersion = archive.readUInt16LE(centralPosition + 4)
+    const requiredVersion = archive.readUInt16LE(centralPosition + 6)
     const flags = archive.readUInt16LE(centralPosition + 8)
     const compression = archive.readUInt16LE(centralPosition + 10)
+    const modificationTime = archive.readUInt16LE(centralPosition + 12)
+    const modificationDate = archive.readUInt16LE(centralPosition + 14)
     const checksum = archive.readUInt32LE(centralPosition + 16)
     const compressedSize = archive.readUInt32LE(centralPosition + 20)
     const size = archive.readUInt32LE(centralPosition + 24)
@@ -115,14 +141,22 @@ const readEntries = (archive: Buffer): readonly BundleEntry[] => {
     const extraLength = archive.readUInt16LE(centralPosition + 30)
     const commentLength = archive.readUInt16LE(centralPosition + 32)
     const diskStart = archive.readUInt16LE(centralPosition + 34)
+    const internalAttributes = archive.readUInt16LE(centralPosition + 36)
+    const externalAttributes = archive.readUInt32LE(centralPosition + 38)
     const localOffset = archive.readUInt32LE(centralPosition + 42)
     if (
+      madeByVersion !== 20 ||
+      requiredVersion !== 20 ||
       flags !== 0 ||
       compression !== 0 ||
+      modificationTime !== 0 ||
+      modificationDate !== 0 ||
       compressedSize !== size ||
       extraLength !== 0 ||
       commentLength !== 0 ||
-      diskStart !== 0
+      diskStart !== 0 ||
+      internalAttributes !== 0 ||
+      externalAttributes !== 0
     ) return invalid()
     const nameBytes = archive.subarray(centralPosition + 46, centralPosition + 46 + nameLength)
     let name: string
@@ -143,19 +177,46 @@ const readEntries = (archive: Buffer): readonly BundleEntry[] => {
   return entries
 }
 
+const assertTraceAdmission = (data: Buffer): void => {
+  let input: unknown
+  try { input = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(data)) } catch { return invalid() }
+  const parsed = harnessTraceDocumentSchema.safeParse(input)
+  if (!parsed.success) return invalid()
+  for (const event of parsed.data.events) {
+    if (event.payload === undefined) continue
+    const sanitized = sanitizeHarnessPayload(event.payload)
+    if (sanitized === undefined || !isDeepStrictEqual(sanitized, event.payload)) return invalid()
+  }
+}
+
 export const parsePublishBundle = (archive: Buffer): PublishBundle => {
+  if (archive.byteLength <= 0 || archive.byteLength > datasetArchivePolicy.maxArchiveBytes) return invalid()
   const entries = readEntries(archive)
-  const names = new Set(entries.map((entry) => entry.name))
-  if (names.size !== entries.length || !names.has(datasetManifestPath)) return invalid()
-  const manifestEntry = entries.find((entry) => entry.name === datasetManifestPath)
+  const entriesByName = new Map(entries.map((entry) => [entry.name, entry]))
+  if (entriesByName.size !== entries.length) return invalid()
+  const manifestEntry = entriesByName.get(datasetManifestPath)
   if (manifestEntry === undefined || manifestEntry.data.length > datasetArchivePolicy.maxManifestBytes) return invalid()
   let manifestInput: unknown
   try { manifestInput = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(manifestEntry.data)) } catch { return invalid() }
   const manifest = datasetManifestSchema.safeParse(manifestInput)
   if (!manifest.success || entries.length !== manifest.data.artifacts.length + 1) return invalid()
+  try {
+    assertDatasetArchivePlan({
+      archiveByteCount: archive.byteLength,
+      entries: manifest.data.artifacts.map((artifact) => ({
+        byteCount: artifact.byteCount,
+        name: artifact.path,
+      })),
+      manifestByteCount: manifestEntry.data.length,
+    })
+  } catch (error) {
+    if (error instanceof ArchiveContractError) return invalid()
+    throw error
+  }
   for (const artifact of manifest.data.artifacts) {
-    const entry = entries.find((candidate) => candidate.name === artifact.path)
+    const entry = entriesByName.get(artifact.path)
     if (entry === undefined || entry.data.length !== artifact.byteCount || createHash("sha256").update(entry.data).digest("hex") !== artifact.sha256) return invalid()
+    assertTraceAdmission(entry.data)
   }
   return { archive, candidate: createCandidateFromExactBytes({ archive, artifactCount: manifest.data.artifacts.length, manifest: manifestEntry.data }) }
 }
