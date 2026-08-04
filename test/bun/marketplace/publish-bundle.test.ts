@@ -157,6 +157,63 @@ const bomName = (archive: Buffer, location: "both" | "central" | "local"): Buffe
   return insertCentralBytes(insertLocalBytes(archive, bom, "name"), bom, "name")
 }
 
+const reverseEntryRecords = (archive: Buffer, includeLocalRecords: boolean): Buffer => {
+  const endOffset = archive.length - 22
+  const centralOffset = archive.readUInt32LE(endOffset + 16)
+  const localRecords: Readonly<{ bytes: Buffer; offset: number }>[] = []
+  let localPosition = 0
+  while (localPosition < centralOffset) {
+    const recordLength = 30
+      + archive.readUInt16LE(localPosition + 26)
+      + archive.readUInt16LE(localPosition + 28)
+      + archive.readUInt32LE(localPosition + 18)
+    localRecords.push({
+      bytes: Buffer.from(archive.subarray(localPosition, localPosition + recordLength)),
+      offset: localPosition,
+    })
+    localPosition += recordLength
+  }
+
+  const centralRecords: Buffer[] = []
+  let centralPosition = centralOffset
+  while (centralPosition < endOffset) {
+    const recordLength = 46
+      + archive.readUInt16LE(centralPosition + 28)
+      + archive.readUInt16LE(centralPosition + 30)
+      + archive.readUInt16LE(centralPosition + 32)
+    centralRecords.push(Buffer.from(archive.subarray(centralPosition, centralPosition + recordLength)))
+    centralPosition += recordLength
+  }
+
+  const reversedCentral = centralRecords.reverse()
+  if (!includeLocalRecords) {
+    return Buffer.concat([
+      archive.subarray(0, centralOffset),
+      ...reversedCentral,
+      archive.subarray(endOffset),
+    ])
+  }
+
+  const reversedLocal = localRecords.reverse()
+  const replacementOffsets = new Map<number, number>()
+  let replacementOffset = 0
+  for (const record of reversedLocal) {
+    replacementOffsets.set(record.offset, replacementOffset)
+    replacementOffset += record.bytes.length
+  }
+  for (const record of reversedCentral) {
+    const originalOffset = record.readUInt32LE(42)
+    const newOffset = replacementOffsets.get(originalOffset)
+    if (newOffset === undefined) throw new Error("missing reordered local ZIP record")
+    record.writeUInt32LE(newOffset, 42)
+  }
+  return Buffer.concat([
+    ...reversedLocal.map((record) => record.bytes),
+    ...reversedCentral,
+    archive.subarray(endOffset),
+  ])
+}
+
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { force: true, recursive: true })
 })
@@ -235,6 +292,22 @@ describe("publish bundle ZIP integrity", () => {
     expect(read).toThrow(PublishBundleError)
   })
 
+  test.each([
+    ["central directory", false],
+    ["local and central entries", true],
+  ] as const)("rejects noncanonical %s order", (_case, includeLocalRecords) => {
+    // Given: valid reviewed entries whose physical ZIP order differs from the canonical writer.
+    const archive = reverseEntryRecords(validArchive(), includeLocalRecords)
+
+    // When: direct publication admission validates the archive.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: public admission cannot accept an archive the private consumer rejects by order.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
   test("rejects archive policy overflow before reading ZIP fields", () => {
     // Given: an oversized Buffer-shaped input that traps every field except byteLength.
     const oversized = new Proxy({ byteLength: datasetArchivePolicy.maxArchiveBytes + 1 }, {
@@ -300,6 +373,69 @@ describe("publish bundle ZIP integrity", () => {
     }
 
     // Then: hash consistency alone is insufficient.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
+  test.each([
+    ["runtime", {
+      runtime: "Bearer TOP_SECRET_123456789",
+      status: "collected",
+      eventCount: 0,
+      events: [],
+    }],
+    ["event name", {
+      runtime: "codex",
+      status: "collected",
+      eventCount: 1,
+      events: [{ kind: "tool", name: "Bearer TOP_SECRET_123456789" }],
+    }],
+    ["event kind", {
+      runtime: "codex",
+      status: "collected",
+      eventCount: 1,
+      events: [{ kind: "Bearer TOP_SECRET_123456789", name: "call" }],
+    }],
+    ["source event id", {
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 1,
+      events: [{
+        kind: "tool",
+        name: "call",
+        timestamp: "2026-08-04T00:00:00Z",
+        sourceEventId: "Bearer TOP_SECRET_123456789",
+      }],
+    }],
+    ["parent source event id", {
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 1,
+      events: [{
+        kind: "tool",
+        name: "call",
+        timestamp: "2026-08-04T00:00:00Z",
+        sourceEventId: "call-1",
+        parentSourceEventId: "Bearer TOP_SECRET_123456789",
+      }],
+    }],
+    ["oversized runtime", {
+      runtime: "x".repeat(16 * 1024 + 1),
+      status: "collected",
+      eventCount: 0,
+      events: [],
+    }],
+  ] as const)("rejects unsafe ATF %s metadata", (_case, document) => {
+    // Given: a schema-valid trace with a credential outside the payload object.
+    const archive = archiveForTrace(Buffer.from(JSON.stringify(document), "utf8"))
+
+    // When: direct publication admission parses every string-bearing ATF field.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: no credential-bearing trace metadata can cross the publication boundary.
     expect(parse).toThrow(PublishBundleError)
   })
 
