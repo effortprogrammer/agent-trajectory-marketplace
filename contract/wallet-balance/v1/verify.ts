@@ -5,41 +5,26 @@ import { dirname, join, resolve } from "node:path"
 import { z } from "zod"
 
 import { FixtureReadError, readFixtureFile } from "../../fixture-reader"
-import {
-  PublishWireContractError,
-  parsePublishResponse,
-} from "../../../src/marketplace/publish-contract"
-import { parsePublishFrame } from "../../../src/marketplace/publish-frame"
 import { parseAdmissionJson } from "../../../src/marketplace/json-preflight"
+import { parseWalletBalanceResponse } from "../../../src/marketplace/wallet-balance-contract"
 
 const expectedFixtureFiles = [
-  "candidate-valid.frame",
-  "candidate-mutated-length.frame",
-  "candidate-mutated-zip.frame",
-  "receipt-202.json",
-  "status-200.json",
-  "error-400.json",
+  "balance-200.json",
   "error-401.json",
-  "error-404.json",
-  "error-409.json",
-  "error-413.json",
-  "error-429.json",
-  "error-503.json",
-  "receipt-unknown-field-202.json",
+  "error-403.json",
 ] as const
 const expectedDirectoryFiles = [
   ...expectedFixtureFiles,
-  "generate.ts",
   "manifest.json",
   "verify.ts",
 ].sort()
 
 const fixtureSchema = z
   .object({
-    file: z.string().regex(/^[a-z0-9-]+\.(frame|json)$/),
+    file: z.string().regex(/^[a-z0-9-]+\.json$/),
     sha256: z.string().regex(/^[0-9a-f]{64}$/),
-    verdict: z.enum(["accept", "reject"]),
-    code: z.string().regex(/^[a-z_]+$/),
+    status: z.number().int().min(100).max(599),
+    verdict: z.literal("accept"),
   })
   .strict()
 const manifestSchema = z
@@ -65,33 +50,14 @@ const argumentValue = (name: string): string => {
   return value
 }
 
-const responseStatus = (file: string): number => {
-  const match = /-(\d{3})\.json$/.exec(file)
-  const value = match?.[1]
-  if (value === undefined) throw new FixtureVerificationError(file, "response filename lacks HTTP status")
-  return Number(value)
-}
-
-const responseCode = (response: ReturnType<typeof parsePublishResponse>): string => "code" in response ? response.code : response.status
-
-const verifyFrame = (bytes: Uint8Array): string => {
-  parsePublishFrame(bytes)
-  return "accepted"
-}
-
 const verifyFixture = (fixture: Fixture, bytes: Uint8Array): void => {
   try {
-    const code = fixture.file.endsWith(".frame")
-      ? verifyFrame(bytes)
-      : responseCode(parsePublishResponse(responseStatus(fixture.file), bytes))
-    if (fixture.verdict !== "accept" || code !== fixture.code) {
-      throw new FixtureVerificationError(fixture.file, `expected ${fixture.verdict}/${fixture.code}, received accept/${code}`)
-    }
+    parseWalletBalanceResponse(fixture.status, bytes)
   } catch (error) {
-    if (error instanceof FixtureVerificationError) throw error
-    if (error instanceof PublishWireContractError && fixture.verdict === "reject" && error.code === fixture.code) return
-    const code = error instanceof PublishWireContractError ? error.code : "unexpected_error"
-    throw new FixtureVerificationError(fixture.file, `expected ${fixture.verdict}/${fixture.code}, received reject/${code}`)
+    if (error instanceof Error && error.name === "WalletBalanceContractError") {
+      throw new FixtureVerificationError(fixture.file, `expected accept/${fixture.status}, received reject`)
+    }
+    throw error
   }
 }
 
@@ -145,4 +111,4 @@ for (const fixture of parsedManifest.data.fixtures) {
   verifyFixture(fixture, bytes)
 }
 
-process.stdout.write(`verified ${parsedManifest.data.fixtures.length} publish-wire v1 fixtures\n`)
+process.stdout.write(`verified ${parsedManifest.data.fixtures.length} wallet-balance v1 fixtures\n`)

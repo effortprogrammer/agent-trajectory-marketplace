@@ -169,6 +169,31 @@ describe("trajectory marketplace seller CLI grammar", () => {
     expect(results).toEqual(invalidArguments.map(() => ({ command: "invalid_bundle_request" })));
   });
 
+  test("parses wallet balance commands with an optional explicit api key", () => {
+    // Given: canonical wallet balance invocations with and without the credential flag.
+    const plain = parseMarketplaceCommand(["marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com"]);
+    const keyed = parseMarketplaceCommand(["trajectory", "marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com", "--api-key", "sentinel"]);
+
+    // When: the arguments cross the parser boundary.
+    // Then: the typed wallet request preserves server and key selection.
+    expect(plain).toEqual({ apiKey: undefined, command: "wallet-balance", server: "https://registry.example.com" });
+    expect(keyed).toEqual({ apiKey: "sentinel", command: "wallet-balance", server: "https://registry.example.com" });
+  });
+
+  test.each([
+    ["missing server value", ["marketplace", "seller", "wallet", "balance", "--server"]],
+    ["missing api key value", ["marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com", "--api-key"]],
+    ["flag-shaped api key", ["marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com", "--api-key", "--server"]],
+    ["trailing argument", ["marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com", "extra"]],
+    ["unknown flag", ["marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com", "--token", "x"]],
+    ["joined spelling", ["marketplace", "seller", "wallet-balance", "--server", "https://registry.example.com"]],
+  ] as const)("rejects wallet grammar: %s", (_case, argumentsList) => {
+    // Given: a malformed wallet invocation.
+    // When: the arguments cross the parser boundary.
+    // Then: only the canonical spelling is accepted.
+    expect(parseMarketplaceCommand(argumentsList)).toEqual({ command: "invalid_command" });
+  });
+
   test("keeps the marketplace parser result discriminated for downstream dispatch", () => {
     // Given: a parsed marketplace request.
     const result: MarketplaceCommand = parseMarketplaceCommand([

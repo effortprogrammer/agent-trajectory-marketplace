@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "file": "balance-200.json",
+      "sha256": "8e88deb2a6005c36f9d4d3db8e484c481a30a2a9c0a8158ee2a50f5d4891f404",
+      "verdict": "accept",
+      "status": 200
+    },
+    {
+      "file": "error-401.json",
+      "sha256": "4f8989d23b2185a16438d91e02d420a8b348385c3d6d8e09b0f7c8f25c5424b0",
+      "verdict": "accept",
+      "status": 401
+    },
+    {
+      "file": "error-403.json",
+      "sha256": "448a404a1b0fbf3e0e43402edb5b25aa5d50a2e49e1eb7240150b2ccfd3a5cef",
+      "verdict": "accept",
+      "status": 403
+    }
+  ]
+}

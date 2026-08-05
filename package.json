@@ -35,7 +35,8 @@
     "typecheck": "bunx tsc --noEmit",
     "verify:publish-wire": "bun contract/publish-wire/v1/generate.ts --check contract/publish-wire/v1 && bun contract/publish-wire/v1/verify.ts --manifest contract/publish-wire/v1/manifest.json",
     "test": "bun test test/bun",
-    "check": "bun run typecheck && bun run verify:publish-wire && bun test test/bun && bun run build:collector"
+    "check": "bun run typecheck && bun run verify:publish-wire && bun run verify:wallet-balance && bun test test/bun && bun run build:collector",
+    "verify:wallet-balance": "bun contract/wallet-balance/v1/verify.ts --manifest contract/wallet-balance/v1/manifest.json"
   },
   "dependencies": {
     "ky": "^2.0.2",
