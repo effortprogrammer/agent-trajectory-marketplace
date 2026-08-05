@@ -1,7 +1,8 @@
 import { createInterface } from "node:readline";
 
-import { AuthStoreError, readStoredAuthSession, storedAuthSessionStatus } from "../auth/store";
 import { normalizeAuthServerUrl } from "../auth/server-url";
+import { MarketplaceCliError, resolveMarketplaceCredential } from "./marketplace-credentials";
+import { printMarketplaceHelp } from "./marketplace-help";
 import { parseMarketplaceCommand } from "./marketplace-command";
 import { datasetArchivePolicy } from "../marketplace/archive-contract";
 import { writeCandidateBundle } from "../marketplace/bundle-service";
@@ -25,14 +26,6 @@ import {
 import { readExplicitTraces, resolveTraceSelector, scanSessionSnapshot } from "../marketplace/session-snapshot";
 import type { FrozenTrace, SessionReport, SessionWorkItem, ValidatedTrace } from "../marketplace/session-contract";
 import { harnessTraceDocumentSchema } from "../trajectory/adapters/contract";
-
-class MarketplaceCliError extends Error {
-  readonly name = "MarketplaceCliError";
-
-  constructor(readonly code: "invalid_command" | "missing_publish_credential" | "missing_wallet_credential") {
-    super(code);
-  }
-}
 
 type CompactSessionReport = Readonly<{
   readonly selector: SessionReport["selector"];
@@ -63,56 +56,6 @@ const parseFrozenTrace = (frozenTrace: FrozenTrace): ValidatedTrace => {
   const document = harnessTraceDocumentSchema.safeParse(value);
   if (!document.success) throw new MarketplaceError("invalid_trace");
   return { frozenTrace, document: document.data };
-};
-
-const resolvePublishCredential = (server: string, apiKey: string | undefined): string => {
-  if (apiKey !== undefined) {
-    if (!validPublishCredential(apiKey)) throw new MarketplaceCliError("missing_publish_credential");
-    return apiKey;
-  }
-  const environmentCredential = process.env["TRAJECTORY_REGISTRY_API_KEY"];
-  if (environmentCredential !== undefined) {
-    if (!validPublishCredential(environmentCredential)) {
-      throw new MarketplaceCliError("missing_publish_credential");
-    }
-    return environmentCredential;
-  }
-  try {
-    const session = readStoredAuthSession(server);
-    if (
-      session !== undefined &&
-      storedAuthSessionStatus(session) === "active" &&
-      validPublishCredential(session.accessToken)
-    ) return session.accessToken;
-  } catch {
-    throw new MarketplaceCliError("missing_publish_credential");
-  }
-  throw new MarketplaceCliError("missing_publish_credential");
-};
-
-const resolveWalletCredential = (server: string, apiKey: string | undefined): string => {
-  if (apiKey !== undefined) {
-    if (!validPublishCredential(apiKey)) throw new MarketplaceCliError("missing_wallet_credential");
-    return apiKey;
-  }
-  const environmentCredential = process.env["TRAJECTORY_REGISTRY_API_KEY"];
-  if (environmentCredential !== undefined) {
-    if (!validPublishCredential(environmentCredential)) {
-      throw new MarketplaceCliError("missing_wallet_credential");
-    }
-    return environmentCredential;
-  }
-  try {
-    const session = readStoredAuthSession(server);
-    if (
-      session !== undefined &&
-      storedAuthSessionStatus(session) === "active" &&
-      validPublishCredential(session.accessToken)
-    ) return session.accessToken;
-  } catch (error) {
-    if (!(error instanceof AuthStoreError)) throw error;
-  }
-  throw new MarketplaceCliError("missing_wallet_credential");
 };
 
 const compactReport = (report: SessionReport): CompactSessionReport => {
@@ -159,18 +102,7 @@ export const runMarketplaceCli = async (
 ): Promise<void> => {
   const executableOffset = argumentsList[0] === "trajectory" ? 1 : 0;
   const marketplaceArguments = argumentsList.slice(executableOffset);
-  if (marketplaceArguments.join(" ") === "marketplace seller wallet balance --help") {
-    console.log("Usage: trajectory marketplace seller wallet balance --server <url> [--api-key <key>]\n\nRead your aggregate wallet balance.\n\nCredential precedence: --api-key, TRAJECTORY_REGISTRY_API_KEY, active stored login token.");
-    return;
-  }
-  if (marketplaceArguments.join(" ") === "marketplace seller candidate publish --help") {
-    console.log("Usage: trajectory marketplace seller candidate publish --bundle <absolute-zip> --server <url> [--api-key <key>] [--selection <absolute-json>]\n\nPublish a candidate bundle to the marketplace. With --selection, the bundle membership must exactly match the approved selection document before any request.\n\nCredential precedence: --api-key, TRAJECTORY_REGISTRY_API_KEY, active stored login token.");
-    return;
-  }
-  if (marketplaceArguments.join(" ") === "marketplace seller candidate bundle --help") {
-    console.log("Usage: trajectory marketplace seller candidate bundle --root <absolute-dir> [--print-selection] [--out <absolute-zip> [--trace <relative-path>... | --selection <absolute-json>]]\n\nPreview the exact upload set with --print-selection (no writes, no network), edit the document by removing traces, then build with --selection.");
-    return;
-  }
+  if (printMarketplaceHelp(marketplaceArguments)) return;
   const command = parseMarketplaceCommand(argumentsList);
   switch (command.command) {
     case "sessions-list": {
@@ -263,7 +195,7 @@ export const runMarketplaceCli = async (
       const membership = command.selection === undefined
         ? undefined
         : approvedMembership(bundle, command.selection);
-      const credential = resolvePublishCredential(server, command.apiKey);
+      const credential = resolveMarketplaceCredential(server, command.apiKey, "missing_publish_credential");
       const receipt = await createPublishClient(server).publish({
         bundle,
         credential,
@@ -274,7 +206,7 @@ export const runMarketplaceCli = async (
     }
     case "wallet-balance": {
       const server = normalizeAuthServerUrl(command.server);
-      const credential = resolveWalletCredential(server, command.apiKey);
+      const credential = resolveMarketplaceCredential(server, command.apiKey, "missing_wallet_credential");
       const response = await createWalletBalanceClient(server).read({ credential, signal });
       console.log(JSON.stringify(response));
       return;

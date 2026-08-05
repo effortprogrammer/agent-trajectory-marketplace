@@ -75,12 +75,84 @@ describe("marketplace selection process boundary", () => {
       { byteCount: first.byteLength, selector: selectorFor("a.atf.json"), sha256: sha256(first) },
       { byteCount: second.byteLength, selector: selectorFor("b.atf.json"), sha256: sha256(second) },
     ].sort((left, right) => (left.selector < right.selector ? -1 : 1));
-    expect(printed).toEqual({
-      root: realpathSync(root),
-      schemaVersion: 1,
-      traces: expectedTraces,
-    });
+    expect(printed.root).toBe(realpathSync(root));
+    expect(printed.schemaVersion).toBe(1);
+    expect(printed.traces).toHaveLength(2);
+    for (const expected of expectedTraces) {
+      const actual = printed.traces.find((entry: { selector: string }) => entry.selector === expected.selector);
+      if (actual === undefined) throw new Error(`missing selector ${expected.selector}`);
+      expect(actual.byteCount).toBe(expected.byteCount);
+      expect(actual.sha256).toBe(expected.sha256);
+      expect(actual.artifactSha256).toMatch(/^[a-f0-9]{64}$/);
+      expect(actual.artifactByteCount).toBeGreaterThan(0);
+      expect(actual.runtime).toBe(expected.selector === selectorFor("a.atf.json") ? "codex" : "claude-code");
+      expect(actual.eventCount).toBe(1);
+      expect(actual.earliestTimestamp).toBe("unknown");
+    }
     expect(existsSync(join(root, "candidate.zip"))).toBe(false);
+  });
+
+  test("Given an inventory above the archive trace cap, When print-selection runs, Then it fails explicitly", () => {
+    // Given: more valid sessions than a dataset archive can contain.
+    const root = fixtureRoot();
+    for (let index = 0; index < 101; index += 1) {
+      writeFileSync(join(root, `session-${index}.atf.json`), traceBytes("codex", `request-${index}`));
+    }
+
+    // When: the preview command runs.
+    const result = runCli([
+      "marketplace", "seller", "candidate", "bundle",
+      "--root", root, "--print-selection",
+    ]);
+
+    // Then: the unbuildable membership is rejected at preview time.
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toBe("{\"error\":\"invalid_selection\"}\n");
+  });
+
+  test("Given a deeply nested selection file, When bundle runs, Then a stable error rejects it", () => {
+    // Given: a selection file nested far beyond the parser stack.
+    const root = fixtureRoot();
+    writeSessions(root);
+    const selectionPath = join(root, "selection.json");
+    writeFileSync(selectionPath, "[".repeat(100_000) + "]".repeat(100_000));
+    const output = join(root, "candidate.zip");
+
+    // When: the bundle builds from it.
+    const result = runCli([
+      "marketplace", "seller", "candidate", "bundle",
+      "--root", root, "--out", output, "--selection", selectionPath,
+    ]);
+
+    // Then: the stable marketplace error replaces any parser overflow.
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toBe("{\"error\":\"invalid_bundle_request\"}\n");
+    expect(existsSync(output)).toBe(false);
+  });
+
+  test("Given a tampered artifact hash, When bundle runs, Then it fails closed", () => {
+    // Given: a previewed selection whose artifact binding was altered.
+    const root = fixtureRoot();
+    writeSessions(root);
+    const preview = runCli(["marketplace", "seller", "candidate", "bundle", "--root", root, "--print-selection"]);
+    const document = JSON.parse(decoder.decode(preview.stdout));
+    const firstEntry = document.traces[0];
+    if (firstEntry === undefined) throw new Error("preview returned no traces");
+    firstEntry.artifactSha256 = "0".repeat(64);
+    const selectionPath = join(root, "selection.json");
+    writeFileSync(selectionPath, JSON.stringify(document));
+    const output = join(root, "candidate.zip");
+
+    // When: the bundle builds from the tampered document.
+    const result = runCli([
+      "marketplace", "seller", "candidate", "bundle",
+      "--root", root, "--out", output, "--selection", selectionPath,
+    ]);
+
+    // Then: the artifact binding mismatch is rejected before writing.
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toBe("{\"error\":\"invalid_bundle_request\"}\n");
+    expect(existsSync(output)).toBe(false);
   });
 
   test("Given print-selection with an output flag, When parsed, Then the combination is rejected", () => {
@@ -256,6 +328,37 @@ describe("marketplace selection process boundary", () => {
     ], environment);
 
     // Then: the membership mismatch is rejected locally before transport.
+    expect(result.exitCode).toBe(1);
+    expect(requests).toBe(0);
+    expect(result.stderr).toBe("{\"error\":\"invalid_bundle_request\"}\n");
+  });
+
+  test("Given a substituted bundle sharing the selector, When publish runs, Then byte binding rejects it", async () => {
+    // Given: a reviewed selection from one root and a same-path bundle built from different bytes.
+    const reviewed = fixtureRoot();
+    const substituted = fixtureRoot();
+    writeFileSync(join(reviewed, "session.atf.json"), traceBytes("codex", "reviewed content"));
+    writeFileSync(join(substituted, "session.atf.json"), traceBytes("codex", "substituted credential-shaped content"));
+    const preview = runCli(["marketplace", "seller", "candidate", "bundle", "--root", reviewed, "--print-selection"]);
+    const selectionPath = join(reviewed, "selection.json");
+    writeFileSync(selectionPath, preview.stdout);
+    const bundlePath = join(substituted, "candidate.zip");
+    runCli(["marketplace", "seller", "candidate", "bundle", "--root", substituted, "--out", bundlePath, "--trace", "session.atf.json"]);
+    let requests = 0;
+    await using server = Bun.serve({ fetch() {
+      requests += 1;
+      return Response.json({ protocolVersion: 1, submissionId: "sub_0123456789abcdefghjkmnpqrs", status: "accepted", statusUrl: "/v1/marketplace/seller/candidates/sub_0123456789abcdefghjkmnpqrs" }, { status: 202 });
+    }, hostname: "127.0.0.1", port: 0 });
+    const environment = { ...process.env, TRAJECTORY_REGISTRY_API_KEY: "env-sentinel" };
+
+    // When: the substituted bundle publishes with the reviewed selection.
+    const result = await runCliAsync([
+      "marketplace", "seller", "candidate", "publish",
+      "--bundle", bundlePath, "--server", `http://127.0.0.1:${server.port}`,
+      "--selection", selectionPath,
+    ], environment);
+
+    // Then: identical selectors cannot smuggle substituted bytes.
     expect(result.exitCode).toBe(1);
     expect(requests).toBe(0);
     expect(result.stderr).toBe("{\"error\":\"invalid_bundle_request\"}\n");
