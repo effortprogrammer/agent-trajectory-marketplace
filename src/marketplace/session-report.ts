@@ -118,6 +118,7 @@ export const buildSessionListItem = (trace: ValidatedTrace): SessionListItem => 
   const runtime = safeText(trace.document.runtime);
   const candidates = events.map(itemForEvent);
   const firstRequest = candidates.find((item) => item?.kind === "request");
+  const firstExcerpt = firstRequest ?? candidates.find((item) => item?.kind === "result");
   const markers = events.flatMap((event, index) => {
     const item = candidates[index];
     return item === undefined ? eventMarkers(event, index, []) : item.markers;
@@ -129,6 +130,7 @@ export const buildSessionListItem = (trace: ValidatedTrace): SessionListItem => 
     earliestTimestamp: earliestTimestamp(events),
     eventCount: trace.document.eventCount,
     byteCount: trace.frozenTrace.byteCount,
+    ...(firstExcerpt === undefined ? {} : { firstExcerpt: firstExcerpt.text }),
     ...(firstRequest === undefined ? {} : { firstRequestExcerpt: firstRequest.text }),
     markers: dedupeMarkers(markers),
   };
@@ -167,12 +169,15 @@ export const renderSessionReport = (report: SessionReport): string => {
   return [...header, ...items, `omitted: ${report.omittedItemCount}`, `markers: ${report.markers.map(markerText).join(", ")}`].join("\n");
 };
 
-export const renderSessionList = (items: SessionList): string => items.map((item) => [
-  `selector: ${safeText(String(item.selector)).text}`,
-  `runtime: ${safeText(item.runtime).text}`,
-  `earliest: ${safeText(item.earliestTimestamp).text}`,
-  `events: ${item.eventCount}`,
-  `bytes: ${item.byteCount}`,
-  `request: ${item.firstRequestExcerpt === undefined ? "unknown" : safeText(item.firstRequestExcerpt).text}`,
-  `markers: ${item.markers.map(markerText).join(", ")}`,
-].join("\n")).join("\n\n");
+export const renderSessionList = (items: SessionList): string => items.map((item) => {
+  const excerpt = item.firstExcerpt ?? item.firstRequestExcerpt;
+  return [
+    `selector: ${safeText(String(item.selector)).text}`,
+    `runtime: ${safeText(item.runtime).text}`,
+    `earliest: ${safeText(item.earliestTimestamp).text}`,
+    `events: ${item.eventCount}`,
+    `bytes: ${item.byteCount}`,
+    `excerpt: ${excerpt === undefined ? "unknown" : safeText(excerpt).text}`,
+    `markers: ${item.markers.map(markerText).join(", ")}`,
+  ].join("\n");
+}).join("\n\n");

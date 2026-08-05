@@ -123,7 +123,24 @@ describe("bounded session reports", () => {
     ]);
     expect(report.items[1]?.text).toContain("terminal");
     expect(listed.firstRequestExcerpt).toBe("review this");
+    expect(listed.firstExcerpt).toBe("review this");
     expect(listed.earliestTimestamp).toBe(timestamp);
+  });
+
+  test("falls back to the first result excerpt when a session has no user request event", () => {
+    // Given: a session whose earliest content is an assistant result, like exported codex rollouts.
+    const trace = validated([
+      attested({ kind: "session_start", name: "session" }, 0),
+      attested({ kind: "llm_call", name: "model", payload: { role: "assistant", content: "TYPE B implementation research summary" } }, 1),
+      attested({ kind: "tool_call", name: "terminal", payload: { input: { command: "ls" } } }, 2),
+    ]);
+
+    // When: the compact list item is derived.
+    const listed = buildSessionListItem(trace);
+
+    // Then: the agent still gets a content hint, while the strict request field stays honest.
+    expect(listed.firstRequestExcerpt).toBeUndefined();
+    expect(listed.firstExcerpt).toBe("TYPE B implementation research summary");
   });
 
   test("reports stored redaction truncation unknown events and terminal sanitization without raw controls", () => {
@@ -263,7 +280,7 @@ describe("bounded session reports", () => {
       `earliest: ${timestamp}`,
       "events: 7",
       "bytes: 512",
-      "request: 현재 디렉토리의 파일 목록 알려줘",
+      "excerpt: 현재 디렉토리의 파일 목록 알려줘",
       "markers: sanitized@1",
       "",
       `selector: ${secondSelector}`,
@@ -271,7 +288,7 @@ describe("bounded session reports", () => {
       "earliest: unknown",
       "events: 0",
       "bytes: 0",
-      "request: [redacted] [control:U+001B][31m",
+      "excerpt: [redacted] [control:U+001B][31m",
       "markers: redacted@0, sanitized@0",
     ]);
     expect(human).not.toContain(" | ");

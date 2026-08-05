@@ -102,6 +102,7 @@ export type SessionListItem = Readonly<{
   readonly earliestTimestamp: string | "unknown";
   readonly eventCount: number;
   readonly byteCount: number;
+  readonly firstExcerpt?: string;
   readonly firstRequestExcerpt?: string;
   readonly markers: readonly SessionMarker[];
 }>;
