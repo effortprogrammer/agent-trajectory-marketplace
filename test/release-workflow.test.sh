@@ -33,7 +33,7 @@ printf '%s\n' '{"name":"agent-trajectory-marketplace","version":"1.2.3"}' >"$fix
 cp "$ROOT/scripts/install.sh" "$fixture/scripts/install.sh"
 cp "$ROOT/scripts/install-agent.sh" "$fixture/scripts/install-agent.sh"
 cp "$ROOT/scripts/install-core.sh" "$fixture/scripts/install-core.sh"
-if rg -q 'export ATM_POSTHOG_API_KEY="phc_' "$fixture/scripts/install-core.sh"; then
+if grep -q 'export ATM_POSTHOG_API_KEY="phc_' "$fixture/scripts/install-core.sh"; then
   fail "installer core contains the telemetry key in source"
 fi
 git -C "$fixture" init -q
@@ -71,7 +71,7 @@ if bun -e '
   fail "production verifier accepted a corrupt generated archive"
 fi
 
-if rg -n 'raw\.githubusercontent\.com/.*/main|github\.com/.*/main/' "$ROOT/README.md" "$ROOT/scripts/install.sh" "$ROOT/scripts/install-agent.sh"; then
+if grep -nE 'raw\.githubusercontent\.com/.*/main|github\.com/.*/main/' "$ROOT/README.md" "$ROOT/scripts/install.sh" "$ROOT/scripts/install-agent.sh"; then
   fail "bootstrap still executes mutable main"
 fi
 grep -Fq '/releases/latest/download/install-agent.sh' "$ROOT/README.md" || fail "README one-liner does not resolve the stable release installer asset"
