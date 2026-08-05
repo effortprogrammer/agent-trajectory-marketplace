@@ -9,15 +9,7 @@ const responseLimitBytes = 64 * 1024
 const requestTimeoutMs = 10_000
 const walletPath = "/v1/marketplace/seller/wallet"
 
-type WalletBalanceClientErrorCode =
-  | "cancelled"
-  | "forbidden"
-  | "invalid_response"
-  | "missing_wallet_credential"
-  | "redirect_rejected"
-  | "request_failed"
-  | "timeout"
-  | "unauthorized"
+type WalletBalanceClientErrorCode = "cancelled" | "forbidden" | "invalid_response" | "missing_wallet_credential" | "redirect_rejected" | "request_failed" | "timeout" | "unauthorized"
 
 export class WalletBalanceClientError extends Error {
   readonly name = "WalletBalanceClientError"
