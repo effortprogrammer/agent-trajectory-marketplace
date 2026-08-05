@@ -42,3 +42,19 @@ trajectory marketplace seller candidate publish \
 Credentials resolve in this order: explicit `--api-key`, `TRAJECTORY_REGISTRY_API_KEY`, then an active stored login for the same server. A defined but invalid higher-priority credential fails locally instead of selecting another identity.
 
 Each invocation validates and consumes one bundle without automatic HTTP retries. Rerun the command to reread and revalidate the file after a retryable server or network error.
+
+### Selective upload
+
+Preview the exact upload set as a machine-readable selection document (no writes, no network), remove any traces you do not want to share, then build and publish from that document:
+
+```bash
+trajectory marketplace seller candidate bundle --root /absolute/sessions --print-selection > selection.json
+# edit selection.json: delete the traces you do not approve
+trajectory marketplace seller candidate bundle \
+  --root /absolute/sessions --out /absolute/candidate.zip --selection /absolute/selection.json
+trajectory marketplace seller candidate publish \
+  --bundle /absolute/candidate.zip --server https://registry.example.com \
+  --selection /absolute/selection.json
+```
+
+A trace that changed after the preview, a selector outside the inventory, or a bundle whose membership differs from the selection all fail locally before any network request. The publish receipt records the approved selector membership.

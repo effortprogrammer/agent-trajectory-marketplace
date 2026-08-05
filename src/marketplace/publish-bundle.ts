@@ -43,6 +43,7 @@ type BundleEntry = Readonly<{
 declare const publishBundleBrand: unique symbol
 export type PublishBundle = Readonly<{
   readonly archive: Buffer
+  readonly artifactSelectors: readonly string[]
   readonly candidate: PublishCandidate
   readonly [publishBundleBrand]: true
 }>
@@ -183,9 +184,10 @@ const assertTraceAdmission = (data: Buffer): void => {
   }
 }
 
-const admitPublishBundle = (archive: Buffer, candidate: PublishCandidate): PublishBundle => {
+const admitPublishBundle = (archive: Buffer, candidate: PublishCandidate, artifactSelectors: readonly string[]): PublishBundle => {
   const bundle = Object.freeze({
     archive,
+    artifactSelectors: Object.freeze([...artifactSelectors].sort()),
     candidate: Object.freeze(candidate),
   }) as PublishBundle
   admittedBundles.add(bundle)
@@ -240,6 +242,7 @@ export const parsePublishBundle = (archive: Buffer): PublishBundle => {
       artifactCount: manifest.data.artifacts.length,
       manifest: manifestEntry.data,
     }),
+    manifest.data.artifacts.map((artifact) => artifact.label),
   )
 }
 

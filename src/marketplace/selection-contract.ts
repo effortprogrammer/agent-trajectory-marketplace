@@ -2,6 +2,8 @@ import { isAbsolute } from "node:path"
 
 import { z } from "zod"
 
+import { MarketplaceError } from "./error"
+import { FixtureReadError, readFixtureFile } from "./fixture-reader"
 import { parseAdmissionJson } from "./json-preflight"
 import { fullSelectorSchema, traceHashSchema } from "./session-contract"
 import type { FrozenTrace } from "./session-contract"
@@ -76,6 +78,16 @@ export const parseSelectionDocument = (bytes: Buffer): SelectionDocument => {
   if (input === undefined) return invalid()
   const parsed = selectionDocumentSchema.safeParse(input)
   if (!parsed.success) return invalid()
-  if (!encodeSelectionDocument(parsed.data).equals(bytes)) return invalid()
   return parsed.data
+}
+
+export const readSelectionDocument = (path: string): SelectionDocument => {
+  try {
+    return parseSelectionDocument(readFixtureFile(path, maximumSelectionBytes))
+  } catch (error) {
+    if (error instanceof SelectionContractError || error instanceof FixtureReadError) {
+      throw new MarketplaceError("invalid_bundle_request")
+    }
+    throw error
+  }
 }
