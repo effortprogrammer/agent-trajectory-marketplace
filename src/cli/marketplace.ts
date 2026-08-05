@@ -9,10 +9,10 @@ import { MarketplaceError } from "../marketplace/error";
 import { readPublishBundle } from "../marketplace/publish-bundle";
 import { createPublishClient, validPublishCredential } from "../marketplace/publish-client";
 import {
-  encodeSelectionDocument,
-  readSelectionDocument,
-  selectionDocumentFromTraces,
-} from "../marketplace/selection-contract";
+  approvedMembership,
+  selectionPreviewJson,
+  writeBundleFromSelection,
+} from "../marketplace/selection-upload";
 import { createWalletBalanceClient } from "../marketplace/wallet-balance-client";
 import { runFrozenReview } from "../marketplace/review-loop";
 import type { ReviewIO } from "../marketplace/review-loop";
@@ -188,26 +188,11 @@ export const runMarketplaceCli = async (
     }
     case "candidate-bundle": {
       if (command.mode === "preview") {
-        const snapshot = scanSessionSnapshot(command.root);
-        process.stdout.write(
-          encodeSelectionDocument(selectionDocumentFromTraces(snapshot.root, snapshot.traces)).toString("utf8"),
-        );
+        process.stdout.write(selectionPreviewJson(command.root));
         return;
       }
       if (command.mode === "selection") {
-        const snapshot = scanSessionSnapshot(command.root);
-        const document = readSelectionDocument(command.selection);
-        if (document.root !== snapshot.root) throw new MarketplaceError("invalid_bundle_request");
-        const selected = document.traces.map((entry) => {
-          const trace = snapshot.traces.find((candidate) => candidate.selector === entry.selector);
-          if (
-            trace === undefined ||
-            trace.hash !== entry.sha256 ||
-            trace.byteCount !== entry.byteCount
-          ) throw new MarketplaceError("invalid_bundle_request");
-          return trace;
-        });
-        console.log(JSON.stringify(writeCandidateBundle(snapshot, selected, command.out)));
+        console.log(JSON.stringify(writeBundleFromSelection(command.root, command.selection, command.out)));
         return;
       }
       if (command.mode === "explicit") {
@@ -275,16 +260,9 @@ export const runMarketplaceCli = async (
     case "candidate-publish": {
       const server = normalizeAuthServerUrl(command.server);
       const bundle = readPublishBundle(command.bundle);
-      let membership: readonly string[] | undefined;
-      if (command.selection !== undefined) {
-        const document = readSelectionDocument(command.selection);
-        const approved = document.traces.map((trace) => trace.selector).sort();
-        if (
-          approved.length !== bundle.artifactSelectors.length ||
-          approved.some((selector, index) => selector !== bundle.artifactSelectors[index])
-        ) throw new MarketplaceError("invalid_bundle_request");
-        membership = approved;
-      }
+      const membership = command.selection === undefined
+        ? undefined
+        : approvedMembership(bundle, command.selection);
       const credential = resolvePublishCredential(server, command.apiKey);
       const receipt = await createPublishClient(server).publish({
         bundle,
