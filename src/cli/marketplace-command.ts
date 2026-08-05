@@ -29,10 +29,25 @@ type ExplicitCandidateBundleCommand = Readonly<{
   readonly traces: readonly string[];
 }>;
 
+type PreviewCandidateBundleCommand = Readonly<{
+  readonly command: "candidate-bundle";
+  readonly mode: "preview";
+  readonly root: string;
+}>;
+
+type SelectionCandidateBundleCommand = Readonly<{
+  readonly command: "candidate-bundle";
+  readonly mode: "selection";
+  readonly out: string;
+  readonly root: string;
+  readonly selection: string;
+}>;
+
 type CandidatePublishCommand = Readonly<{
   readonly apiKey?: string;
   readonly bundle: string;
   readonly command: "candidate-publish";
+  readonly selection?: string;
   readonly server: string;
 }>;
 
@@ -52,6 +67,8 @@ export type MarketplaceCommand =
   | SessionsInspectCommand
   | InteractiveCandidateBundleCommand
   | ExplicitCandidateBundleCommand
+  | PreviewCandidateBundleCommand
+  | SelectionCandidateBundleCommand
   | CandidatePublishCommand
   | WalletBalanceCommand
   | InvalidCommand
@@ -135,10 +152,17 @@ const parseCandidateBundle = (
 ): MarketplaceCommand => {
   let out: string | undefined;
   let root: string | undefined;
+  let printSelection = false;
+  let selection: string | undefined;
   const excludes: string[] = [];
   const traces: string[] = [];
   for (let index = 0; index < argumentsList.length; index += 1) {
     const option = argumentsList[index];
+    if (option === "--print-selection") {
+      if (printSelection) return invalidBundleRequest();
+      printSelection = true;
+      continue;
+    }
     const value = argumentsList[index + 1];
     if (value === undefined || value.startsWith("--")) return invalidBundleRequest();
     if (option === "--root") {
@@ -147,6 +171,9 @@ const parseCandidateBundle = (
     } else if (option === "--out") {
       if (out !== undefined || !isAbsolutePath(value)) return invalidBundleRequest();
       out = value;
+    } else if (option === "--selection") {
+      if (selection !== undefined || !isAbsolutePath(value)) return invalidBundleRequest();
+      selection = value;
     } else if (option === "--exclude") {
       if (!fullSelector.test(value)) return invalidBundleRequest();
       excludes.push(value);
@@ -157,6 +184,16 @@ const parseCandidateBundle = (
       return invalidBundleRequest();
     }
     index += 1;
+  }
+  if (printSelection) {
+    return root !== undefined && out === undefined && selection === undefined && excludes.length === 0 && traces.length === 0
+      ? { command: "candidate-bundle", mode: "preview", root }
+      : invalidBundleRequest();
+  }
+  if (selection !== undefined) {
+    return root !== undefined && out !== undefined && excludes.length === 0 && traces.length === 0
+      ? { command: "candidate-bundle", mode: "selection", out, root, selection }
+      : invalidBundleRequest();
   }
   if (root === undefined || out === undefined || (traces.length > 0 && excludes.length > 0)) {
     return invalidBundleRequest();
@@ -169,6 +206,7 @@ const parseCandidateBundle = (
 const parseCandidatePublish = (argumentsList: readonly string[]): MarketplaceCommand => {
   let apiKey: string | undefined;
   let bundle: string | undefined;
+  let selection: string | undefined;
   let server: string | undefined;
   for (let index = 0; index < argumentsList.length; index += 1) {
     const option = argumentsList[index];
@@ -177,14 +215,18 @@ const parseCandidatePublish = (argumentsList: readonly string[]): MarketplaceCom
     if (option === "--bundle" && bundle === undefined && isAbsolutePath(value)) bundle = value;
     else if (option === "--server" && server === undefined) server = value;
     else if (option === "--api-key" && apiKey === undefined && value.length > 0) apiKey = value;
+    else if (option === "--selection" && selection === undefined && isAbsolutePath(value)) selection = value;
     else return invalidCommand();
     index += 1;
   }
-  return bundle === undefined || server === undefined
-    ? invalidCommand()
-    : apiKey === undefined
-      ? { bundle, command: "candidate-publish", server }
-      : { apiKey, bundle, command: "candidate-publish", server };
+  if (bundle === undefined || server === undefined) return invalidCommand();
+  return {
+    ...(apiKey === undefined ? {} : { apiKey }),
+    bundle,
+    command: "candidate-publish",
+    ...(selection === undefined ? {} : { selection }),
+    server,
+  };
 };
 
 const parseWalletBalance = (argumentsList: readonly string[]): MarketplaceCommand => {
