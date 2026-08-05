@@ -110,6 +110,53 @@ describe("marketplace selection process boundary", () => {
     expect(decoder.decode(result.stderr)).toBe("{\"error\":\"invalid_selection\"}\n");
   });
 
+  test("Given previews exceeding the document cap, When print-selection runs, Then it fails explicitly", () => {
+    // Given: a valid inventory whose serialized selection exceeds the document read cap.
+    const root = fixtureRoot();
+    for (let index = 0; index < 100; index += 1) {
+      const document = JSON.parse(decoder.decode(traceBytes("codex", `request-${index}`)));
+      document.runtime = "x".repeat(16_384);
+      writeFileSync(join(root, `session-${index}.atf.json`), JSON.stringify(document));
+    }
+
+    // When: the preview command runs.
+    const result = runCli([
+      "marketplace", "seller", "candidate", "bundle",
+      "--root", root, "--print-selection",
+    ]);
+
+    // Then: the oversized document is rejected instead of emitting an unreadable preview.
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toBe("{\"error\":\"invalid_selection\"}\n");
+  });
+
+  test("Given a trace whose artifact exceeds archive policy, When print-selection runs, Then it fails explicitly", () => {
+    // Given: a valid trace whose sanitized artifact crosses the per-trace archive cap.
+    const root = fixtureRoot();
+    const oversized = {
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 4_400,
+      events: Array.from({ length: 4_400 }, () => ({
+        kind: "function_enter",
+        name: "turn",
+        payload: { role: "user", content: "x".repeat(16_000) },
+      })),
+    };
+    writeFileSync(join(root, "huge.atf.json"), JSON.stringify(oversized));
+
+    // When: the preview command runs.
+    const result = runCli([
+      "marketplace", "seller", "candidate", "bundle",
+      "--root", root, "--print-selection",
+    ]);
+
+    // Then: the unbuildable artifact is rejected at preview time.
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toBe("{\"error\":\"invalid_selection\"}\n");
+  });
+
   test("Given a deeply nested selection file, When bundle runs, Then a stable error rejects it", () => {
     // Given: a selection file nested far beyond the parser stack.
     const root = fixtureRoot();

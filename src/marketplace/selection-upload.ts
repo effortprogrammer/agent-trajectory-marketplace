@@ -1,19 +1,61 @@
+import {
+  ArchiveContractError,
+  assertDatasetArchivePlan,
+  datasetManifestPath,
+  encodeDatasetManifest,
+} from "./archive-contract"
 import { sanitizedArtifactDigest } from "./dataset-archive"
 import { MarketplaceError } from "./error"
 import type { PublishBundle } from "./publish-bundle"
 import {
+  SelectionContractError,
   encodeSelectionDocument,
   readSelectionDocument,
   selectionDocumentFromTraces,
 } from "./selection-contract"
+import type { SelectionDocument } from "./selection-contract"
 import { scanSessionSnapshot } from "./session-snapshot"
+import { estimateZipBytes } from "./stored-zip"
 import { boundedRedactedString } from "../trajectory/adapters/contract"
 import type { CandidateBundleResult } from "./bundle-service"
 import { writeCandidateBundle } from "./bundle-service"
 
+const maximumSelectionBytes = 1024 * 1024
+
+const invalidSelection = (): never => {
+  throw new SelectionContractError("invalid_selection")
+}
+
+const assertSelectionBuildable = (document: SelectionDocument): void => {
+  const artifacts = document.traces.map((trace) => ({
+    byteCount: trace.artifactByteCount,
+    label: trace.selector,
+    path: `traces/${trace.selector}.atf.json`,
+    sha256: trace.artifactSha256,
+  }))
+  try {
+    const manifest = encodeDatasetManifest({ artifacts, formatVersion: 1 })
+    assertDatasetArchivePlan({
+      archiveByteCount: estimateZipBytes([
+        { byteCount: manifest.byteLength, name: datasetManifestPath },
+        ...artifacts.map((artifact) => ({ byteCount: artifact.byteCount, name: artifact.path })),
+      ]),
+      entries: artifacts.map((artifact) => ({ byteCount: artifact.byteCount, name: artifact.path })),
+      manifestByteCount: manifest.byteLength,
+    })
+  } catch (error) {
+    if (error instanceof ArchiveContractError) return invalidSelection()
+    throw error
+  }
+}
+
 export const selectionPreviewJson = (root: string): string => {
   const snapshot = scanSessionSnapshot(root)
-  return encodeSelectionDocument(selectionDocumentFromTraces(snapshot.root, snapshot.traces)).toString("utf8")
+  const document = selectionDocumentFromTraces(snapshot.root, snapshot.traces)
+  assertSelectionBuildable(document)
+  const encoded = encodeSelectionDocument(document)
+  if (encoded.byteLength > maximumSelectionBytes) return invalidSelection()
+  return encoded.toString("utf8")
 }
 
 export const writeBundleFromSelection = (
