@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto"
 import { lstatSync, readdirSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
-import { pathToFileURL } from "node:url"
 
 import { z } from "zod"
 
+import { FixtureReadError, readFixtureFile } from "../../fixture-reader"
 import { parseAdmissionJson } from "../../../src/marketplace/json-preflight"
 import { parseWalletBalanceResponse } from "../../../src/marketplace/wallet-balance-contract"
 
@@ -70,9 +70,20 @@ const regularFile = (path: string): boolean => {
   }
 }
 
+const manifestByteCap = 64 * 1024
+const fixtureByteCap = 16 * 1024 * 1024
+
+const readBounded = (path: string, maximumBytes: number): Buffer => {
+  try {
+    return readFixtureFile(path, maximumBytes)
+  } catch (error) {
+    if (error instanceof FixtureReadError) throw new FixtureVerificationError(path, error.reason)
+    throw error
+  }
+}
+
 const manifestPath = argumentValue("--manifest")
-if (!regularFile(manifestPath)) throw new FixtureVerificationError(manifestPath, "manifest is not a regular file")
-const manifestInput = parseAdmissionJson(Buffer.from(await Bun.file(manifestPath).arrayBuffer()))
+const manifestInput = parseAdmissionJson(readBounded(manifestPath, manifestByteCap))
 if (manifestInput === undefined) throw new FixtureVerificationError(manifestPath, "invalid manifest")
 const parsedManifest = manifestSchema.safeParse(manifestInput)
 if (!parsedManifest.success) throw new FixtureVerificationError(manifestPath, "invalid manifest")
@@ -92,10 +103,9 @@ if (
 ) {
   throw new FixtureVerificationError(manifestPath, "fixture set mismatch")
 }
-const root = pathToFileURL(`${fixtureRoot}/`)
 
 for (const fixture of parsedManifest.data.fixtures) {
-  const bytes = Buffer.from(await Bun.file(new URL(fixture.file, root)).arrayBuffer())
+  const bytes = readBounded(join(fixtureRoot, fixture.file), fixtureByteCap)
   const digest = createHash("sha256").update(bytes).digest("hex")
   if (digest !== fixture.sha256) throw new FixtureVerificationError(fixture.file, "sha256 mismatch")
   verifyFixture(fixture, bytes)

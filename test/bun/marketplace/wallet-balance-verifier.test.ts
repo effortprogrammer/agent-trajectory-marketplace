@@ -123,4 +123,38 @@ describe("frozen wallet balance verifier", () => {
     // Then: the symlink itself is rejected even though hashes and membership match.
     expect(linked.exitCode).toBe(1)
   })
+
+  test("rejects a symlinked manifest", () => {
+    // Given: a manifest path replaced by a symlink to identical bytes outside the tree.
+    const { fixtureRoot, root } = copyFixtureDirectory()
+    const manifestPath = join(fixtureRoot, "manifest.json")
+    const outsidePath = join(root, "outside-manifest.json")
+    cpSync(manifestPath, outsidePath)
+    rmSync(manifestPath)
+    symlinkSync(outsidePath, manifestPath)
+
+    // When: the verifier opens the manifest.
+    const linked = verify(fixtureRoot)
+
+    // Then: the symlinked manifest is rejected before parsing.
+    expect(linked.exitCode).toBe(1)
+  })
+
+  test("rejects an oversized manifest before reading it", () => {
+    // Given: a regular manifest file far above the verifier byte cap.
+    const { fixtureRoot } = copyFixtureDirectory()
+    writeFileSync(join(fixtureRoot, "manifest.json"), Buffer.alloc(16 * 1024 * 1024, 120))
+
+    // When: the verifier stats the manifest descriptor.
+    const oversized = verify(fixtureRoot)
+
+    // Then: the oversize manifest is rejected from descriptor metadata without materializing it.
+    expect({
+      exitCode: oversized.exitCode,
+      stderr: new TextDecoder().decode(oversized.stderr),
+    }).toEqual({
+      exitCode: 1,
+      stderr: expect.stringContaining("bounded regular file"),
+    })
+  })
 })
