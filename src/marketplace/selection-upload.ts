@@ -1,3 +1,4 @@
+import { sanitizedArtifactDigest } from "./dataset-archive"
 import { MarketplaceError } from "./error"
 import type { PublishBundle } from "./publish-bundle"
 import {
@@ -6,6 +7,7 @@ import {
   selectionDocumentFromTraces,
 } from "./selection-contract"
 import { scanSessionSnapshot } from "./session-snapshot"
+import { boundedRedactedString } from "../trajectory/adapters/contract"
 import type { CandidateBundleResult } from "./bundle-service"
 import { writeCandidateBundle } from "./bundle-service"
 
@@ -27,8 +29,15 @@ export const writeBundleFromSelection = (
     if (
       trace === undefined ||
       trace.hash !== entry.sha256 ||
-      trace.byteCount !== entry.byteCount
+      trace.byteCount !== entry.byteCount ||
+      trace.eventCount !== entry.eventCount ||
+      trace.earliestTimestamp !== entry.earliestTimestamp ||
+      boundedRedactedString(trace.runtime).text !== entry.runtime
     ) throw new MarketplaceError("invalid_bundle_request")
+    const artifact = sanitizedArtifactDigest(trace.bytes)
+    if (artifact.sha256 !== entry.artifactSha256 || artifact.byteCount !== entry.artifactByteCount) {
+      throw new MarketplaceError("invalid_bundle_request")
+    }
     return trace
   })
   return writeCandidateBundle(snapshot, selected, outputPath)
@@ -36,10 +45,17 @@ export const writeBundleFromSelection = (
 
 export const approvedMembership = (bundle: PublishBundle, selectionPath: string): readonly string[] => {
   const document = readSelectionDocument(selectionPath)
-  const approved = document.traces.map((trace) => trace.selector).sort()
+  const approved = [...document.traces].sort((left, right) =>
+    left.selector < right.selector ? -1 : left.selector > right.selector ? 1 : 0)
   if (
-    approved.length !== bundle.artifactSelectors.length ||
-    approved.some((selector, index) => selector !== bundle.artifactSelectors[index])
+    approved.length !== bundle.artifacts.length ||
+    approved.some((trace, index) => {
+      const artifact = bundle.artifacts[index]
+      return artifact === undefined ||
+        trace.selector !== artifact.label ||
+        trace.artifactSha256 !== artifact.sha256 ||
+        trace.artifactByteCount !== artifact.byteCount
+    })
   ) throw new MarketplaceError("invalid_bundle_request")
-  return approved
+  return approved.map((trace) => trace.selector)
 }

@@ -1,5 +1,17 @@
 import { isAbsolute } from "node:path";
 
+import {
+  parseCandidateBundle,
+  parseCandidatePublish,
+} from "./marketplace-candidate-command";
+import type {
+  CandidatePublishCommand,
+  ExplicitCandidateBundleCommand,
+  InteractiveCandidateBundleCommand,
+  PreviewCandidateBundleCommand,
+  SelectionCandidateBundleCommand,
+} from "./marketplace-candidate-command";
+
 type SessionsListCommand = Readonly<{
   readonly command: "sessions-list";
   readonly json: boolean;
@@ -13,43 +25,6 @@ type SessionsInspectCommand = Readonly<{
   readonly selector: string;
 }>;
 
-type InteractiveCandidateBundleCommand = Readonly<{
-  readonly command: "candidate-bundle";
-  readonly excludes: readonly string[];
-  readonly mode: "interactive";
-  readonly out: string;
-  readonly root: string;
-}>;
-
-type ExplicitCandidateBundleCommand = Readonly<{
-  readonly command: "candidate-bundle";
-  readonly mode: "explicit";
-  readonly out: string;
-  readonly root: string;
-  readonly traces: readonly string[];
-}>;
-
-type PreviewCandidateBundleCommand = Readonly<{
-  readonly command: "candidate-bundle";
-  readonly mode: "preview";
-  readonly root: string;
-}>;
-
-type SelectionCandidateBundleCommand = Readonly<{
-  readonly command: "candidate-bundle";
-  readonly mode: "selection";
-  readonly out: string;
-  readonly root: string;
-  readonly selection: string;
-}>;
-
-type CandidatePublishCommand = Readonly<{
-  readonly apiKey?: string;
-  readonly bundle: string;
-  readonly command: "candidate-publish";
-  readonly selection?: string;
-  readonly server: string;
-}>;
 
 type WalletBalanceCommand = Readonly<{
   readonly apiKey: string | undefined;
@@ -145,88 +120,6 @@ const parseSessionsInspect = (
   return root === undefined
     ? invalidCommand()
     : { command: "sessions-inspect", json, root, selector };
-};
-
-const parseCandidateBundle = (
-  argumentsList: readonly string[],
-): MarketplaceCommand => {
-  let out: string | undefined;
-  let root: string | undefined;
-  let printSelection = false;
-  let selection: string | undefined;
-  const excludes: string[] = [];
-  const traces: string[] = [];
-  for (let index = 0; index < argumentsList.length; index += 1) {
-    const option = argumentsList[index];
-    if (option === "--print-selection") {
-      if (printSelection) return invalidBundleRequest();
-      printSelection = true;
-      continue;
-    }
-    const value = argumentsList[index + 1];
-    if (value === undefined || value.startsWith("--")) return invalidBundleRequest();
-    if (option === "--root") {
-      if (root !== undefined || !isAbsolutePath(value)) return invalidBundleRequest();
-      root = value;
-    } else if (option === "--out") {
-      if (out !== undefined || !isAbsolutePath(value)) return invalidBundleRequest();
-      out = value;
-    } else if (option === "--selection") {
-      if (selection !== undefined || !isAbsolutePath(value)) return invalidBundleRequest();
-      selection = value;
-    } else if (option === "--exclude") {
-      if (!fullSelector.test(value)) return invalidBundleRequest();
-      excludes.push(value);
-    } else if (option === "--trace") {
-      if (!isExplicitTrace(value)) return invalidBundleRequest();
-      traces.push(value);
-    } else {
-      return invalidBundleRequest();
-    }
-    index += 1;
-  }
-  if (printSelection) {
-    return root !== undefined && out === undefined && selection === undefined && excludes.length === 0 && traces.length === 0
-      ? { command: "candidate-bundle", mode: "preview", root }
-      : invalidBundleRequest();
-  }
-  if (selection !== undefined) {
-    return root !== undefined && out !== undefined && excludes.length === 0 && traces.length === 0
-      ? { command: "candidate-bundle", mode: "selection", out, root, selection }
-      : invalidBundleRequest();
-  }
-  if (root === undefined || out === undefined || (traces.length > 0 && excludes.length > 0)) {
-    return invalidBundleRequest();
-  }
-  return traces.length > 0
-    ? { command: "candidate-bundle", mode: "explicit", out, root, traces }
-    : { command: "candidate-bundle", excludes, mode: "interactive", out, root };
-};
-
-const parseCandidatePublish = (argumentsList: readonly string[]): MarketplaceCommand => {
-  let apiKey: string | undefined;
-  let bundle: string | undefined;
-  let selection: string | undefined;
-  let server: string | undefined;
-  for (let index = 0; index < argumentsList.length; index += 1) {
-    const option = argumentsList[index];
-    const value = argumentsList[index + 1];
-    if (value === undefined || value.startsWith("--")) return invalidCommand();
-    if (option === "--bundle" && bundle === undefined && isAbsolutePath(value)) bundle = value;
-    else if (option === "--server" && server === undefined) server = value;
-    else if (option === "--api-key" && apiKey === undefined && value.length > 0) apiKey = value;
-    else if (option === "--selection" && selection === undefined && isAbsolutePath(value)) selection = value;
-    else return invalidCommand();
-    index += 1;
-  }
-  if (bundle === undefined || server === undefined) return invalidCommand();
-  return {
-    ...(apiKey === undefined ? {} : { apiKey }),
-    bundle,
-    command: "candidate-publish",
-    ...(selection === undefined ? {} : { selection }),
-    server,
-  };
 };
 
 const parseWalletBalance = (argumentsList: readonly string[]): MarketplaceCommand => {

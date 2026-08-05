@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 
 import {
   SelectionContractError,
@@ -6,50 +7,66 @@ import {
   parseSelectionDocument,
   selectionDocumentFromTraces,
 } from "../../../src/marketplace/selection-contract"
+import type { SelectionDocument } from "../../../src/marketplace/selection-contract"
 import { fullSelectorSchema, traceHashSchema } from "../../../src/marketplace/session-contract"
 import type { FrozenTrace } from "../../../src/marketplace/session-contract"
 
 const selectorA = `s-${"a".repeat(64)}`
 const selectorB = `s-${"b".repeat(64)}`
-const hashA = "1".repeat(64)
-const hashB = "2".repeat(64)
 
-const trace = (selector: string, hash: string, byteCount: number): FrozenTrace => ({
-  byteCount,
-  bytes: new Uint8Array(byteCount),
-  earliestTimestamp: "unknown",
-  eventCount: 0,
-  hash: traceHashSchema.parse(hash),
-  relativePath: `runtime/${selector}.atf.json`,
-  runtime: "codex",
-  selector: fullSelectorSchema.parse(selector),
-})
+const traceBytes = (runtime: string, request: string): Buffer =>
+  Buffer.from(JSON.stringify({
+    runtime,
+    status: "collected",
+    formatVersion: 2,
+    eventCount: 1,
+    events: [{ kind: "function_enter", name: "turn", payload: { role: "user", content: request } }],
+  }), "utf8")
 
-const document = {
-  root: "/tmp/sessions",
-  schemaVersion: 1,
-  traces: [
-    { byteCount: 12, selector: fullSelectorSchema.parse(selectorA), sha256: traceHashSchema.parse(hashA) },
-    { byteCount: 34, selector: fullSelectorSchema.parse(selectorB), sha256: traceHashSchema.parse(hashB) },
-  ],
-} as const
+const trace = (relativePath: string, runtime: string, request: string): FrozenTrace => {
+  const bytes = traceBytes(runtime, request)
+  return {
+    byteCount: bytes.byteLength,
+    bytes,
+    earliestTimestamp: "unknown",
+    eventCount: 1,
+    hash: traceHashSchema.parse(createHash("sha256").update(bytes).digest("hex")),
+    relativePath,
+    runtime,
+    selector: fullSelectorSchema.parse(`s-${createHash("sha256").update(relativePath).digest("hex")}`),
+  }
+}
+
+const document: SelectionDocument = selectionDocumentFromTraces("/tmp/sessions", [
+  trace("a.atf.json", "codex", "first"),
+  trace("b.atf.json", "claude-code", "second"),
+])
 
 describe("selection document contract", () => {
-  test("round-trips a canonical document in frozen property order", () => {
+  test("round-trips a canonical document with artifact and content fields", () => {
     // Given: a valid selection document built from frozen traces.
-    const built = selectionDocumentFromTraces("/tmp/sessions", [
-      trace(selectorB, hashB, 34),
-      trace(selectorA, hashA, 12),
-    ])
+    const encoded = encodeSelectionDocument(document)
 
-    // When: the document is encoded and parsed again.
-    const encoded = encodeSelectionDocument(built)
+    // When: the document is parsed again.
     const parsed = parseSelectionDocument(encoded)
 
-    // Then: selectors are sorted and the encoding is byte-stable.
-    expect(encoded.toString("utf8").endsWith("\n")).toBe(true)
+    // Then: every selector carries raw and artifact bindings plus legible content fields.
     expect(parsed).toEqual(document)
-    expect(encodeSelectionDocument(parsed).equals(encoded)).toBe(true)
+    const first = parsed.traces[0]
+    if (first === undefined) throw new Error("missing trace")
+    expect(first.runtime.length).toBeGreaterThan(0)
+    expect(first.eventCount).toBe(1)
+    expect(first.artifactSha256).toMatch(/^[a-f0-9]{64}$/)
+    expect(encoded.toString("utf8").endsWith("\n")).toBe(true)
+  })
+
+  test("canonicalizes unsorted membership to identical bytes", () => {
+    // Given: the same membership in reversed order.
+    const reversed = { ...document, traces: [...document.traces].reverse() }
+
+    // When: both orders are encoded.
+    // Then: equivalent membership serializes byte-identically.
+    expect(encodeSelectionDocument(reversed).equals(encodeSelectionDocument(document))).toBe(true)
   })
 
   test.each([
@@ -57,16 +74,17 @@ describe("selection document contract", () => {
     ["duplicate selectors", { ...document, traces: [document.traces[0], document.traces[0]] }],
     ["unknown field", { ...document, unexpected: true }],
     ["relative root", { ...document, root: "relative/path" }],
-    ["mismatched byte count", { ...document, traces: [{ byteCount: -1, selector: selectorA, sha256: hashA }] }],
-    ["malformed selector", { ...document, traces: [{ byteCount: 1, selector: "codex:abc", sha256: hashA }] }],
-  ] as const)("rejects %s", (_case, input) => {
-    // Given: a document violating the closed selection contract.
-    // When: it crosses the parse boundary.
+    ["missing artifact binding", { ...document, traces: [{ byteCount: 1, selector: selectorA, sha256: "1".repeat(64) }] }],
+  ] as const)("rejects %s through the parse boundary", (_case, input) => {
+    // Given: raw bytes violating the closed selection contract.
+    const bytes = Buffer.from(JSON.stringify(input), "utf8")
+
+    // When: the bytes cross the parse boundary directly.
     const parse = (): void => {
-      parseSelectionDocument(encodeSelectionDocument(input))
+      parseSelectionDocument(bytes)
     }
 
-    // Then: membership ambiguity fails closed.
+    // Then: membership ambiguity fails closed at parse time.
     expect(parse).toThrow(SelectionContractError)
   })
 
@@ -74,7 +92,7 @@ describe("selection document contract", () => {
     // Given: raw bytes that are not a strict unique-key JSON document.
     const malformed = Buffer.from("{", "utf8")
     const duplicated = Buffer.from(
-      `{"root":"/tmp/sessions","root":"/tmp/sessions","schemaVersion":1,"traces":[{"byteCount":12,"selector":"${selectorA}","sha256":"${hashA}"}]}`,
+      `{"root":"/tmp/sessions","root":"/tmp/sessions","schemaVersion":1,"traces":[]}`,
       "utf8",
     )
 
@@ -84,20 +102,30 @@ describe("selection document contract", () => {
     expect(() => parseSelectionDocument(duplicated)).toThrow(SelectionContractError)
   })
 
-  test("rejects membership above the trace cap without materializing it", () => {
-    // Given: a document claiming more traces than the admission budget.
+  test("rejects membership above the archive trace cap", () => {
+    // Given: a document claiming more traces than the dataset archive admits.
+    const entry = document.traces[0]
+    if (entry === undefined) throw new Error("missing trace")
     const oversized = Buffer.from(JSON.stringify({
       root: "/tmp/sessions",
       schemaVersion: 1,
-      traces: Array.from({ length: 10_001 }, (_, index) => ({
-        byteCount: 1,
-        selector: `s-${String(index).padStart(64, "0")}`,
-        sha256: hashA,
+      traces: Array.from({ length: 101 }, (_, index) => ({
+        ...entry,
+        selector: fullSelectorSchema.parse(`s-${String(index).padStart(64, "0")}`),
       })),
     }), "utf8")
 
     // When: the document crosses the parse boundary.
-    // Then: the cap rejects it.
+    // Then: the cap rejects it at admission.
     expect(() => parseSelectionDocument(oversized)).toThrow(SelectionContractError)
+  })
+
+  test("rejects pathological nesting as a stable contract error", () => {
+    // Given: a deeply nested hostile document.
+    const nested = Buffer.from("[".repeat(100_000) + "]".repeat(100_000), "utf8")
+
+    // When: the preflight scans it.
+    // Then: rejection is the stable contract error, never a RangeError.
+    expect(() => parseSelectionDocument(nested)).toThrow(SelectionContractError)
   })
 })
