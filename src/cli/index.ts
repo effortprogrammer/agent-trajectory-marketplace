@@ -78,12 +78,12 @@ const captureTelemetryInstallation = async (command: CollectorCommand): Promise<
 
 const main = async (): Promise<void> => {
   const argumentsList = process.argv.slice(2);
-  const authAbortController = new AbortController();
+  const commandAbortController = new AbortController();
   let running = true;
   let command: CollectorCommand | undefined;
   const stop = (): void => {
     running = false;
-    if (!authAbortController.signal.aborted) authAbortController.abort();
+    if (!commandAbortController.signal.aborted) commandAbortController.abort();
   };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
@@ -109,11 +109,11 @@ const main = async (): Promise<void> => {
       return;
     }
     if (isAuthInvocation(argumentsList)) {
-      await runAuthCli(argumentsList, authAbortController.signal);
+      await runAuthCli(argumentsList, commandAbortController.signal);
       return;
     }
     if (isMarketplaceInvocation(argumentsList)) {
-      await runMarketplaceCli(argumentsList);
+      await runMarketplaceCli(argumentsList, commandAbortController.signal);
       return;
     }
     command = parseCollectorCommand(argumentsList);

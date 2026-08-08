@@ -1,3 +1,14 @@
+import { createHash } from "node:crypto"
+
+import {
+  ArchiveContractError,
+  assertDatasetArchivePlan,
+  datasetArchivePolicy,
+  datasetManifestPath,
+  datasetManifestSchema,
+} from "./archive-contract"
+import { crc32 } from "./zip-crc32"
+
 const localHeaderSignature = 0x04034b50
 const centralHeaderSignature = 0x02014b50
 const endOfCentralDirectorySignature = 0x06054b50
@@ -22,26 +33,6 @@ export class StoredZipError extends Error {
     super(reason)
     this.name = "StoredZipError"
   }
-}
-
-const crc32Table: Uint32Array = (() => {
-  const table = new Uint32Array(256)
-  for (let index = 0; index < table.length; index += 1) {
-    let value = index
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = (value & 1) === 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1
-    }
-    table[index] = value >>> 0
-  }
-  return table
-})()
-
-const crc32 = (data: Buffer): number => {
-  let crc = 0xffffffff
-  for (const byte of data) {
-    crc = (crc >>> 8) ^ (crc32Table[(crc ^ byte) & 0xff] ?? 0)
-  }
-  return (crc ^ 0xffffffff) >>> 0
 }
 
 const validateName = (name: string): Buffer => {
@@ -129,10 +120,10 @@ const parseManifest = (data: Buffer) => {
   return parsed.data
 }
 
-const estimateZipBytes = (entries: readonly StoredZipEntry[]): number =>
+export const estimateZipBytes = (entries: readonly Readonly<{ byteCount: number; name: string }>[]): number =>
   entries.reduce((total, entry) => {
     const nameBytes = Buffer.byteLength(entry.name, "utf8")
-    return total + 30 + nameBytes + entry.data.length + 46 + nameBytes
+    return total + 30 + nameBytes + entry.byteCount + 46 + nameBytes
   }, endOfCentralDirectoryBytes)
 
 export const writeDatasetZip = (entries: readonly StoredZipEntry[]): Buffer => {
@@ -166,7 +157,7 @@ export const writeDatasetZip = (entries: readonly StoredZipEntry[]): Buffer => {
   try {
     assertDatasetArchivePlan({
       manifestByteCount: manifestEntry.data.length,
-      archiveByteCount: estimateZipBytes(orderedEntries),
+      archiveByteCount: estimateZipBytes(orderedEntries.map((entry) => ({ byteCount: entry.data.length, name: entry.name }))),
       entries: orderedTraces.map((entry) => ({ name: entry.name, byteCount: entry.data.length })),
     })
   } catch (error) {
@@ -175,12 +166,3 @@ export const writeDatasetZip = (entries: readonly StoredZipEntry[]): Buffer => {
   }
   return writeStoredZip(orderedEntries)
 }
-import { createHash } from "node:crypto"
-
-import {
-  ArchiveContractError,
-  assertDatasetArchivePlan,
-  datasetArchivePolicy,
-  datasetManifestPath,
-  datasetManifestSchema,
-} from "./archive-contract"

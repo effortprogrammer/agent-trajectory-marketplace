@@ -1,13 +1,20 @@
 import { createInterface } from "node:readline";
 
-import { readStoredAuthSession, storedAuthSessionStatus } from "../auth/store";
 import { normalizeAuthServerUrl } from "../auth/server-url";
+import { MarketplaceCliError, resolveMarketplaceCredential } from "./marketplace-credentials";
+import { printMarketplaceHelp } from "./marketplace-help";
 import { parseMarketplaceCommand } from "./marketplace-command";
 import { datasetArchivePolicy } from "../marketplace/archive-contract";
 import { writeCandidateBundle } from "../marketplace/bundle-service";
 import { MarketplaceError } from "../marketplace/error";
 import { readPublishBundle } from "../marketplace/publish-bundle";
-import { createPublishClient } from "../marketplace/publish-client";
+import { createPublishClient, validPublishCredential } from "../marketplace/publish-client";
+import {
+  approvedMembership,
+  selectionPreviewJson,
+  writeBundleFromSelection,
+} from "../marketplace/selection-upload";
+import { createWalletBalanceClient } from "../marketplace/wallet-balance-client";
 import { runFrozenReview } from "../marketplace/review-loop";
 import type { ReviewIO } from "../marketplace/review-loop";
 import {
@@ -19,14 +26,6 @@ import {
 import { readExplicitTraces, resolveTraceSelector, scanSessionSnapshot } from "../marketplace/session-snapshot";
 import type { FrozenTrace, SessionReport, SessionWorkItem, ValidatedTrace } from "../marketplace/session-contract";
 import { harnessTraceDocumentSchema } from "../trajectory/adapters/contract";
-
-class MarketplaceCliError extends Error {
-  readonly name = "MarketplaceCliError";
-
-  constructor(readonly code: "invalid_command" | "missing_publish_credential") {
-    super(code);
-  }
-}
 
 type CompactSessionReport = Readonly<{
   readonly selector: SessionReport["selector"];
@@ -57,25 +56,6 @@ const parseFrozenTrace = (frozenTrace: FrozenTrace): ValidatedTrace => {
   const document = harnessTraceDocumentSchema.safeParse(value);
   if (!document.success) throw new MarketplaceError("invalid_trace");
   return { frozenTrace, document: document.data };
-};
-
-const validCredential = (value: string | undefined): value is string =>
-  value !== undefined && value.length > 0 && value.trim() === value && !/[\u0000-\u0020\u007f]/u.test(value);
-
-const resolvePublishCredential = (server: string, apiKey: string | undefined): string => {
-  if (apiKey !== undefined) {
-    if (!validCredential(apiKey)) throw new MarketplaceCliError("missing_publish_credential");
-    return apiKey;
-  }
-  const environmentCredential = process.env["TRAJECTORY_REGISTRY_API_KEY"];
-  if (validCredential(environmentCredential)) return environmentCredential;
-  try {
-    const session = readStoredAuthSession(server);
-    if (session !== undefined && storedAuthSessionStatus(session) === "active") return session.accessToken;
-  } catch {
-    throw new MarketplaceCliError("missing_publish_credential");
-  }
-  throw new MarketplaceCliError("missing_publish_credential");
 };
 
 const compactReport = (report: SessionReport): CompactSessionReport => {
@@ -116,7 +96,13 @@ export const isMarketplaceInvocation = (argumentsList: readonly string[]): boole
   return argumentsList[offset] === "marketplace";
 };
 
-export const runMarketplaceCli = async (argumentsList: readonly string[]): Promise<void> => {
+export const runMarketplaceCli = async (
+  argumentsList: readonly string[],
+  signal: AbortSignal,
+): Promise<void> => {
+  const executableOffset = argumentsList[0] === "trajectory" ? 1 : 0;
+  const marketplaceArguments = argumentsList.slice(executableOffset);
+  if (printMarketplaceHelp(marketplaceArguments)) return;
   const command = parseMarketplaceCommand(argumentsList);
   switch (command.command) {
     case "sessions-list": {
@@ -133,6 +119,14 @@ export const runMarketplaceCli = async (argumentsList: readonly string[]): Promi
       return;
     }
     case "candidate-bundle": {
+      if (command.mode === "preview") {
+        process.stdout.write(selectionPreviewJson(command.root));
+        return;
+      }
+      if (command.mode === "selection") {
+        console.log(JSON.stringify(writeBundleFromSelection(command.root, command.selection, command.out)));
+        return;
+      }
       if (command.mode === "explicit") {
         const snapshot = readExplicitTraces(command.root, command.traces);
         console.log(JSON.stringify(writeCandidateBundle(snapshot, snapshot.traces, command.out)));
@@ -170,8 +164,8 @@ export const runMarketplaceCli = async (argumentsList: readonly string[]): Promi
           ]);
         },
       };
-      process.once("SIGINT", cancel);
-      process.once("SIGTERM", cancel);
+      signal.addEventListener("abort", cancel, { once: true });
+      if (signal.aborted) cancel();
       try {
         const outcome = await runFrozenReview({
           traces: snapshot.traces,
@@ -191,21 +185,30 @@ export const runMarketplaceCli = async (argumentsList: readonly string[]): Promi
         console.log(JSON.stringify({ status: outcome.kind }));
         return;
       } finally {
-        process.removeListener("SIGINT", cancel);
-        process.removeListener("SIGTERM", cancel);
+        signal.removeEventListener("abort", cancel);
         lineReader.close();
       }
     }
     case "candidate-publish": {
       const server = normalizeAuthServerUrl(command.server);
       const bundle = readPublishBundle(command.bundle);
-      const credential = resolvePublishCredential(server, command.apiKey);
+      const membership = command.selection === undefined
+        ? undefined
+        : approvedMembership(bundle, command.selection);
+      const credential = resolveMarketplaceCredential(server, command.apiKey, "missing_publish_credential");
       const receipt = await createPublishClient(server).publish({
-        archive: bundle.archive,
-        candidate: bundle.candidate,
+        bundle,
         credential,
+        signal,
       });
-      console.log(JSON.stringify(receipt));
+      console.log(JSON.stringify(membership === undefined ? receipt : { ...receipt, membership }));
+      return;
+    }
+    case "wallet-balance": {
+      const server = normalizeAuthServerUrl(command.server);
+      const credential = resolveMarketplaceCredential(server, command.apiKey, "missing_wallet_credential");
+      const response = await createWalletBalanceClient(server).read({ credential, signal });
+      console.log(JSON.stringify(response));
       return;
     }
     case "invalid_bundle_request":

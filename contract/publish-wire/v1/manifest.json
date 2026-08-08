@@ -3,19 +3,19 @@
   "fixtures": [
     {
       "file": "candidate-valid.frame",
-      "sha256": "7df9225dd66f7015ab92cf6733f8114e111bc59a77e6763a77749c24aea4bfc0",
+      "sha256": "4a0e211154751b43eed38edec326f23ca223583d468b2a589d1f24193cf34363",
       "verdict": "accept",
       "code": "accepted"
     },
     {
       "file": "candidate-mutated-length.frame",
-      "sha256": "4e631b133b11730cbf1c1a8e237c9521676b5c653815ac98079d222bac58f7e0",
+      "sha256": "7f9385e5031091da650e8f2cf10aa1607106b318820f1ea706ea5c28b73036a5",
       "verdict": "reject",
       "code": "invalid_candidate"
     },
     {
       "file": "candidate-mutated-zip.frame",
-      "sha256": "27bded084a2c16daf1924951a6c6eeaabaa8dc918d94cb430b6d705cb06b4e20",
+      "sha256": "f0cc065e9a86a5c02f452959a32d7bea4bc0a95a4e887ef8dfdc4e823c739d90",
       "verdict": "reject",
       "code": "invalid_candidate"
     },

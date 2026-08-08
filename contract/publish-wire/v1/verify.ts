@@ -1,11 +1,38 @@
 import { createHash } from "node:crypto"
-import { dirname, resolve } from "node:path"
-import { pathToFileURL } from "node:url"
+import { lstatSync, readdirSync } from "node:fs"
+import { dirname, join, resolve } from "node:path"
 
 import { z } from "zod"
 
-import { PublishWireContractError, parsePublishResponse } from "../../../src/marketplace/publish-contract"
+import { FixtureReadError, readFixtureFile } from "../../../src/marketplace/fixture-reader"
+import {
+  PublishWireContractError,
+  parsePublishResponse,
+} from "../../../src/marketplace/publish-contract"
 import { parsePublishFrame } from "../../../src/marketplace/publish-frame"
+import { parseAdmissionJson } from "../../../src/marketplace/json-preflight"
+
+const expectedFixtureFiles = [
+  "candidate-valid.frame",
+  "candidate-mutated-length.frame",
+  "candidate-mutated-zip.frame",
+  "receipt-202.json",
+  "status-200.json",
+  "error-400.json",
+  "error-401.json",
+  "error-404.json",
+  "error-409.json",
+  "error-413.json",
+  "error-429.json",
+  "error-503.json",
+  "receipt-unknown-field-202.json",
+] as const
+const expectedDirectoryFiles = [
+  ...expectedFixtureFiles,
+  "generate.ts",
+  "manifest.json",
+  "verify.ts",
+].sort()
 
 const fixtureSchema = z
   .object({
@@ -15,7 +42,12 @@ const fixtureSchema = z
     code: z.string().regex(/^[a-z_]+$/),
   })
   .strict()
-const manifestSchema = z.object({ schemaVersion: z.literal(1), fixtures: z.array(fixtureSchema).min(1) }).strict()
+const manifestSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    fixtures: z.array(fixtureSchema).length(expectedFixtureFiles.length),
+  })
+  .strict()
 
 type Fixture = z.infer<typeof fixtureSchema>
 
@@ -42,10 +74,15 @@ const responseStatus = (file: string): number => {
 
 const responseCode = (response: ReturnType<typeof parsePublishResponse>): string => "code" in response ? response.code : response.status
 
+const verifyFrame = (bytes: Uint8Array): string => {
+  parsePublishFrame(bytes)
+  return "accepted"
+}
+
 const verifyFixture = (fixture: Fixture, bytes: Uint8Array): void => {
   try {
     const code = fixture.file.endsWith(".frame")
-      ? (parsePublishFrame(bytes), "accepted")
+      ? verifyFrame(bytes)
       : responseCode(parsePublishResponse(responseStatus(fixture.file), bytes))
     if (fixture.verdict !== "accept" || code !== fixture.code) {
       throw new FixtureVerificationError(fixture.file, `expected ${fixture.verdict}/${fixture.code}, received accept/${code}`)
@@ -58,15 +95,51 @@ const verifyFixture = (fixture: Fixture, bytes: Uint8Array): void => {
   }
 }
 
+const regularFile = (path: string): boolean => {
+  try {
+    const stat = lstatSync(path)
+    return stat.isFile() && !stat.isSymbolicLink()
+  } catch {
+    return false
+  }
+}
+
+const manifestByteCap = 64 * 1024
+const fixtureByteCap = 16 * 1024 * 1024
+
+const readBounded = (path: string, maximumBytes: number): Buffer => {
+  try {
+    return readFixtureFile(path, maximumBytes)
+  } catch (error) {
+    if (error instanceof FixtureReadError) throw new FixtureVerificationError(path, error.reason)
+    throw error
+  }
+}
+
 const manifestPath = argumentValue("--manifest")
-const manifestFile = Bun.file(manifestPath)
-const rawManifest = await manifestFile.json()
-const parsedManifest = manifestSchema.safeParse(rawManifest)
+const manifestInput = parseAdmissionJson(readBounded(manifestPath, manifestByteCap))
+if (manifestInput === undefined) throw new FixtureVerificationError(manifestPath, "invalid manifest")
+const parsedManifest = manifestSchema.safeParse(manifestInput)
 if (!parsedManifest.success) throw new FixtureVerificationError(manifestPath, "invalid manifest")
-const root = pathToFileURL(`${dirname(resolve(manifestPath))}/`)
+if (parsedManifest.data.fixtures.some((fixture, index) => fixture.file !== expectedFixtureFiles[index])) {
+  throw new FixtureVerificationError(manifestPath, "fixture set mismatch")
+}
+const fixtureRoot = dirname(resolve(manifestPath))
+const rootStat = lstatSync(fixtureRoot)
+if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+  throw new FixtureVerificationError(manifestPath, "fixture root is not a regular directory")
+}
+const actualDirectoryFiles = readdirSync(fixtureRoot).sort()
+if (
+  actualDirectoryFiles.length !== expectedDirectoryFiles.length ||
+  actualDirectoryFiles.some((file, index) => file !== expectedDirectoryFiles[index]) ||
+  actualDirectoryFiles.some((file) => !regularFile(join(fixtureRoot, file)))
+) {
+  throw new FixtureVerificationError(manifestPath, "fixture set mismatch")
+}
 
 for (const fixture of parsedManifest.data.fixtures) {
-  const bytes = Buffer.from(await Bun.file(new URL(fixture.file, root)).arrayBuffer())
+  const bytes = readBounded(join(fixtureRoot, fixture.file), fixtureByteCap)
   const digest = createHash("sha256").update(bytes).digest("hex")
   if (digest !== fixture.sha256) throw new FixtureVerificationError(fixture.file, "sha256 mismatch")
   verifyFixture(fixture, bytes)

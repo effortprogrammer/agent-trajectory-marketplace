@@ -1,10 +1,14 @@
 import { createHash } from "node:crypto"
+import { resolve } from "node:path"
+import { pathToFileURL } from "node:url"
 
+import { encodeDatasetManifest } from "../../../src/marketplace/archive-contract"
 import {
   createCandidateFromExactBytes,
   encodePublishResponse,
 } from "../../../src/marketplace/publish-contract"
 import { encodePublishFrame } from "../../../src/marketplace/publish-frame"
+import { writeDatasetZip } from "../../../src/marketplace/stored-zip"
 
 type Fixture = Readonly<{
   file: string
@@ -13,15 +17,37 @@ type Fixture = Readonly<{
   bytes: Uint8Array
 }>
 
+class FixtureGenerationError extends Error {
+  public constructor(public readonly file: string) {
+    super(`${file}: fixture generation mismatch`)
+    this.name = "FixtureGenerationError"
+  }
+}
+
 const root = new URL("./", import.meta.url)
-const archive = Buffer.from("PK\u0003\u0004publish-wire-v1-dataset", "utf8")
-const manifest = Buffer.from('{"formatVersion":1,"artifacts":[]}', "utf8")
+const trace = Buffer.from('{"runtime":"codex","status":"collected","eventCount":0,"events":[]}', "utf8")
+const label = `s-${"0".repeat(64)}`
+const path = `traces/${label}.atf.json`
+const manifest = encodeDatasetManifest({
+  artifacts: [{
+    byteCount: trace.length,
+    label,
+    path,
+    sha256: createHash("sha256").update(trace).digest("hex"),
+  }],
+  formatVersion: 1,
+})
+const archive = writeDatasetZip([
+  { data: manifest, name: "dataset-manifest.json" },
+  { data: trace, name: path },
+])
 const candidate = createCandidateFromExactBytes({ archive, manifest, artifactCount: 1 })
 const frame = encodePublishFrame(candidate, archive)
 const malformedLength = Buffer.from(frame)
 malformedLength.writeUInt32BE(frame.readUInt32BE(0) + 1, 0)
 const mutatedZip = Buffer.from(frame)
-mutatedZip[mutatedZip.byteLength - 1] ^= 1
+const archiveOffset = 4 + frame.readUInt32BE(0)
+mutatedZip[archiveOffset + 30] ^= 1
 const submissionId = "sub_0123456789abcdefghjkmnpqrs"
 const statusUrl = `/v1/marketplace/seller/candidates/${submissionId}`
 
@@ -94,8 +120,6 @@ const fixtures: readonly Fixture[] = [
   },
 ]
 
-for (const fixture of fixtures) await Bun.write(new URL(fixture.file, root), fixture.bytes)
-
 const manifestDocument = {
   schemaVersion: 1,
   fixtures: fixtures.map((fixture) => ({
@@ -105,4 +129,25 @@ const manifestDocument = {
     code: fixture.code,
   })),
 }
-await Bun.write(new URL("manifest.json", root), `${JSON.stringify(manifestDocument, null, 2)}\n`)
+const generatedFiles = [
+  ...fixtures.map((fixture) => ({ file: fixture.file, bytes: fixture.bytes })),
+  {
+    file: "manifest.json",
+    bytes: Buffer.from(`${JSON.stringify(manifestDocument, null, 2)}\n`, "utf8"),
+  },
+] as const
+const checkIndex = Bun.argv.indexOf("--check")
+const checkRoot = checkIndex === -1 ? undefined : Bun.argv[checkIndex + 1]
+if (checkIndex !== -1 && checkRoot === undefined) throw new FixtureGenerationError("arguments")
+
+if (checkRoot === undefined) {
+  for (const generated of generatedFiles) await Bun.write(new URL(generated.file, root), generated.bytes)
+} else {
+  const destination = pathToFileURL(`${resolve(checkRoot)}/`)
+  for (const generated of generatedFiles) {
+    const file = Bun.file(new URL(generated.file, destination))
+    if (!await file.exists()) throw new FixtureGenerationError(generated.file)
+    const current = Buffer.from(await file.arrayBuffer())
+    if (!current.equals(generated.bytes)) throw new FixtureGenerationError(generated.file)
+  }
+}

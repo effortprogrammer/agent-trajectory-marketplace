@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -30,7 +30,7 @@ const bundle = (root: string): string => {
   return output
 }
 
-const runCli = async (argumentsList: readonly string[], environment: Readonly<Record<string, string>>): Promise<Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>> => {
+const runCli = async (argumentsList: readonly string[], environment: Readonly<Record<string, string | undefined>>): Promise<Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>> => {
   const child = Bun.spawn([process.execPath, "dist/collector.js", ...argumentsList], {
     cwd: process.cwd(),
     env: environment,
@@ -51,6 +51,28 @@ afterEach(() => {
 })
 
 describe("marketplace candidate publish process boundary", () => {
+  test("prints nested publish help before resolving inputs or credentials", async () => {
+    // Given: unavailable local inputs, an empty configuration root, and a credential sentinel.
+    const root = fixtureRoot()
+    const environment = {
+      ...process.env,
+      TRAJECTORY_MARKETPLACE_CONFIG_HOME: root,
+      TRAJECTORY_REGISTRY_API_KEY: "environment-sentinel",
+    }
+
+    // When: the built CLI receives only the nested publish help spelling.
+    const result = await runCli(["marketplace", "seller", "candidate", "publish", "--help"], environment)
+
+    // Then: help succeeds without creating state or exposing credentials.
+    expect({ files: readdirSync(root), result: { exitCode: result.exitCode, stderr: result.stderr } }).toEqual({
+      files: [],
+      result: { exitCode: 0, stderr: "" },
+    })
+    expect(result.stdout).toContain("trajectory marketplace seller candidate publish")
+    for (const option of ["--bundle", "--server", "--api-key"]) expect(result.stdout).toContain(option)
+    expect(`${result.stdout}${result.stderr}`).not.toContain("environment-sentinel")
+  })
+
   test("invalid bundle and missing credential make zero HTTP requests", async () => {
     // Given: a live loopback server and local inputs that must fail before transport.
     const root = fixtureRoot()
@@ -91,6 +113,46 @@ describe("marketplace candidate publish process boundary", () => {
     server.stop(true)
 
     // Then: explicit invalid input fails locally instead of selecting either fallback credential.
+    expect({ hits, result }).toEqual({
+      hits: 0,
+      result: { exitCode: 1, stderr: '{"error":"missing_publish_credential"}\n', stdout: "" },
+    })
+  })
+
+  test("invalid stored credential rejects before transport", async () => {
+    // Given: a valid bundle and active server-bound session whose token contains a control character.
+    const root = fixtureRoot()
+    let hits = 0
+    const server = Bun.serve({
+      fetch: () => {
+        hits += 1
+        return new Response(null, { status: 500 })
+      },
+      hostname: "127.0.0.1",
+      port: 0,
+    })
+    writeStoredAuthSession({
+      accessToken: "stored\nsentinel",
+      accountId: "acct-0123456789abcdef",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      server: `http://127.0.0.1:${server.port}`,
+      tokenType: "Bearer",
+    }, { storePath: join(root, "agent-trajectory-marketplace", "auth.json") })
+
+    // When: publish resolves that session after the flag and environment sources are omitted.
+    const environment: Record<string, string | undefined> = {
+      ...process.env,
+      TRAJECTORY_MARKETPLACE_CONFIG_HOME: root,
+    }
+    delete environment["TRAJECTORY_REGISTRY_API_KEY"]
+    const result = await runCli([
+      "marketplace", "seller", "candidate", "publish",
+      "--bundle", bundle(root),
+      "--server", `http://127.0.0.1:${server.port}`,
+    ], environment)
+    server.stop(true)
+
+    // Then: the invalid stored value is rejected with the stable local credential error and zero requests.
     expect({ hits, result }).toEqual({
       hits: 0,
       result: { exitCode: 1, stderr: '{"error":"missing_publish_credential"}\n', stdout: "" },

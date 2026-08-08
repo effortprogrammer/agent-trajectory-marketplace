@@ -169,14 +169,13 @@ export type PublishCandidateDerivation = Readonly<{
 }>
 
 export const createCandidateFromExactBytes = (input: PublishCandidateDerivation): PublishCandidate => {
-  const archive = Buffer.from(input.archive)
-  const manifest = Buffer.from(input.manifest)
+  const archiveSha256 = createHash("sha256").update(input.archive).digest("hex")
   return toCandidate({
     protocolVersion: 1,
-    bundleId: `bundle-${createHash("sha256").update(archive).digest("hex")}`,
-    archiveSha256: createHash("sha256").update(archive).digest("hex"),
-    archiveByteCount: archive.byteLength,
-    manifestSha256: createHash("sha256").update(manifest).digest("hex"),
+    bundleId: `bundle-${archiveSha256}`,
+    archiveSha256,
+    archiveByteCount: input.archive.byteLength,
+    manifestSha256: createHash("sha256").update(input.manifest).digest("hex"),
     artifactCount: input.artifactCount,
   })
 }
@@ -266,9 +265,8 @@ export const parsePublishResponse = (httpStatus: number, bytes: Uint8Array): Pub
 }
 
 export const assertArchiveMatchesCandidate = (candidate: PublishCandidate, archive: Uint8Array): void => {
-  const bytes = Buffer.from(archive)
-  if (bytes.byteLength !== candidate.archiveByteCount) throw new PublishWireContractError("invalid_candidate")
-  if (createHash("sha256").update(bytes).digest("hex") !== candidate.archiveSha256) {
+  if (archive.byteLength !== candidate.archiveByteCount) throw new PublishWireContractError("invalid_candidate")
+  if (createHash("sha256").update(archive).digest("hex") !== candidate.archiveSha256) {
     throw new PublishWireContractError("invalid_candidate")
   }
 }
