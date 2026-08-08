@@ -41,3 +41,7 @@ next-env.d.ts
 
 # Local temp files
 temp/
+
+# Documentation stays local; never push docs or markdown.
+docs/
+*.md
