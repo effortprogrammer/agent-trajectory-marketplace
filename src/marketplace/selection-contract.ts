@@ -7,9 +7,10 @@ import { sanitizedArtifactDigest } from "./dataset-archive"
 import { MarketplaceError } from "./error"
 import { FixtureReadError, readFixtureFile } from "./fixture-reader"
 import { parseAdmissionJson } from "./json-preflight"
-import { fullSelectorSchema, traceHashSchema } from "./session-contract"
-import type { FrozenTrace } from "./session-contract"
-import { boundedRedactedString } from "../trajectory/adapters/contract"
+import { fullSelectorSchema, sessionSummarySchema, traceHashSchema } from "./session-contract"
+import type { FrozenTrace, SessionSummary } from "./session-contract"
+import { buildSessionListItem } from "./session-report"
+import { boundedRedactedString, harnessTraceDocumentSchema } from "../trajectory/adapters/contract"
 
 const maximumSelectionBytes = 1024 * 1024
 
@@ -23,6 +24,7 @@ const selectionTraceSchema = z
     runtime: z.string().min(1),
     selector: fullSelectorSchema,
     sha256: traceHashSchema,
+    summary: sessionSummarySchema,
   })
   .strict()
 
@@ -52,6 +54,7 @@ export type SelectionTrace = Readonly<{
   runtime: string
   selector: FrozenTrace["selector"]
   sha256: FrozenTrace["hash"]
+  summary: SessionSummary
 }>
 
 export type SelectionDocument = Readonly<{
@@ -72,6 +75,12 @@ const invalid = (): never => {
 const sortedTraces = (traces: readonly SelectionTrace[]): readonly SelectionTrace[] =>
   [...traces].sort((left, right) => (left.selector < right.selector ? -1 : left.selector > right.selector ? 1 : 0))
 
+const summaryForTrace = (trace: FrozenTrace): SessionSummary => {
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(trace.bytes)
+  const document = harnessTraceDocumentSchema.parse(JSON.parse(text))
+  return buildSessionListItem({ frozenTrace: trace, document }).summary
+}
+
 export const selectionDocumentFromTraces = (root: string, traces: readonly FrozenTrace[]): SelectionDocument =>
   Object.freeze({
     root,
@@ -87,6 +96,7 @@ export const selectionDocumentFromTraces = (root: string, traces: readonly Froze
         runtime: boundedRedactedString(trace.runtime).text,
         selector: trace.selector,
         sha256: trace.hash,
+        summary: summaryForTrace(trace),
       })
     }))),
   })

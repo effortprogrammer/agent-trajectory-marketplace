@@ -143,6 +143,35 @@ describe("bounded session reports", () => {
     expect(listed.firstExcerpt).toBe("TYPE B implementation research summary");
   });
 
+  test("summarizes the whole work arc as asks touched errors and masking counts", () => {
+    // Given: a trace mixing several user requests, tool calls touching files and commands, and a failing result.
+    const trace = validated([
+      attested({ kind: "function_enter", name: "turn-0", payload: { role: "user", content: "add login page" } }, 0),
+      attested({ kind: "tool_call", name: "edit", payload: { input: { file: "login.tsx" } } }, 1),
+      attested({ kind: "tool_call", name: "terminal", payload: { input: { command: "bun test" } } }, 2),
+      attested({ kind: "tool_call", name: "edit", payload: { input: { file: "auth.ts" } } }, 3),
+      attested({ kind: "function_enter", name: "turn-1", payload: { role: "user", content: "fix the failing test" } }, 4),
+      attested({ kind: "tool_call", name: "terminal", payload: { input: { command: "bun test auth" } } }, 5),
+      attested({ kind: "tool_result", name: "terminal", payload: { output: "exit 1", isError: true } }, 6),
+      attested({ kind: "function_enter", name: "turn-2", payload: { role: "user", content: "ship it" } }, 7),
+      attested({ kind: "function_enter", name: "turn-3", payload: { role: "user", content: "fourth request past the cap" } }, 8),
+    ]);
+
+    // When: the list item is built from the validated trace.
+    const listed = buildSessionListItem(trace);
+
+    // Then: the summary exposes real asks, the touched files/commands, the failure, and zero masking
+    // — all extracted from stored evidence with no generated topic.
+    expect(listed.summary.requests).toEqual(["add login page", "fix the failing test", "ship it", "fourth request past the cap"]);
+    expect(listed.firstRequestExcerpt).toBe("add login page");
+    expect(listed.summary.touched).toHaveLength(4);
+    expect(listed.summary.touched.some((text) => text.includes("login.tsx"))).toBe(true);
+    expect(listed.summary.touched.some((text) => text.includes("auth.ts"))).toBe(true);
+    expect(listed.summary.touched.some((text) => text.includes("bun test auth"))).toBe(true);
+    expect(listed.summary.errors).toEqual([{ eventIndex: 6, text: "terminal exit 1" }]);
+    expect(listed.summary.counts).toEqual({ requests: 4, actions: 4, results: 0, errors: 1, redacted: 0, truncated: 0 });
+  });
+
   test("reports stored redaction truncation unknown events and terminal sanitization without raw controls", () => {
     // Given: representative runtime payloads containing collection markers and hostile terminal controls.
     const trace = validated([
@@ -257,6 +286,12 @@ describe("bounded session reports", () => {
         eventCount: 7,
         byteCount: 512,
         firstRequestExcerpt: "현재 디렉토리의 파일 목록 알려줘",
+        summary: {
+          requests: ["현재 디렉토리의 파일 목록 알려줘"],
+          touched: [],
+          errors: [],
+          counts: { requests: 1, actions: 0, results: 0, errors: 0, redacted: 0, truncated: 0 },
+        },
         markers: [{ kind: "sanitized", eventIndex: 1 }],
       },
       {
@@ -266,6 +301,12 @@ describe("bounded session reports", () => {
         eventCount: 0,
         byteCount: 0,
         firstRequestExcerpt: "[redacted] \u001b[31m",
+        summary: {
+          requests: ["[redacted] \u001b[31m"],
+          touched: [],
+          errors: [],
+          counts: { requests: 1, actions: 0, results: 0, errors: 0, redacted: 1, truncated: 0 },
+        },
         markers: [{ kind: "redacted", eventIndex: 0 }, { kind: "sanitized", eventIndex: 0 }],
       },
     ] satisfies SessionList;
@@ -281,6 +322,10 @@ describe("bounded session reports", () => {
       "events: 7",
       "bytes: 512",
       "excerpt: 현재 디렉토리의 파일 목록 알려줘",
+      "asks: 현재 디렉토리의 파일 목록 알려줘",
+      "touched: none",
+      "errors: none",
+      "masking: 0 redacted · 0 truncated",
       "markers: sanitized@1",
       "",
       `selector: ${secondSelector}`,
@@ -289,6 +334,10 @@ describe("bounded session reports", () => {
       "events: 0",
       "bytes: 0",
       "excerpt: [redacted] [control:U+001B][31m",
+      "asks: [redacted] [control:U+001B][31m",
+      "touched: none",
+      "errors: none",
+      "masking: 1 redacted · 0 truncated",
       "markers: redacted@0, sanitized@0",
     ]);
     expect(human).not.toContain(" | ");
