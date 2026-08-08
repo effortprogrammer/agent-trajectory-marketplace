@@ -57,6 +57,9 @@ describe("selection document contract", () => {
     expect(first.runtime.length).toBeGreaterThan(0)
     expect(first.eventCount).toBe(1)
     expect(first.artifactSha256).toMatch(/^[a-f0-9]{64}$/)
+    const summaryRequests = parsed.traces.flatMap((trace) => trace.summary.requests).sort()
+    expect(summaryRequests).toEqual(["first", "second"])
+    expect(parsed.traces.every((trace) => trace.summary.counts.requests === 1)).toBe(true)
     expect(encoded.toString("utf8").endsWith("\n")).toBe(true)
   })
 

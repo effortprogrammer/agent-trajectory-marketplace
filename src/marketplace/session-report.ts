@@ -19,6 +19,7 @@ import type {
   SessionWorkItem,
   ValidatedTrace,
 } from "./session-contract";
+import { buildSessionSummary, renderSummaryBlock } from "./session-summary";
 
 const maximumEvidenceItems = 200;
 const knownEventKinds = new Set([
@@ -113,17 +114,43 @@ const earliestTimestamp = (events: readonly HarnessTraceEvent[]): string | "unkn
 const reportEvents = (trace: ValidatedTrace): readonly HarnessTraceEvent[] =>
   trace.document.events.map(sanitizedEvent);
 
+type CategorizedItems = Readonly<{
+  readonly requests: readonly SessionWorkItem[];
+  readonly actions: readonly SessionWorkItem[];
+  readonly results: readonly SessionWorkItem[];
+  readonly errors: readonly SessionWorkItem[];
+}>;
+
+const categorizeItems = (items: readonly (SessionWorkItem | undefined)[]): CategorizedItems => {
+  const requests: SessionWorkItem[] = [];
+  const actions: SessionWorkItem[] = [];
+  const results: SessionWorkItem[] = [];
+  const errors: SessionWorkItem[] = [];
+  for (const item of items) {
+    if (item === undefined) continue;
+    switch (item.kind) {
+      case "request": requests.push(item); break;
+      case "action": actions.push(item); break;
+      case "result": results.push(item); break;
+      case "error": errors.push(item); break;
+    }
+  }
+  return { requests, actions, results, errors };
+};
+
 export const buildSessionListItem = (trace: ValidatedTrace): SessionListItem => {
   const events = reportEvents(trace);
   const runtime = safeText(trace.document.runtime);
   const candidates = events.map(itemForEvent);
-  const firstRequest = candidates.find((item) => item?.kind === "request");
-  const firstExcerpt = firstRequest ?? candidates.find((item) => item?.kind === "result");
+  const categorized = categorizeItems(candidates);
+  const firstRequest = categorized.requests[0];
+  const firstExcerpt = firstRequest ?? categorized.results[0];
   const markers = events.flatMap((event, index) => {
     const item = candidates[index];
     return item === undefined ? eventMarkers(event, index, []) : item.markers;
   });
   if (runtime.sanitized) markers.push({ kind: "sanitized" });
+  const dedupedMarkers = dedupeMarkers(markers);
   return {
     selector: trace.frozenTrace.selector,
     runtime: runtime.text,
@@ -132,7 +159,8 @@ export const buildSessionListItem = (trace: ValidatedTrace): SessionListItem => 
     byteCount: trace.frozenTrace.byteCount,
     ...(firstExcerpt === undefined ? {} : { firstExcerpt: firstExcerpt.text }),
     ...(firstRequest === undefined ? {} : { firstRequestExcerpt: firstRequest.text }),
-    markers: dedupeMarkers(markers),
+    summary: buildSessionSummary({ ...categorized, markers: dedupedMarkers }),
+    markers: dedupedMarkers,
   };
 };
 
@@ -178,6 +206,7 @@ export const renderSessionList = (items: SessionList): string => items.map((item
     `events: ${item.eventCount}`,
     `bytes: ${item.byteCount}`,
     `excerpt: ${excerpt === undefined ? "unknown" : safeText(excerpt).text}`,
+    ...renderSummaryBlock(item.summary),
     `markers: ${item.markers.map(markerText).join(", ")}`,
   ].join("\n");
 }).join("\n\n");
