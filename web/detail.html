@@ -192,7 +192,7 @@
   </div>
 </footer>
 
-<script>
+<script type="module">
 const DATA = {
   "monorepo-payments": {
     runtime: "claude-code", model: "claude-opus-4.5", events: 412, tokens: "1.2M", errors: 7, price: 240, usd: "$24.00",
@@ -324,9 +324,55 @@ const DATA = {
   },
 };
 
+const REGISTRY = new URLSearchParams(location.search).get("registry")
+  || localStorage.getItem("atm-registry")
+  || "http://localhost:8100";
+
+const escapeHtml = (text) => text
+  .replaceAll("&", "&amp;")
+  .replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;");
+const fmtTokens = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "K" : String(n);
+const fmtBytes = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : (n / 1024).toFixed(1) + " KB";
+const fmtDuration = (seconds) => {
+  if (seconds == null) return "—";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+};
+
+async function fetchLiveEntry(id) {
+  if (!id) return null;
+  try {
+    const response = await fetch(`${REGISTRY}/v1/marketplace/datasets/${encodeURIComponent(id)}`);
+    if (!response.ok) return null;
+    const d = await response.json();
+    return {
+      key: d.id,
+      entry: {
+        runtime: d.runtime,
+        model: d.model ?? "unknown model",
+        events: d.events,
+        tokens: fmtTokens(d.tokens),
+        errors: d.errorsRecovered,
+        price: d.priceCredits,
+        usd: d.priceCredits == null ? "—" : "$" + (d.priceCredits / 10).toFixed(2),
+        duration: fmtDuration(d.durationSeconds),
+        size: fmtBytes(d.archiveBytes),
+        captured: d.capturedAt ? d.capturedAt.slice(0, 10) : "—",
+        requests: d.requests,
+        transcript: d.transcript.map((row) => [row.kind, escapeHtml(row.body)]),
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 const id = new URLSearchParams(location.search).get("id");
-const entry = DATA[id] ?? DATA["monorepo-payments"];
-const key = DATA[id] ? id : "monorepo-payments";
+const live = await fetchLiveEntry(id);
+const entry = live ? live.entry : (DATA[id] ?? DATA["monorepo-payments"]);
+const key = live ? live.key : (DATA[id] ? id : "monorepo-payments");
 
 document.title = `ATM — ${key} · Dataset detail`;
 document.getElementById("repo").textContent = key;

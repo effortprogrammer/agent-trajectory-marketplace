@@ -80,6 +80,7 @@
   .entry h3 { font-family: var(--grot); font-weight: 600; font-size: 22px; letter-spacing: -0.02em; }
   .entry h3 a { text-decoration: none; }
   .entry h3 a:hover { color: var(--blue); }
+  .entry h3 { overflow-wrap: anywhere; }
   .entry .model { font-family: var(--mono); font-size: 12px; color: var(--grey); margin-top: -8px; }
   .entry .model::before { content: "model "; color: var(--faint); letter-spacing: 0.1em; text-transform: uppercase; font-size: 10px; }
   .meta { display: grid; grid-template-columns: 1fr 1fr 1fr; border-top: 1px solid var(--rule); padding-top: 12px; }
@@ -354,6 +355,60 @@
     </nav>
   </div>
 </footer>
+
+<script>
+const REGISTRY = new URLSearchParams(location.search).get("registry")
+  || localStorage.getItem("atm-registry")
+  || "http://localhost:8100";
+
+const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
+const fmtCompact = (n) => n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "K" : fmtInt(n);
+
+function setMasthead(stats) {
+  const vals = document.querySelectorAll(".masthead-grid .mh");
+  vals[0].querySelector(".val").textContent = fmtInt(stats.totalSessions);
+  vals[0].querySelector(".delta").textContent = "live from registry";
+  vals[1].querySelector(".val").textContent = fmtCompact(stats.tradeableTokens);
+  vals[1].querySelector(".delta").textContent = "live from registry";
+  vals[2].querySelector(".val").textContent = stats.paidOutCredits == null ? "—" : "$" + fmtInt(stats.paidOutCredits);
+  vals[2].querySelector(".delta").textContent = "lifetime";
+  vals[3].querySelector(".val").textContent = fmtInt(stats.activeRuntimes);
+  vals[3].querySelector(".delta").textContent = "distinct runtimes";
+}
+
+function datasetCard(d) {
+  const price = d.priceCredits == null ? "—" : d.priceCredits;
+  return `<article class="entry">
+    <div class="entry-top"><span class="runtime">${d.runtime}</span><span class="redact"><svg viewBox="0 0 12 12" fill="none" stroke-width="1.8"><path d="M2 6.5 5 9.5 10 3"/></svg>${d.redacted ? "Redacted" : ""}</span></div>
+    <h3><a href="detail.html?id=${encodeURIComponent(d.id)}">${d.id}</a></h3>
+    <p class="model">${d.model ?? "unknown model"}</p>
+    <div class="meta">
+      <div><span class="k">Events</span><div class="n">${fmtInt(d.events)}</div></div>
+      <div><span class="k">Tokens</span><div class="n">${fmtCompact(d.tokens)}</div></div>
+      <div><span class="k">Err. rec.</span><div class="n">${fmtInt(d.errorsRecovered)}</div></div>
+    </div>
+    <div class="entry-foot"><span class="price">${price} <small>cr</small></span><a class="buy" href="detail.html?id=${encodeURIComponent(d.id)}">Acquire</a></div>
+  </article>`;
+}
+
+(async () => {
+  try {
+    const [statsRes, listRes] = await Promise.all([
+      fetch(`${REGISTRY}/v1/marketplace/stats`),
+      fetch(`${REGISTRY}/v1/marketplace/datasets`),
+    ]);
+    if (!statsRes.ok || !listRes.ok) return;
+    const stats = await statsRes.json();
+    const list = await listRes.json();
+    setMasthead(stats);
+    const note = document.querySelector(".sec-head .aside-note");
+    if (note) note.textContent = `${list.datasets.length} of ${fmtInt(stats.totalSessions)} listings`;
+    document.querySelector(".catalog").innerHTML = list.datasets.map(datasetCard).join("");
+  } catch {
+    // Offline or registry down: keep the bundled sample data.
+  }
+})();
+</script>
 
 </body>
 </html>
