@@ -120,10 +120,10 @@ const parseManifest = (data: Buffer) => {
   return parsed.data
 }
 
-const estimateZipBytes = (entries: readonly StoredZipEntry[]): number =>
+export const estimateZipBytes = (entries: readonly Readonly<{ byteCount: number; name: string }>[]): number =>
   entries.reduce((total, entry) => {
     const nameBytes = Buffer.byteLength(entry.name, "utf8")
-    return total + 30 + nameBytes + entry.data.length + 46 + nameBytes
+    return total + 30 + nameBytes + entry.byteCount + 46 + nameBytes
   }, endOfCentralDirectoryBytes)
 
 export const writeDatasetZip = (entries: readonly StoredZipEntry[]): Buffer => {
@@ -157,7 +157,7 @@ export const writeDatasetZip = (entries: readonly StoredZipEntry[]): Buffer => {
   try {
     assertDatasetArchivePlan({
       manifestByteCount: manifestEntry.data.length,
-      archiveByteCount: estimateZipBytes(orderedEntries),
+      archiveByteCount: estimateZipBytes(orderedEntries.map((entry) => ({ byteCount: entry.data.length, name: entry.name }))),
       entries: orderedTraces.map((entry) => ({ name: entry.name, byteCount: entry.data.length })),
     })
   } catch (error) {

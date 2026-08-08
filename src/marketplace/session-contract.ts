@@ -96,13 +96,56 @@ export type SessionMarker = Readonly<{
   readonly eventIndex?: number;
 }>;
 
+export const sessionErrorExcerptSchema = z
+  .object({
+    eventIndex: z.number().int().nonnegative(),
+    text: z.string().min(1),
+  })
+  .strict();
+
+export type SessionErrorExcerpt = Readonly<{ readonly eventIndex: number; readonly text: string }>;
+
+export const sessionSummarySchema = z
+  .object({
+    requests: z.array(z.string()).max(8),
+    touched: z.array(z.string()).max(8),
+    errors: z.array(sessionErrorExcerptSchema).max(5),
+    counts: z
+      .object({
+        requests: z.number().int().nonnegative(),
+        actions: z.number().int().nonnegative(),
+        results: z.number().int().nonnegative(),
+        errors: z.number().int().nonnegative(),
+        redacted: z.number().int().nonnegative(),
+        truncated: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type SessionSummary = Readonly<{
+  readonly requests: readonly string[];
+  readonly touched: readonly string[];
+  readonly errors: readonly SessionErrorExcerpt[];
+  readonly counts: Readonly<{
+    readonly requests: number;
+    readonly actions: number;
+    readonly results: number;
+    readonly errors: number;
+    readonly redacted: number;
+    readonly truncated: number;
+  }>;
+}>;
+
 export type SessionListItem = Readonly<{
   readonly selector: FullSelector;
   readonly runtime: string;
   readonly earliestTimestamp: string | "unknown";
   readonly eventCount: number;
   readonly byteCount: number;
+  readonly firstExcerpt?: string;
   readonly firstRequestExcerpt?: string;
+  readonly summary: SessionSummary;
   readonly markers: readonly SessionMarker[];
 }>;
 

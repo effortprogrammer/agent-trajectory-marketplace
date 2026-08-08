@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path"
 
 import { z } from "zod"
 
-import { FixtureReadError, readFixtureFile } from "../../fixture-reader"
+import { FixtureReadError, readFixtureFile } from "../../../src/marketplace/fixture-reader"
 import { parseAdmissionJson } from "../../../src/marketplace/json-preflight"
 import { parseWalletBalanceResponse } from "../../../src/marketplace/wallet-balance-contract"
 

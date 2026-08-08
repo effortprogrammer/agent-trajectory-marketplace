@@ -41,8 +41,15 @@ type BundleEntry = Readonly<{
   readonly offset: number
 }>
 declare const publishBundleBrand: unique symbol
+export type PublishArtifactDescriptor = Readonly<{
+  readonly byteCount: number
+  readonly label: string
+  readonly path: string
+  readonly sha256: string
+}>
 export type PublishBundle = Readonly<{
   readonly archive: Buffer
+  readonly artifacts: readonly PublishArtifactDescriptor[]
   readonly candidate: PublishCandidate
   readonly [publishBundleBrand]: true
 }>
@@ -183,9 +190,14 @@ const assertTraceAdmission = (data: Buffer): void => {
   }
 }
 
-const admitPublishBundle = (archive: Buffer, candidate: PublishCandidate): PublishBundle => {
+const admitPublishBundle = (archive: Buffer, candidate: PublishCandidate, artifacts: readonly PublishArtifactDescriptor[]): PublishBundle => {
   const bundle = Object.freeze({
     archive,
+    artifacts: Object.freeze(
+      [...artifacts]
+        .sort((left, right) => (left.label < right.label ? -1 : left.label > right.label ? 1 : 0))
+        .map((artifact) => Object.freeze({ ...artifact })),
+    ),
     candidate: Object.freeze(candidate),
   }) as PublishBundle
   admittedBundles.add(bundle)
@@ -210,10 +222,7 @@ export const parsePublishBundle = (archive: Buffer): PublishBundle => {
   if (manifestInput === undefined) return invalid()
   const manifest = datasetManifestSchema.safeParse(manifestInput)
   if (!manifest.success || entries.length !== manifest.data.artifacts.length + 1) return invalid()
-  const expectedNames = [
-    datasetManifestPath,
-    ...manifest.data.artifacts.map((artifact) => artifact.path).sort(),
-  ]
+  const expectedNames = [datasetManifestPath, ...manifest.data.artifacts.map((artifact) => artifact.path).sort()]
   if (entries.some((entry, index) => entry.name !== expectedNames[index])) return invalid()
   try {
     assertDatasetArchivePlan({
@@ -240,6 +249,7 @@ export const parsePublishBundle = (archive: Buffer): PublishBundle => {
       artifactCount: manifest.data.artifacts.length,
       manifest: manifestEntry.data,
     }),
+    manifest.data.artifacts,
   )
 }
 

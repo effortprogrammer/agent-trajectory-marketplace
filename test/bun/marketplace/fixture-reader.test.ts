@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { FixtureReadError, readFixtureFile } from "../../../contract/fixture-reader"
+import { FixtureReadError, readFixtureFile } from "../../../src/marketplace/fixture-reader"
 
 const roots: string[] = []
 

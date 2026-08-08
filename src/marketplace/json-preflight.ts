@@ -1,5 +1,7 @@
 const utf8Bom = [0xef, 0xbb, 0xbf] as const
 
+const maxJsonDepth = 512
+
 class JsonPreflightError extends Error {
   public constructor() {
     super("invalid_json_preflight")
@@ -105,12 +107,13 @@ const readLiteral = (state: ScanState, cursor: ScanCursor, literal: string): voi
   cursor.offset += literal.length
 }
 
-const readValue = (state: ScanState, cursor: ScanCursor): void => {
+const readValue = (state: ScanState, cursor: ScanCursor, depth: number): void => {
+  if (depth > maxJsonDepth) return fail()
   skipWhitespace(state, cursor)
   if (cursor.offset >= state.length) return fail()
   const code = state.text[cursor.offset]
-  if (code === "{") return readObject(state, cursor)
-  if (code === "[") return readArray(state, cursor)
+  if (code === "{") return readObject(state, cursor, depth + 1)
+  if (code === "[") return readArray(state, cursor, depth + 1)
   if (code === '"') {
     readString(state, cursor)
     return
@@ -121,7 +124,7 @@ const readValue = (state: ScanState, cursor: ScanCursor): void => {
   return readNumber(state, cursor)
 }
 
-const readObject = (state: ScanState, cursor: ScanCursor): void => {
+const readObject = (state: ScanState, cursor: ScanCursor, depth: number): void => {
   cursor.offset += 1
   const keys = new Set<string>()
   skipWhitespace(state, cursor)
@@ -137,7 +140,7 @@ const readObject = (state: ScanState, cursor: ScanCursor): void => {
     skipWhitespace(state, cursor)
     if (state.text[cursor.offset] !== ":") return fail()
     cursor.offset += 1
-    readValue(state, cursor)
+    readValue(state, cursor, depth)
     skipWhitespace(state, cursor)
     if (state.text[cursor.offset] === "}") {
       cursor.offset += 1
@@ -148,7 +151,7 @@ const readObject = (state: ScanState, cursor: ScanCursor): void => {
   }
 }
 
-const readArray = (state: ScanState, cursor: ScanCursor): void => {
+const readArray = (state: ScanState, cursor: ScanCursor, depth: number): void => {
   cursor.offset += 1
   skipWhitespace(state, cursor)
   if (state.text[cursor.offset] === "]") {
@@ -156,7 +159,7 @@ const readArray = (state: ScanState, cursor: ScanCursor): void => {
     return
   }
   for (;;) {
-    readValue(state, cursor)
+    readValue(state, cursor, depth)
     skipWhitespace(state, cursor)
     if (state.text[cursor.offset] === "]") {
       cursor.offset += 1
@@ -171,11 +174,11 @@ const hasUniqueJsonKeys = (text: string): boolean => {
   try {
     const state: ScanState = { text, length: text.length }
     const cursor: ScanCursor = { offset: 0 }
-    readValue(state, cursor)
+    readValue(state, cursor, 0)
     skipWhitespace(state, cursor)
     return cursor.offset === state.length
   } catch (error) {
-    if (error instanceof JsonPreflightError) return false
+    if (error instanceof JsonPreflightError || error instanceof RangeError) return false
     throw error
   }
 }

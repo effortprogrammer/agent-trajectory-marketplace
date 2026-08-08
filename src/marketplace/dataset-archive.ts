@@ -61,6 +61,11 @@ const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
   return Buffer.from(JSON.stringify(sanitized.data), "utf8");
 };
 
+export const sanitizedArtifactDigest = (sourceBytes: Uint8Array): Readonly<{ byteCount: number; sha256: string }> => {
+  const bytes = sanitizedTraceBytes(Buffer.from(sourceBytes));
+  return Object.freeze({ byteCount: bytes.byteLength, sha256: digest(bytes) });
+};
+
 export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
   if (selected.length === 0) throw new MarketplaceError("empty_selection");
   if (selected.length > datasetArchivePolicy.maxTraces) {
