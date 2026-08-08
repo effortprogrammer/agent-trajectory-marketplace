@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository contains a Bun-only collector and encrypted candidate-publish CLI. It has no web UI or collector HTTP bridge.
+This repository contains a Bun-only collector and encrypted candidate-publish CLI, plus a static marketplace UI under `web/` (mock data; no backend or collector HTTP bridge). Preview it with `bun web/server.ts`.
 
 ## Commands
 
