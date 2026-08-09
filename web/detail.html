@@ -168,6 +168,7 @@
       <dl>
         <div><dt>Runtime</dt><dd id="r-runtime">claude-code</dd></div>
         <div><dt>Model</dt><dd id="r-model">claude-opus-4.5</dd></div>
+        <div id="bid-row" style="display:none"><dt>Top bid</dt><dd id="r-topbid">—</dd></div>
         <div><dt>Sessions</dt><dd>1</dd></div>
         <div><dt>Trace format</dt><dd>.atf.json</dd></div>
         <div><dt>Manifest</dt><dd>dataset-manifest.json</dd></div>
@@ -364,6 +365,8 @@ async function fetchLiveEntry(id) {
         requests: d.requests,
         transcript: d.transcript.map((row) => [row.kind, escapeHtml(row.body)]),
       },
+      topBid: d.topBidCredits ?? null,
+      openBids: d.openBidCount ?? 0,
     };
   } catch {
     return null;
@@ -372,6 +375,12 @@ async function fetchLiveEntry(id) {
 
 const id = new URLSearchParams(location.search).get("id");
 const live = await fetchLiveEntry(id);
+if (live && live.topBid != null) {
+  const row = document.getElementById("bid-row");
+  row.style.display = "flex";
+  row.querySelector("#r-topbid").textContent =
+    live.topBid + " cr" + (live.openBids > 0 ? ` (${live.openBids} open)` : "");
+}
 const entry = live ? live.entry : (DATA[id] ?? DATA["monorepo-payments"]);
 const key = live ? live.key : (DATA[id] ? id : "monorepo-payments");
 
