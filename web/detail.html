@@ -123,7 +123,7 @@
 </header>
 
 <div class="limiter title-block">
-  <p class="crumb"><a href="index.html#market">Catalog</a> / Dataset</p>
+  <p class="crumb"><a href="index.html#market">Catalog</a> / Dataset · <span id="crumb-id"></span></p>
   <div class="title-row">
     <h1 id="repo">monorepo-payments</h1>
     <span class="runtime-chip" id="runtime">claude-code</span>
@@ -350,6 +350,7 @@ async function fetchLiveEntry(id) {
     return {
       key: d.id,
       entry: {
+        title: d.title ?? (d.requests[0] ?? "Agent session"),
         runtime: d.runtime,
         model: d.model ?? "unknown model",
         events: d.events,
@@ -375,7 +376,8 @@ const entry = live ? live.entry : (DATA[id] ?? DATA["monorepo-payments"]);
 const key = live ? live.key : (DATA[id] ? id : "monorepo-payments");
 
 document.title = `ATM — ${key} · Dataset detail`;
-document.getElementById("repo").textContent = key;
+document.getElementById("crumb-id").textContent = key;
+document.getElementById("repo").textContent = entry.title ?? key;
 document.getElementById("runtime").textContent = entry.runtime;
 document.getElementById("r-runtime").textContent = entry.runtime;
 document.getElementById("model").textContent = entry.model;
