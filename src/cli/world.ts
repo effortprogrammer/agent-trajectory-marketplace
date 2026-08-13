@@ -1,4 +1,4 @@
-import { normalizeAuthServerUrl } from "../auth/server-url";
+import { officialRegistryOrigin } from "../auth/official-origin";
 import { WorldClientError, createWorldClient } from "../worlds/client";
 import { parseWorldCommand } from "./world-command";
 
@@ -10,7 +10,7 @@ export class WorldCliError extends Error {
   }
 }
 
-const help = "Usage: trajectory world --help | trajectory world list --server <url> | trajectory world detail <worldId> --server <url> | trajectory world run <worldId> --server <url> --contract-id <uuid> --pack-digest <64hex> --seed <nonnegative-int> --idempotency-key <nonempty> --api-key <token> [--json] | trajectory world status <worldId> <instanceId> --server <url> --contract-id <uuid> --pack-digest <64hex> --api-key <token> [--json] | trajectory world download <entitlementId> --server <url> --api-key <token> [--json]";
+const help = "Usage: trajectory world --help | trajectory world list | trajectory world detail <worldId> | trajectory world run <worldId> --contract-id <uuid> --pack-digest <64hex> --seed <nonnegative-int> --idempotency-key <nonempty> --api-key <token> [--json] | trajectory world status <worldId> <instanceId> --contract-id <uuid> --pack-digest <64hex> --api-key <token> [--json] | trajectory world download <entitlementId> --api-key <token> [--json]";
 
 const invalid = (): never => {
   throw new WorldCliError("invalid_arguments");
@@ -42,14 +42,14 @@ export const runWorldCli = async (argumentsList: readonly string[], signal: Abor
         console.log(help);
         return;
       case "world-list":
-        console.log(JSON.stringify(await createWorldClient(normalizeAuthServerUrl(command.server), signal).catalog()));
+        console.log(JSON.stringify(await createWorldClient(officialRegistryOrigin, signal).catalog()));
         return;
       case "world-detail":
-        console.log(JSON.stringify(await createWorldClient(normalizeAuthServerUrl(command.server), signal).world({ worldId: command.worldId })));
+        console.log(JSON.stringify(await createWorldClient(officialRegistryOrigin, signal).world({ worldId: command.worldId })));
         return;
       case "world-run": {
         if (signal.aborted) throw new WorldClientError("cancelled", 0);
-        const client = createWorldClient(normalizeAuthServerUrl(command.server), signal);
+        const client = createWorldClient(officialRegistryOrigin, signal);
         const response = await client.createHostedInstance({
           accessToken: command.apiKey,
           body: { seed: command.seed },
@@ -62,7 +62,7 @@ export const runWorldCli = async (argumentsList: readonly string[], signal: Abor
       }
       case "world-status": {
         if (signal.aborted) throw new WorldClientError("cancelled", 0);
-        const client = createWorldClient(normalizeAuthServerUrl(command.server), signal);
+        const client = createWorldClient(officialRegistryOrigin, signal);
         const response = await client.hostedStatus({
           accessToken: command.apiKey,
           contractId: command.contractId,
@@ -74,7 +74,7 @@ export const runWorldCli = async (argumentsList: readonly string[], signal: Abor
       }
       case "world-download": {
         if (signal.aborted) throw new WorldClientError("cancelled", 0);
-        const response = await createWorldClient(normalizeAuthServerUrl(command.server), signal).redeemDownload({
+        const response = await createWorldClient(officialRegistryOrigin, signal).redeemDownload({
           accessToken: command.apiKey,
           entitlementId: command.entitlementId,
         });

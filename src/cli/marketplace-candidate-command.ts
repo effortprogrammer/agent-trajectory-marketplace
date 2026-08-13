@@ -35,7 +35,12 @@ export type CandidatePublishCommand = Readonly<{
   readonly bundle: string;
   readonly command: "candidate-publish";
   readonly selection?: string;
-  readonly server: string;
+}>;
+
+export type CandidateStatusCommand = Readonly<{
+  readonly apiKey?: string;
+  readonly command: "candidate-status";
+  readonly submissionId: string;
 }>;
 
 type InvalidCommand = Readonly<{ readonly command: "invalid_command" }>;
@@ -49,6 +54,7 @@ export type CandidateCommand =
   | PreviewCandidateBundleCommand
   | SelectionCandidateBundleCommand
   | CandidatePublishCommand
+  | CandidateStatusCommand
   | InvalidCommand
   | InvalidBundleRequest;
 
@@ -135,24 +141,41 @@ export const parseCandidatePublish = (argumentsList: readonly string[]): Candida
   let apiKey: string | undefined;
   let bundle: string | undefined;
   let selection: string | undefined;
-  let server: string | undefined;
   for (let index = 0; index < argumentsList.length; index += 1) {
     const option = argumentsList[index];
     const value = argumentsList[index + 1];
     if (value === undefined || value.startsWith("--")) return invalidCommand();
     if (option === "--bundle" && bundle === undefined && isAbsolutePath(value)) bundle = value;
-    else if (option === "--server" && server === undefined) server = value;
     else if (option === "--api-key" && apiKey === undefined && value.length > 0) apiKey = value;
     else if (option === "--selection" && selection === undefined && isAbsolutePath(value)) selection = value;
     else return invalidCommand();
     index += 1;
   }
-  if (bundle === undefined || server === undefined) return invalidCommand();
+  if (bundle === undefined) return invalidCommand();
   return {
     ...(apiKey === undefined ? {} : { apiKey }),
     bundle,
     command: "candidate-publish",
     ...(selection === undefined ? {} : { selection }),
-    server,
+  };
+};
+
+export const parseCandidateStatus = (argumentsList: readonly string[]): CandidateCommand => {
+  let apiKey: string | undefined;
+  let submissionId: string | undefined;
+  for (let index = 0; index < argumentsList.length; index += 1) {
+    const option = argumentsList[index];
+    const value = argumentsList[index + 1];
+    if (value === undefined || value.startsWith("--")) return invalidCommand();
+    if (option === "--submission" && submissionId === undefined) submissionId = value;
+    else if (option === "--api-key" && apiKey === undefined && value.length > 0) apiKey = value;
+    else return invalidCommand();
+    index += 1;
+  }
+  if (!/^sub_[0-9a-hjkmnp-tv-z]{26}$/.test(submissionId ?? "")) return invalidCommand();
+  return {
+    ...(apiKey === undefined ? {} : { apiKey }),
+    command: "candidate-status",
+    submissionId: submissionId as string,
   };
 };

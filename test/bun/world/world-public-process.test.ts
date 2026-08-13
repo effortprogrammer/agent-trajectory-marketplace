@@ -1,6 +1,10 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  officialGatewayProcessArguments,
+  officialGatewayProcessEnvironment,
+} from "../fixtures/gateway-process";
 
 const decoder = new TextDecoder();
 const servers: Bun.Server<undefined>[] = [];
@@ -15,9 +19,18 @@ const fixture = (name: string): string => readFileSync(join(contractRoot, name),
 
 const runCli = async (
   argumentsList: readonly string[],
+  target?: string,
 ): Promise<Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>> => {
-  const child = Bun.spawn([process.execPath, "dist/collector.js", ...argumentsList], {
+  const processConfiguration = officialGatewayProcessArguments(
+    [process.execPath, "dist/collector.js", ...argumentsList],
+    target,
+  );
+  const child = Bun.spawn(processConfiguration.argumentsList, {
     cwd: process.cwd(),
+    env: {
+      ...process.env,
+      ...officialGatewayProcessEnvironment(processConfiguration.target),
+    },
     stderr: "pipe",
     stdout: "pipe",
   });
@@ -81,8 +94,8 @@ describe("trajectory world public process boundary", () => {
     const base = `http://127.0.0.1:${server.port}`;
 
     // When
-    const list = await runCli(["world", "list", "--server", base]);
-    const detail = await runCli(["world", "detail", "world/refund-unit", "--server", base]);
+    const list = await runCli(["world", "list"], base);
+    const detail = await runCli(["world", "detail", "world/refund-unit"], base);
 
     // Then
     expect(observed).toEqual([
@@ -127,7 +140,7 @@ describe("trajectory world public process boundary", () => {
     });
     servers.push(server);
     const base = `http://127.0.0.1:${server.port}`;
-    const common = ["--server", base, "--api-key", "api-token"];
+    const common = ["--api-key", "api-token"];
     const run = [
       "world", "run", worldId, ...common, "--contract-id", contractId,
       "--pack-digest", packDigest, "--seed", "7", "--idempotency-key", "run-7",
@@ -138,9 +151,9 @@ describe("trajectory world public process boundary", () => {
     ];
 
     // When
-    const runResult = await runCli(run);
-    const statusResult = await runCli(status);
-    const downloadResult = await runCli(["world", "download", entitlementId, ...common]);
+    const runResult = await runCli(run, base);
+    const statusResult = await runCli(status, base);
+    const downloadResult = await runCli(["world", "download", entitlementId, ...common], base);
 
     // Then
     const hostedPath = `/v1/marketplace/buyer/world-contracts/${contractId}/hosted/instances`;
@@ -192,16 +205,16 @@ describe("trajectory world public process boundary", () => {
     servers.push(server);
     const base = `http://127.0.0.1:${server.port}`;
     const run = (digest: string) => [
-      "world", "run", worldId, "--server", base, "--api-key", "api-token",
+      "world", "run", worldId, "--api-key", "api-token",
       "--contract-id", contractId, "--pack-digest", digest, "--seed", "7",
       "--idempotency-key", `run-${digest.slice(0, 4)}`,
     ];
 
     // When
     const results = await Promise.all([
-      runCli(run(mismatchedDigest)),
-      runCli(run(packDigest)),
-      runCli(["world", "download", entitlementId, "--server", base, "--api-key", "api-token"]),
+      runCli(run(mismatchedDigest), base),
+      runCli(run(packDigest), base),
+      runCli(["world", "download", entitlementId, "--api-key", "api-token"], base),
     ]);
 
     // Then

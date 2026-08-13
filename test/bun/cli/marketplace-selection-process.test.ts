@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { officialGatewayProcessArguments, officialGatewayProcessEnvironment } from "../fixtures/gateway-process";
 
 const roots: string[] = [];
 const decoder = new TextDecoder();
@@ -26,14 +27,32 @@ const selectorFor = (relativePath: string): string =>
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
-const runCli = (argumentsList: readonly string[], environment?: Record<string, string | undefined>) => Bun.spawnSync(
-  [process.execPath, "src/cli/index.ts", ...argumentsList],
-  { cwd: process.cwd(), env: environment, stderr: "pipe", stdin: "ignore", stdout: "pipe" },
-);
+const runCli = (argumentsList: readonly string[], environment?: Record<string, string | undefined>) => {
+  const serverIndex = argumentsList.indexOf("--server");
+  const target = serverIndex < 0 ? undefined : argumentsList[serverIndex + 1];
+  const invocation = officialGatewayProcessArguments(
+    [process.execPath, "src/cli/index.ts", ...(serverIndex < 0
+      ? argumentsList
+      : argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1))],
+    target,
+  );
+  return Bun.spawnSync(
+    invocation.argumentsList,
+    { cwd: process.cwd(), env: { ...process.env, ...environment, ...officialGatewayProcessEnvironment(invocation.target) }, stderr: "pipe", stdin: "ignore", stdout: "pipe" },
+  );
+};
 
 const runCliAsync = async (argumentsList: readonly string[], environment?: Record<string, string | undefined>) => {
-  const child = Bun.spawn([process.execPath, "src/cli/index.ts", ...argumentsList], {
-    cwd: process.cwd(), env: environment, stderr: "pipe", stdin: "ignore", stdout: "pipe",
+  const serverIndex = argumentsList.indexOf("--server");
+  const target = serverIndex < 0 ? undefined : argumentsList[serverIndex + 1];
+  const invocation = officialGatewayProcessArguments(
+    [process.execPath, "src/cli/index.ts", ...(serverIndex < 0
+      ? argumentsList
+      : argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1))],
+    target,
+  );
+  const child = Bun.spawn(invocation.argumentsList, {
+    cwd: process.cwd(), env: { ...process.env, ...environment, ...officialGatewayProcessEnvironment(invocation.target) }, stderr: "pipe", stdin: "ignore", stdout: "pipe",
   });
   const [exitCode, stderr, stdout] = await Promise.all([
     child.exited,
