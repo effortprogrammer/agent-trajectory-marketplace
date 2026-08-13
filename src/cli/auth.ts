@@ -70,7 +70,6 @@ const readHiddenTtyLine = (signal: AbortSignal): Promise<string> => {
   if (input.isTTY !== true || typeof input.setRawMode !== "function") {
     throw new AuthCliError("auth_code_required");
   }
-  process.stderr.write("Verification code: ");
   input.setRawMode(true);
   input.resume();
   return new Promise((resolve, reject) => {
@@ -113,6 +112,7 @@ const readHiddenTtyLine = (signal: AbortSignal): Promise<string> => {
     }
     input.on("data", onData);
     signal.addEventListener("abort", onAbort);
+    process.stderr.write("Verification code: ");
   });
 };
 
