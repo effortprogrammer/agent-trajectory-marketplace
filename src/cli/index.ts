@@ -14,6 +14,7 @@ import { installUpdateServiceSchedule } from "@/trajectory/update-service-schedu
 import { parseCollectorCommand, runCollectorCli, runCollectorResidentCli, type CollectorCommand } from "./collector";
 import { isAuthInvocation, runAuthCli } from "./auth";
 import { isMarketplaceInvocation, runMarketplaceCli } from "./marketplace";
+import { isWorldInvocation, runWorldCli } from "./world";
 
 const collectorErrorCode = (error: unknown): string => {
   if (error instanceof Error && "code" in error && typeof error.code === "string") return error.code;
@@ -114,6 +115,10 @@ const main = async (): Promise<void> => {
     }
     if (isMarketplaceInvocation(argumentsList)) {
       await runMarketplaceCli(argumentsList, commandAbortController.signal);
+      return;
+    }
+    if (isWorldInvocation(argumentsList)) {
+      await runWorldCli(argumentsList, commandAbortController.signal);
       return;
     }
     command = parseCollectorCommand(argumentsList);
