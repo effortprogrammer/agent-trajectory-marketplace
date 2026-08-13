@@ -1,19 +1,15 @@
-// The pi family: coding agents that inherited badlogic/pi-mono's session
-// subsystem. oh-my-pi and senpi are detached forks of pi-mono; gajae-code
-// brands itself independent but its session layer is oh-my-pi-derived (same
-// header/entry taxonomy, extended with v4/v5 append-only patch records). All
-// three persist sessions as JSONL under `~/<configDir>/agent/sessions/`, so
-// one parser core serves every variant — but each variant registers as its own
-// runtime so exported traces are attributable to the exact tool that produced
-// them.
-export type PiFamilyRuntime = "oh-my-pi" | "senpi" | "gajae-code";
+// The pi family: upstream Pi and coding agents that inherited its session
+// subsystem. Every variant persists JSONL under
+// `~/<configDir>/agent/sessions/`, so one parser core serves the family while
+// each runtime stays explicitly attributable.
+export type PiFamilyRuntime = "pi" | "oh-my-pi" | "senpi" | "gajae-code";
 
 export type PiFamilyVariant = Readonly<{
   runtime: PiFamilyRuntime;
   displayName: string;
-  // Home-relative config directory the tool rebranded to (".omp", ".senpi",
-  // ".gjc"). Doubles as the strongest provenance marker: a session path that
-  // traverses another variant's config dir is misattributed.
+  // Home-relative config directory (".pi", ".omp", ".senpi", ".gjc").
+  // Doubles as the strongest provenance marker: a session path that traverses
+  // another variant's config dir is misattributed.
   configDirName: string;
   logHint: string;
   // Highest session header version this variant is known to write. gajae-code
@@ -22,6 +18,13 @@ export type PiFamilyVariant = Readonly<{
 }>;
 
 export const piFamilyVariants: readonly PiFamilyVariant[] = [
+  {
+    runtime: "pi",
+    displayName: "Pi",
+    configDirName: ".pi",
+    logHint: "~/.pi/agent/sessions/--<dir-encoded>--/<timestamp>_<sessionId>.jsonl",
+    maxSessionVersion: 3,
+  },
   {
     runtime: "oh-my-pi",
     displayName: "Oh My Pi",

@@ -80,6 +80,7 @@ const nativeFixtures = (root: string): readonly NativeFixture[] => {
   opencode.close();
 
   const piFamilyFixtures: NativeFixture[] = [
+    { runtime: "pi", configDir: ".pi" },
     { runtime: "oh-my-pi", configDir: ".omp" },
     { runtime: "senpi", configDir: ".senpi" },
     { runtime: "gajae-code", configDir: ".gjc" },
@@ -125,9 +126,9 @@ describe("native collector facade", () => {
 
     // Then: every runtime summary contains native metadata but no trace body.
     expect(listCollectRuntimes().map(({ runtime }) => runtime)).toEqual([
-      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "senpi",
+      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "pi", "senpi",
     ]);
-    expect(results.map(({ listed }) => listed.sessionCount)).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
+    expect(results.map(({ listed }) => listed.sessionCount)).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1]);
     for (const { exported } of results) {
       expect(exported.status).toBe("collected");
       expect(exported.eventCount).toBeGreaterThan(0);

@@ -73,6 +73,7 @@ const writeAllRuntimeFixtures = (home: string, xdgDataHome: string): void => {
   opencode.close();
 
   for (const [configDir, sessionId] of [
+    [".pi", "pi-native"],
     [".omp", "oh-my-pi-native"],
     [".senpi", "senpi-native"],
     [".gjc", "gajae-code-native"],
@@ -108,17 +109,18 @@ describe("native multi-runtime collect watch", () => {
         "oh-my-pi": join(home, ".omp", "agent", "sessions"),
         openclaw: join(home, ".openclaw"),
         opencode: join(xdgDataHome, "opencode"),
+        pi: join(home, ".pi", "agent", "sessions"),
         senpi: join(home, ".senpi", "agent", "sessions"),
       },
     );
 
     // Then: each runtime exports its native session with valid Bun collector metadata.
     expect(resolveCollectWatchRuntimes([])).toEqual([
-      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "senpi",
+      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "pi", "senpi",
     ]);
-    expect(summary).toMatchObject({ exported: 8, failed: 0, missingSources: [] });
+    expect(summary).toMatchObject({ exported: 9, failed: 0, missingSources: [] });
     expect(summary.exportedSessions.map(({ runtime }) => runtime).sort()).toEqual([
-      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "senpi",
+      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "pi", "senpi",
     ]);
     for (const exported of summary.exportedSessions) {
       const trace = JSON.parse(readFileSync(exported.exportPath, "utf8"));
