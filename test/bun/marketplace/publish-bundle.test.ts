@@ -397,6 +397,20 @@ describe("publish bundle ZIP integrity", () => {
     expect(parse).toThrow(PublishBundleError)
   })
 
+  test("rejects an existing bundle whose JSON-escaped payload decodes to a credential", () => {
+    // Given: a manifest-consistent trace whose serialized content conceals a GitHub token.
+    const trace = Buffer.from(`{"runtime":"codex","status":"collected","formatVersion":2,"eventCount":1,"events":[{"kind":"message","name":"assistant","payload":{"content":"github_pat_\\u0061${"a".repeat(81)}"}}]}`, "utf8")
+    const archive = archiveForTrace(trace)
+
+    // When: the existing bundle crosses direct publication admission.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: admission scans decoded semantic trace content rather than escape bytes.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
   test.each([
     ["runtime", {
       runtime: "Bearer TOP_SECRET_123456789",

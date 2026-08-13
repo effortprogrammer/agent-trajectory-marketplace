@@ -23,16 +23,25 @@ export class ResidualSecretScanError extends Error {
   }
 }
 
+const containsResidualSecret = (value: unknown): boolean => {
+  if (typeof value === "string") {
+    return residualCredentialPatterns.some((pattern) => pattern.test(value))
+  }
+  if (Array.isArray(value)) return value.some(containsResidualSecret)
+  if (value !== null && typeof value === "object") {
+    return Object.values(value).some(containsResidualSecret)
+  }
+  return false
+}
+
 export const assertNoResidualSecrets = (bytes: Uint8Array): void => {
   if (bytes.byteLength === 0 || bytes.byteLength > maxScannedTraceBytes) {
     throw new ResidualSecretScanError()
   }
 
   const data = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  if (parseAdmissionJson(data) === undefined) throw new ResidualSecretScanError()
-  const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)
-
-  if (residualCredentialPatterns.some((pattern) => pattern.test(text))) {
+  const parsed = parseAdmissionJson(data)
+  if (parsed === undefined || containsResidualSecret(parsed)) {
     throw new ResidualSecretScanError()
   }
 }

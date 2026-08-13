@@ -31,6 +31,29 @@ describe("post-redaction residual secret scan", () => {
     expect(bytes).toEqual(before)
   })
 
+  test("rejects credentials encoded with JSON escapes without changing the supplied bytes", () => {
+    // Given: JSON-valid ATF bytes whose payload decodes to a GitHub fine-grained token.
+    const bytes = encoder.encode(`{"runtime":"codex","status":"collected","formatVersion":2,"eventCount":1,"events":[{"kind":"message","name":"assistant","payload":{"content":"github_pat_\\u0061${"a".repeat(81)}"}}]}`)
+    const before = new Uint8Array(bytes)
+
+    // When: the scanner inspects the parsed semantic content.
+    const scan = (): void => {
+      assertNoResidualSecrets(bytes)
+    }
+
+    // Then: JSON serialization cannot conceal a residual credential.
+    expect(scan).toThrow(ResidualSecretScanError)
+    expect(bytes).toEqual(before)
+  })
+
+  test("does not treat JSON property names as residual credential values", () => {
+    // Given: semantic JSON whose structural key resembles a credential but whose value is benign.
+    const bytes = encoder.encode(`{"github_pat_${"a".repeat(82)}":"redacted"}`)
+
+    // When / Then: only decoded JSON values are scanned.
+    expect(() => assertNoResidualSecrets(bytes)).not.toThrow()
+  })
+
   test("allows credential-adjacent instructional text", () => {
     // Given: prose that names a credential environment variable but carries no credential value.
     const bytes = atfBytes("Set GITHUB_TOKEN in your environment; never paste a token value.")
