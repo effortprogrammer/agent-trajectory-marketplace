@@ -17,7 +17,12 @@ const root = (): string => {
 }
 
 const run = async (argumentsList: readonly string[], environment: Readonly<Record<string, string>>) => {
-  const invocation = officialGatewayProcessArguments([process.execPath, "dist/collector.js", ...argumentsList])
+  const serverIndex = argumentsList.indexOf("--server")
+  const target = serverIndex < 0 ? undefined : argumentsList[serverIndex + 1]
+  const invocation = officialGatewayProcessArguments(
+    [process.execPath, "dist/collector.js", ...argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1)],
+    target,
+  )
   const child = Bun.spawn(invocation.argumentsList, { cwd: process.cwd(), env: { ...environment, ...officialGatewayProcessEnvironment(invocation.target) }, stderr: "pipe", stdout: "pipe" })
   const [exitCode, stderr, stdout] = await Promise.all([child.exited, new Response(child.stderr).text(), new Response(child.stdout).text()])
   return { exitCode, stderr, stdout }

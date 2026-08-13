@@ -6,6 +6,8 @@ import {
 } from "../../../src/marketplace/status-client";
 
 const submissionId = "sub_00000000000000000000000000";
+const credential =
+  "trk_0123456789abcdef_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const servers: Bun.Server<undefined>[] = [];
 
 afterEach(() => {
@@ -21,7 +23,9 @@ const serverUrl = (
 };
 
 describe("candidate status client", () => {
-  test("reads the frozen status contract with bearer auth", async () => {
+  test.each(["accepted", "processing", "completed", "rejected"] as const)(
+    "reads the frozen %s status contract with bearer auth",
+    async (status) => {
     let observedPath = "";
     let observedAuthorization = "";
     const origin = serverUrl((request) => {
@@ -31,26 +35,33 @@ describe("candidate status client", () => {
       return Response.json({
         protocolVersion: 1,
         submissionId,
-        status: "processing",
+        status,
       });
     });
 
     const result = await createStatusClient(origin).read({
-      credential:
-        "trk_0123456789abcdef_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      credential,
       submissionId,
     });
 
     expect(result.protocolVersion).toBe(1);
-    expect(result.status).toBe("processing");
+    expect(result.status).toBe(status);
     expect(String(result.submissionId)).toBe(submissionId);
     expect(observedPath).toBe(
       `/v1/marketplace/seller/candidates/${submissionId}`,
     );
     expect(observedAuthorization).toStartWith("Bearer trk_");
-  });
+    },
+  );
 
-  test("surfaces account-scoped not found without following redirects", async () => {
+  test("surfaces auth and account-scoped errors without following redirects", async () => {
+    const unauthorizedOrigin = serverUrl(
+      () =>
+        new Response(
+          JSON.stringify({ protocolVersion: 1, code: "unauthorized" }),
+          { status: 401 },
+        ),
+    );
     const notFoundOrigin = serverUrl(
       () =>
         new Response(
@@ -62,16 +73,63 @@ describe("candidate status client", () => {
       () => new Response(null, { headers: { location: "https://example.test" }, status: 302 }),
     );
     const request = {
-      credential:
-        "trk_0123456789abcdef_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      credential,
       submissionId,
     } as const;
 
+    await expect(createStatusClient(unauthorizedOrigin).read(request)).rejects.toEqual(
+      new StatusClientError("unauthorized"),
+    );
     await expect(createStatusClient(notFoundOrigin).read(request)).rejects.toEqual(
       new StatusClientError("not_found"),
     );
     await expect(createStatusClient(redirectOrigin).read(request)).rejects.toEqual(
       new StatusClientError("unavailable"),
     );
+  });
+
+  test("rejects chunked responses immediately after the byte cap", async () => {
+    const origin = serverUrl(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new Uint8Array(131_072));
+            },
+          }),
+        ),
+    );
+
+    await expect(
+      createStatusClient(origin).read({ credential, submissionId }),
+    ).rejects.toEqual(new StatusClientError("invalid_response"));
+  });
+
+  test("rejects malformed response JSON", async () => {
+    const origin = serverUrl(() => new Response("{not-json"));
+
+    await expect(
+      createStatusClient(origin).read({ credential, submissionId }),
+    ).rejects.toEqual(new StatusClientError("invalid_response"));
+  });
+
+  test("preserves caller cancellation separately from timeout", async () => {
+    const caller = new AbortController();
+    caller.abort();
+    await expect(
+      createStatusClient("http://127.0.0.1:9").read({
+        credential,
+        signal: caller.signal,
+        submissionId,
+      }),
+    ).rejects.toEqual(new StatusClientError("cancelled"));
+
+    const origin = serverUrl(() => new Promise<Response>(() => {}));
+    await expect(
+      createStatusClient(origin, { timeoutMilliseconds: 10 }).read({
+        credential,
+        submissionId,
+      }),
+    ).rejects.toEqual(new StatusClientError("timeout"));
   });
 });

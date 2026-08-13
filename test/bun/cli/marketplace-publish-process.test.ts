@@ -32,7 +32,11 @@ const bundle = (root: string): string => {
 }
 
 const runCli = async (argumentsList: readonly string[], environment: Readonly<Record<string, string | undefined>>): Promise<Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>> => {
-  const invocation = officialGatewayProcessArguments([process.execPath, "dist/collector.js", ...argumentsList])
+  const serverIndex = argumentsList.indexOf("--server")
+  const invocation = officialGatewayProcessArguments(
+    [process.execPath, "dist/collector.js", ...argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1)],
+    argumentsList[serverIndex + 1],
+  )
   const child = Bun.spawn(invocation.argumentsList, {
     cwd: process.cwd(),
     env: { ...environment, ...officialGatewayProcessEnvironment(invocation.target) },

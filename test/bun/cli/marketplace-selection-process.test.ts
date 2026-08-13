@@ -28,7 +28,12 @@ const selectorFor = (relativePath: string): string =>
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 const runCli = (argumentsList: readonly string[], environment?: Record<string, string | undefined>) => {
-  const invocation = officialGatewayProcessArguments([process.execPath, "src/cli/index.ts", ...argumentsList]);
+  const serverIndex = argumentsList.indexOf("--server");
+  const target = serverIndex < 0 ? undefined : argumentsList[serverIndex + 1];
+  const invocation = officialGatewayProcessArguments(
+    [process.execPath, "src/cli/index.ts", ...argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1)],
+    target,
+  );
   return Bun.spawnSync(
     invocation.argumentsList,
     { cwd: process.cwd(), env: { ...environment, ...officialGatewayProcessEnvironment(invocation.target) }, stderr: "pipe", stdin: "ignore", stdout: "pipe" },
@@ -36,7 +41,12 @@ const runCli = (argumentsList: readonly string[], environment?: Record<string, s
 };
 
 const runCliAsync = async (argumentsList: readonly string[], environment?: Record<string, string | undefined>) => {
-  const invocation = officialGatewayProcessArguments([process.execPath, "src/cli/index.ts", ...argumentsList]);
+  const serverIndex = argumentsList.indexOf("--server");
+  const target = serverIndex < 0 ? undefined : argumentsList[serverIndex + 1];
+  const invocation = officialGatewayProcessArguments(
+    [process.execPath, "src/cli/index.ts", ...argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1)],
+    target,
+  );
   const child = Bun.spawn(invocation.argumentsList, {
     cwd: process.cwd(), env: { ...environment, ...officialGatewayProcessEnvironment(invocation.target) }, stderr: "pipe", stdin: "ignore", stdout: "pipe",
   });

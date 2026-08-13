@@ -93,8 +93,8 @@ describe("marketplace candidate publish cancellation", () => {
     const invocation = officialGatewayProcessArguments([
       process.execPath,
       "dist/collector.js",
-      ...publishArguments(bundle(root), origin),
-    ])
+      ...publishArguments(bundle(root), origin).filter((argument) => argument !== "--server" && argument !== origin),
+    ], origin)
     const child = Bun.spawn(invocation.argumentsList, {
       cwd: process.cwd(),
       env: {
@@ -145,12 +145,13 @@ describe("marketplace candidate publish cancellation", () => {
         },
       })
       servers.push(server)
+      const target = `http://127.0.0.1:${server.port}`
       const invocation = officialGatewayProcessArguments([
         process.execPath,
         "dist/collector.js",
-        ...publishArguments(bundle(root), `http://127.0.0.1:${server.port}`),
+        ...publishArguments(bundle(root), target).filter((argument) => argument !== "--server" && argument !== target),
         "--api-key", "flag-sentinel",
-      ])
+      ], target)
       const child = Bun.spawn(invocation.argumentsList, {
         cwd: process.cwd(),
         env: { ...process.env, ...officialGatewayProcessEnvironment(invocation.target), TRAJECTORY_MARKETPLACE_CONFIG_HOME: root },

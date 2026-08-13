@@ -83,7 +83,16 @@ const json = (value: unknown, status = 200, headers: Readonly<Record<string, str
   Response.json(value, { headers, status });
 
 const runCli = async (root: string, argumentsList: readonly string[], input?: string): Promise<CliResult> => {
-  const invocation = officialGatewayProcessArguments([process.execPath, "src/cli/index.ts", ...argumentsList]);
+  const serverIndex = argumentsList.indexOf("--server");
+  const target = serverIndex < 0 ? undefined : argumentsList[serverIndex + 1];
+  const invocation = officialGatewayProcessArguments(
+    [
+      process.execPath,
+      "src/cli/index.ts",
+      ...argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1),
+    ],
+    target,
+  );
   const child = Bun.spawn(invocation.argumentsList, {
     cwd: process.cwd(),
     env: { ...process.env, ...officialGatewayProcessEnvironment(invocation.target), TRAJECTORY_MARKETPLACE_CONFIG_HOME: root },
@@ -116,12 +125,14 @@ const runPtyProcess = async (
   secret: string,
   options: Readonly<{ readonly eio?: boolean; readonly marker?: string; readonly nonEio?: boolean; readonly root?: string; readonly signal?: "SIGTERM" }> = {},
 ): Promise<CliResult> => {
+  const serverIndex = command.indexOf("--server");
+  const target = serverIndex < 0 ? undefined : command[serverIndex + 1];
   const invocation = officialGatewayProcessArguments([
     "python3", "-c", pythonPtyDriver,
     Buffer.from(secret).toString("base64"), Buffer.from(options.marker ?? "Verification code: ").toString("base64"),
     Buffer.from(options.signal ?? "").toString("base64"),
-    ...command,
-  ]);
+    ...command.filter((_, index) => index !== serverIndex && index !== serverIndex + 1),
+  ], target);
   const child = Bun.spawn(invocation.argumentsList, {
     cwd: process.cwd(),
     env: {
