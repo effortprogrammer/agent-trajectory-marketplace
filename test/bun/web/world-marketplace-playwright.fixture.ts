@@ -181,7 +181,6 @@ export const startWorldUiHarness = async (mode: WorldUiMockMode): Promise<WorldU
     web = startWebServer()
     sharedBrowser ??= await chromium.launch({
       args: ["--disable-background-networking"],
-      executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
       headless: true,
     })
   } catch (error) {
@@ -191,7 +190,7 @@ export const startWorldUiHarness = async (mode: WorldUiMockMode): Promise<WorldU
     throw error
   }
   const browser = sharedBrowser
-  if (browser === undefined) throw new Error("system Chrome did not launch")
+  if (browser === undefined) throw new Error("Playwright Chromium did not launch")
   return {
     appUrl: web.baseUrl,
     registryUrl: registry.url,
