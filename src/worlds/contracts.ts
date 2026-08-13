@@ -108,7 +108,7 @@ export const worldDeliveryGrantSchema = z.object({
   entitlementId: worldUuidSchema,
   scope: worldDeliveryScopeSchema,
   envelope: worldDeliveryEnvelopeSchema,
-  downloadUrl: z.string().regex(/^\/v1\/marketplace\/buyer\/world-entitlements\/[0-9a-f-]{36}\/download$/).nullable(),
+  downloadUrl: z.string().regex(/^\/v1\/marketplace\/buyer\/world-entitlements\/[0-9a-f-]{36}\/downloads$/).nullable(),
 }).strict().superRefine((value, context) => {
   if (value.scope !== value.envelope.scope) {
     context.addIssue({ code: "custom", path: ["scope"], message: "grant_scope_mismatch" })

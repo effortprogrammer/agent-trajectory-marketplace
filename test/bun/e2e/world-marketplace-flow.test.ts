@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 const publicRoot = join(import.meta.dir, "../../..")
@@ -18,6 +19,29 @@ const hosted = `${JSON.stringify({
   ok: true,
   result: { instanceId, packDigest, revision: 0, status: "active", worldId },
 })}\n`
+const crossRepository = (() => {
+  const apiKey = process.env.TODO27_REGISTRY_API_KEY
+  const head = process.env.TODO27_REGISTRY_HEAD
+  const root = process.env.TODO27_REGISTRY_ROOT
+  const server = process.env.TODO27_REGISTRY_URL
+  return apiKey === undefined || head === undefined || root === undefined || server === undefined
+    ? undefined
+    : { apiKey, head, root, server }
+})()
+const crossRepositoryTest = crossRepository === undefined ? test.skip : test
+const todo27Trace = (content: string): string => JSON.stringify({
+  runtime: "codex",
+  status: "collected",
+  formatVersion: 2,
+  eventCount: 1,
+  events: [{
+    kind: "message",
+    name: "user",
+    timestamp: "2026-07-27T00:00:00Z",
+    sourceEventId: "event-1",
+    payload: { role: "user", content },
+  }],
+})
 
 const run = async (
   command: readonly string[],
@@ -107,6 +131,48 @@ describe("public Todo27 marketplace lifecycle", () => {
       `GET /v1/marketplace/buyer/world-contracts/${contractId}/hosted/instances/${instanceId} Bearer api-token`,
       `POST /v1/marketplace/buyer/world-entitlements/${entitlementId}/downloads Bearer api-token`,
     ])
+  })
+
+  crossRepositoryTest("uses the built CLI against the explicitly supplied Registry head", async () => {
+    // Registry PR CI supplies all four values; ordinary Marketplace CI has no private checkout.
+    const supplied = crossRepository
+    if (supplied === undefined) throw new Error("missing Todo27 Registry companion")
+    const resolved = Bun.spawnSync(["git", "-C", supplied.root, "rev-parse", "HEAD"], { stdout: "pipe" })
+    expect(resolved.exitCode).toBe(0)
+    expect(new TextDecoder().decode(resolved.stdout).trim()).toBe(supplied.head)
+
+    const workspace = mkdtempSync(join(tmpdir(), "todo27-marketplace-cli-"))
+    try {
+      const traces = join(workspace, "traces")
+      const bundle = join(workspace, "candidate.zip")
+      mkdirSync(traces)
+      writeFileSync(join(traces, "main.atf.json"), todo27Trace("reviewed Todo27 main trace"))
+      writeFileSync(join(traces, "retry.atf.json"), todo27Trace("reviewed Todo27 retry trace"))
+
+      const bundled = await run([
+        process.execPath, "dist/collector.js", "marketplace", "seller", "candidate", "bundle",
+        "--root", traces, "--out", bundle, "--trace", "main.atf.json", "--trace", "retry.atf.json",
+      ])
+      expect(bundled).toEqual({ exitCode: 0, stderr: "", stdout: expect.stringContaining('"traceCount":2') })
+
+      const published = await run([
+        process.execPath, "dist/collector.js", "marketplace", "seller", "candidate", "publish",
+        "--bundle", bundle, "--server", supplied.server, "--api-key", supplied.apiKey,
+      ])
+      expect(published.exitCode).toBe(0)
+      expect(published.stderr).toBe("")
+      expect(JSON.parse(published.stdout)).toEqual({
+        protocolVersion: 1,
+        submissionId: expect.stringMatching(/^sub_/),
+        status: "accepted",
+        statusUrl: expect.stringMatching(/^\/v1\/marketplace\/seller\/candidates\/sub_/),
+      })
+      const receiptPath = process.env.TODO27_COMPANION_RECEIPT_PATH
+      if (receiptPath === undefined) throw new Error("missing Todo27 receipt path")
+      writeFileSync(receiptPath, published.stdout)
+    } finally {
+      rmSync(workspace, { force: true, recursive: true })
+    }
   })
 
   test("returns exact safe JSON for malformed digest incompatible unauthorized and revoked requests", async () => {

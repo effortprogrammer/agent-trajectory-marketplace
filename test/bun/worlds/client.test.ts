@@ -55,6 +55,39 @@ describe("registry World HTTP client", () => {
     ])
   })
 
+  test("classifies a caller-owned in-flight abort as cancelled", async () => {
+    // Given: a request that has reached the registry and an independently-owned abort signal.
+    const requestArrived = Promise.withResolvers<void>()
+    const responseCancelled = Promise.withResolvers<void>()
+    const server = Bun.serve({ fetch() {
+      requestArrived.resolve()
+      return new Response(new ReadableStream<Uint8Array>({
+        cancel() {
+          responseCancelled.resolve()
+        },
+      }), { headers: { "content-type": "application/json" } })
+    }, hostname: "127.0.0.1", port: 0 })
+    servers.push(server)
+    const controller = new AbortController()
+    const action = createWorldClient(`http://127.0.0.1:${server.port}`, controller.signal).catalog()
+    await requestArrived.promise
+
+    // When: the caller aborts after transport startup.
+    controller.abort()
+    const error = await failure(() => action)
+    const bodyCancellation = await Promise.race([
+      responseCancelled.promise.then(() => "cancelled" as const),
+      new Promise<"deadline">((resolve) => {
+        AbortSignal.timeout(250).addEventListener("abort", () => resolve("deadline"), { once: true })
+      }),
+    ])
+
+    // Then: cancellation wins over timeout and closes the received response.
+    expect({ bodyCancellation, code: error.code, status: error.status }).toEqual({
+      bodyCancellation: "cancelled", code: "cancelled", status: 0,
+    })
+  })
+
   test("maps empty delivery denials and oversized bodies to stable redacted errors", async () => {
     // Given: delivery authorization denial and overlarge public response.
     let count = 0

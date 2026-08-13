@@ -120,7 +120,7 @@ const hasGrant = (response: WorldResponse): response is WorldDeliveryGrant => "e
 const hasHostedResult = (response: WorldResponse): response is WorldHostedRuntimeResponse =>
   "ok" in response && response.ok
 
-export const createWorldClient = (server: unknown): WorldClient => {
+export const createWorldClient = (server: unknown, callerSignal?: AbortSignal): WorldClient => {
   const normalizedServer = normalizeAuthServerUrl(server)
   const request = async (
     endpoint: WorldEndpoint,
@@ -130,8 +130,10 @@ export const createWorldClient = (server: unknown): WorldClient => {
     body?: Readonly<Record<string, unknown>>,
     headers?: Readonly<Record<string, string>>,
   ): Promise<Readonly<{ response: WorldResponse; status: number }>> => {
+    if (callerSignal?.aborted) throw new WorldClientError("cancelled", 0)
     if (credential !== undefined && !nonemptyText(credential)) throw new WorldClientError("missing_access_token", 0)
     const timeoutSignal = AbortSignal.timeout(requestTimeoutMs)
+    const signal = callerSignal === undefined ? timeoutSignal : AbortSignal.any([callerSignal, timeoutSignal])
     let status = 0
     try {
       const response = await ky(`${normalizedServer}${path}`, {
@@ -139,7 +141,7 @@ export const createWorldClient = (server: unknown): WorldClient => {
           ...(credential === undefined ? {} : { authorization: `Bearer ${credential}` }),
           ...(headers ?? {}),
         },
-        method, redirect: "manual", retry: 0, signal: timeoutSignal, throwHttpErrors: false, timeout: requestTimeoutMs,
+        method, redirect: "manual", retry: 0, signal, throwHttpErrors: false, timeout: requestTimeoutMs,
         ...(body === undefined ? {} : { json: body }),
       })
       status = response.status
@@ -153,6 +155,7 @@ export const createWorldClient = (server: unknown): WorldClient => {
       }
       return { response: parseWorldResponse(endpoint, status, bytes), status }
     } catch (error) {
+      if (callerSignal?.aborted) throw new WorldClientError("cancelled", 0)
       if (error instanceof WorldClientError) throw error
       if (error instanceof WorldContractError) throw new WorldClientError("invalid_response", status)
       if (isTimeoutError(error) || timeoutSignal.aborted) throw new WorldClientError("timeout", 0)

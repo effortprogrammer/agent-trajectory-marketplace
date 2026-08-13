@@ -37,11 +37,14 @@ describe("registry World public contract", () => {
     ]
 
     // Then: public values match strict schemas and server aliases.
+    const downloadGrant = worldDeliveryGrantSchema.parse(JSON.parse((bodies[3] ?? Buffer.alloc(0)).toString()))
+
+    expect(downloadGrant.downloadUrl).toBe("/v1/marketplace/buyer/world-entitlements/00000000-0000-4000-8000-000000000001/downloads")
     expect(parsed).toEqual([
       worldCatalogListResponseSchema.parse(JSON.parse((bodies[0] ?? Buffer.alloc(0)).toString())),
       worldCatalogDetailResponseSchema.parse(JSON.parse((bodies[1] ?? Buffer.alloc(0)).toString())),
       worldDeliveryGrantSchema.parse(JSON.parse((bodies[2] ?? Buffer.alloc(0)).toString())),
-      worldDeliveryGrantSchema.parse(JSON.parse((bodies[3] ?? Buffer.alloc(0)).toString())),
+      downloadGrant,
       worldHostedRuntimeResponseSchema.parse(JSON.parse((bodies[4] ?? Buffer.alloc(0)).toString())),
       worldHostedRuntimeResponseSchema.parse(JSON.parse((bodies[5] ?? Buffer.alloc(0)).toString())),
       worldHostedRuntimeResponseSchema.parse(JSON.parse((bodies[6] ?? Buffer.alloc(0)).toString())),

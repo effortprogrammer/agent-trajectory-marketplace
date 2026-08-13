@@ -42,14 +42,14 @@ export const runWorldCli = async (argumentsList: readonly string[], signal: Abor
         console.log(help);
         return;
       case "world-list":
-        console.log(JSON.stringify(await createWorldClient(normalizeAuthServerUrl(command.server)).catalog()));
+        console.log(JSON.stringify(await createWorldClient(normalizeAuthServerUrl(command.server), signal).catalog()));
         return;
       case "world-detail":
-        console.log(JSON.stringify(await createWorldClient(normalizeAuthServerUrl(command.server)).world({ worldId: command.worldId })));
+        console.log(JSON.stringify(await createWorldClient(normalizeAuthServerUrl(command.server), signal).world({ worldId: command.worldId })));
         return;
       case "world-run": {
         if (signal.aborted) throw new WorldClientError("cancelled", 0);
-        const client = createWorldClient(normalizeAuthServerUrl(command.server));
+        const client = createWorldClient(normalizeAuthServerUrl(command.server), signal);
         const response = await client.createHostedInstance({
           accessToken: command.apiKey,
           body: { seed: command.seed },
@@ -62,7 +62,7 @@ export const runWorldCli = async (argumentsList: readonly string[], signal: Abor
       }
       case "world-status": {
         if (signal.aborted) throw new WorldClientError("cancelled", 0);
-        const client = createWorldClient(normalizeAuthServerUrl(command.server));
+        const client = createWorldClient(normalizeAuthServerUrl(command.server), signal);
         const response = await client.hostedStatus({
           accessToken: command.apiKey,
           contractId: command.contractId,
@@ -74,7 +74,7 @@ export const runWorldCli = async (argumentsList: readonly string[], signal: Abor
       }
       case "world-download": {
         if (signal.aborted) throw new WorldClientError("cancelled", 0);
-        const response = await createWorldClient(normalizeAuthServerUrl(command.server)).redeemDownload({
+        const response = await createWorldClient(normalizeAuthServerUrl(command.server), signal).redeemDownload({
           accessToken: command.apiKey,
           entitlementId: command.entitlementId,
         });
