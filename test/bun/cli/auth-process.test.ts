@@ -232,13 +232,12 @@ describe("auth real CLI process boundary", () => {
     expect(readStoredAuthSession(origin, { storePath: path })).toBeUndefined();
   });
 
-  test("removes expired sessions without network and preserves credentials on logout failure", async () => {
+  test("removes expired sessions without network", async () => {
     const root = fixtureRoot();
-    let hits = 0; let responseStatus = 429;
+    let hits = 0;
     const server = Bun.serve({ port: 0, fetch() {
       hits += 1;
-      const code = responseStatus === 401 ? "unauthorized" : "rate_limited";
-      return json({ ok: false, error: { code, message: "later" } }, responseStatus);
+      return json({ ok: false, error: { code: "rate_limited", message: "later" } }, 429);
     } });
     servers.push(server);
     const origin = `http://127.0.0.1:${server.port}`;
@@ -248,7 +247,18 @@ describe("auth real CLI process boundary", () => {
     const expired = await runCli(root, ["auth", "status", "--server", origin]);
     expect({ hits, result: expired }).toEqual({ hits: 0, result: { exitCode: 0, stderr: "", stdout: `${JSON.stringify({ authenticated: false, server: officialRegistryOrigin })}\n` } });
     expect(readStoredAuthSession(officialRegistryOrigin, { storePath: path })).toBeUndefined();
+  });
 
+  test("preserves credentials on logout failure and clears unauthorized sessions", async () => {
+    const root = fixtureRoot();
+    let responseStatus = 429;
+    const server = Bun.serve({ port: 0, fetch() {
+      const code = responseStatus === 401 ? "unauthorized" : "rate_limited";
+      return json({ ok: false, error: { code, message: "later" } }, responseStatus);
+    } });
+    servers.push(server);
+    const origin = `http://127.0.0.1:${server.port}`;
+    const path = storePath(root);
     writeStoredAuthSession({ server: officialRegistryOrigin, accessToken: token, tokenType: "Bearer", expiresAt, accountId }, { storePath: path });
     const failed = await runCli(root, ["auth", "logout", "--server", origin]);
     expect(failed).toEqual({ exitCode: 1, stdout: "", stderr: `${JSON.stringify({ error: "rate_limited" })}\n` });
