@@ -37,8 +37,18 @@ jobs:
       - name: Verify wallet balance fixtures
         run: bun run verify:wallet-balance
 
-      - name: Test
-        run: bun test test/bun
+      - name: Test process boundaries
+        run: |
+          while IFS= read -r -d '' test_file; do
+            bun test "$test_file"
+          done < <(find test/bun -type f -name '*process.test.ts' -print0)
+
+      - name: Test remaining suite
+        run: >-
+          find test/bun -type f -name '*.test.ts'
+          ! -name '*process.test.ts'
+          -print0
+          | xargs -0 bun test
 
       - name: Build
         run: bun run build:collector
