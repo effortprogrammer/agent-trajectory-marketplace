@@ -29,7 +29,9 @@ const containsResidualSecret = (value: unknown): boolean => {
   }
   if (Array.isArray(value)) return value.some(containsResidualSecret)
   if (value !== null && typeof value === "object") {
-    return Object.values(value).some(containsResidualSecret)
+    return Object.entries(value).some(
+      ([key, entry]) => containsResidualSecret(key) || containsResidualSecret(entry),
+    )
   }
   return false
 }

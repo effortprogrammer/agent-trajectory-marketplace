@@ -46,12 +46,12 @@ describe("post-redaction residual secret scan", () => {
     expect(bytes).toEqual(before)
   })
 
-  test("does not treat JSON property names as residual credential values", () => {
-    // Given: semantic JSON whose structural key resembles a credential but whose value is benign.
+  test("rejects decoded JSON property names containing residual credentials", () => {
+    // Given: semantic JSON whose structural key itself carries a credential.
     const bytes = encoder.encode(`{"github_pat_${"a".repeat(82)}":"redacted"}`)
 
-    // When / Then: only decoded JSON values are scanned.
-    expect(() => assertNoResidualSecrets(bytes)).not.toThrow()
+    // When / Then: keys cannot smuggle credentials around decoded-value scanning.
+    expect(() => assertNoResidualSecrets(bytes)).toThrow(ResidualSecretScanError)
   })
 
   test("allows credential-adjacent instructional text", () => {

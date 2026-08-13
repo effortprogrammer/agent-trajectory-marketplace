@@ -411,6 +411,31 @@ describe("publish bundle ZIP integrity", () => {
     expect(parse).toThrow(PublishBundleError)
   })
 
+  test("rejects an existing bundle whose decoded property name carries a credential", () => {
+    // Given: a manifest-consistent trace whose payload key itself contains a GitHub token.
+    const token = `github_pat_${"a".repeat(82)}`
+    const trace = Buffer.from(JSON.stringify({
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 1,
+      events: [{
+        kind: "tool",
+        name: "read",
+        payload: { input: { [token]: "redacted" } },
+      }],
+    }), "utf8")
+    const archive = archiveForTrace(trace)
+
+    // When: the existing bundle crosses direct publication admission.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: property names cannot carry residual credentials to the registry.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
   test.each([
     ["runtime", {
       runtime: "Bearer TOP_SECRET_123456789",
