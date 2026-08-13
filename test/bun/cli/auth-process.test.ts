@@ -84,12 +84,18 @@ const json = (value: unknown, status = 200, headers: Readonly<Record<string, str
 
 const runCli = async (root: string, argumentsList: readonly string[], input?: string): Promise<CliResult> => {
   const serverIndex = argumentsList.indexOf("--server");
-  const target = serverIndex < 0 ? undefined : argumentsList[serverIndex + 1];
+  const candidateTarget = serverIndex < 0 ? undefined : argumentsList[serverIndex + 1];
+  const targetUrl = candidateTarget === undefined ? undefined : new URL(candidateTarget);
+  const target = targetUrl?.hostname === "127.0.0.1" && targetUrl.pathname === "/"
+    ? candidateTarget
+    : undefined;
   const invocation = officialGatewayProcessArguments(
     [
       process.execPath,
       "src/cli/index.ts",
-      ...argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1),
+      ...(target === undefined
+        ? argumentsList
+        : argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1)),
     ],
     target,
   );
@@ -126,12 +132,18 @@ const runPtyProcess = async (
   options: Readonly<{ readonly eio?: boolean; readonly marker?: string; readonly nonEio?: boolean; readonly root?: string; readonly signal?: "SIGTERM" }> = {},
 ): Promise<CliResult> => {
   const serverIndex = command.indexOf("--server");
-  const target = serverIndex < 0 ? undefined : command[serverIndex + 1];
+  const candidateTarget = serverIndex < 0 ? undefined : command[serverIndex + 1];
+  const targetUrl = candidateTarget === undefined ? undefined : new URL(candidateTarget);
+  const target = targetUrl?.hostname === "127.0.0.1" && targetUrl.pathname === "/"
+    ? candidateTarget
+    : undefined;
   const invocation = officialGatewayProcessArguments([
     "python3", "-c", pythonPtyDriver,
     Buffer.from(secret).toString("base64"), Buffer.from(options.marker ?? "Verification code: ").toString("base64"),
     Buffer.from(options.signal ?? "").toString("base64"),
-    ...command.filter((_, index) => index !== serverIndex && index !== serverIndex + 1),
+    ...(target === undefined
+      ? command
+      : command.filter((_, index) => index !== serverIndex && index !== serverIndex + 1)),
   ], target);
   const child = Bun.spawn(invocation.argumentsList, {
     cwd: process.cwd(),

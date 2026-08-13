@@ -2,10 +2,7 @@ export const officialGatewayProcessArguments = (
   argumentsList: readonly string[],
   target?: string,
 ): Readonly<{ readonly argumentsList: string[]; readonly target?: string }> => {
-  const serverIndex = argumentsList.indexOf("--server");
-  if (serverIndex >= 0 || target === undefined) {
-    return { argumentsList: [...argumentsList] };
-  }
+  if (target === undefined) return { argumentsList: [...argumentsList] };
   const targetUrl = new URL(target);
   if (targetUrl.hostname !== "127.0.0.1" || targetUrl.pathname !== "/") {
     return { argumentsList: [...argumentsList] };

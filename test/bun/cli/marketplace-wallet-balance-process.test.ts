@@ -20,7 +20,9 @@ const run = async (argumentsList: readonly string[], environment: Readonly<Recor
   const serverIndex = argumentsList.indexOf("--server")
   const target = serverIndex < 0 ? undefined : argumentsList[serverIndex + 1]
   const invocation = officialGatewayProcessArguments(
-    [process.execPath, "dist/collector.js", ...argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1)],
+    [process.execPath, "dist/collector.js", ...(serverIndex < 0
+      ? argumentsList
+      : argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1))],
     target,
   )
   const child = Bun.spawn(invocation.argumentsList, { cwd: process.cwd(), env: { ...environment, ...officialGatewayProcessEnvironment(invocation.target) }, stderr: "pipe", stdout: "pipe" })
