@@ -82,6 +82,18 @@ const storePath = (root: string): string => join(root, "agent-trajectory-marketp
 const json = (value: unknown, status = 200, headers: Readonly<Record<string, string>> = {}): Response =>
   Response.json(value, { headers, status });
 
+const hostileAuthOrigin = (): string => {
+  const server = Bun.serve({ port: 0, async fetch(request) {
+    const body = await request.text();
+    if (body.includes("redirect@example.test")) return new Response(null, { headers: { location: "https://evil.example.test" }, status: 302 });
+    if (body.includes("oversize@example.test")) return new Response("x".repeat(65_537));
+    if (body.includes("limited@example.test")) return json({ ok: false, error: { code: "rate_limited", message: "secret detail" } }, 429);
+    return new Response("{malformed");
+  } });
+  servers.push(server);
+  return `http://127.0.0.1:${server.port}`;
+};
+
 const runCli = async (root: string, argumentsList: readonly string[], input?: string): Promise<CliResult> => {
   const serverIndex = argumentsList.indexOf("--server");
   const candidateTarget = serverIndex < 0 ? undefined : argumentsList[serverIndex + 1];
@@ -298,35 +310,42 @@ describe("auth real CLI process boundary", () => {
     expect(readStoredAuthSession(officialRegistryOrigin, { storePath: path })).toBeUndefined();
   });
 
-  test("fails closed for hostile transport, OTP, origin, and store boundaries", async () => {
+  test("fails closed for hostile auth responses", async () => {
     const root = fixtureRoot();
-    const server = Bun.serve({ port: 0, async fetch(request) {
-      const body = await request.text();
-      if (body.includes("redirect@example.test")) return new Response(null, { headers: { location: "https://evil.example.test" }, status: 302 });
-      if (body.includes("oversize@example.test")) return new Response("x".repeat(65_537));
-      if (body.includes("limited@example.test")) return json({ ok: false, error: { code: "rate_limited", message: "secret detail" } }, 429);
-      return new Response("{malformed");
-    } });
-    servers.push(server);
-    const origin = `http://127.0.0.1:${server.port}`;
+    const origin = hostileAuthOrigin();
     const cases = [
       await runCli(root, ["auth", "login", "--server", origin, "--email", "redirect@example.test"]),
       await runCli(root, ["auth", "login", "--server", origin, "--email", "oversize@example.test"]),
       await runCli(root, ["auth", "login", "--server", origin, "--email", "limited@example.test"]),
       await runCli(root, ["auth", "login", "--server", origin, "--email", "malformed@example.test"]),
+    ];
+    expect(cases.map(({ exitCode }) => exitCode)).toEqual([1, 1, 1, 1]);
+    expect(cases.map(({ stdout }) => stdout)).toEqual(["", "", "", ""]);
+    expect(cases.map(({ stderr }) => stderr)).toEqual([
+      "auth_redirect_rejected", "invalid_auth_response", "rate_limited", "invalid_auth_response",
+    ].map((error) => `${JSON.stringify({ error })}\n`));
+    expect(cases.map(({ stderr }) => stderr).join("")).not.toContain("secret detail");
+  });
+
+  test("fails closed for invalid OTP and origin inputs", async () => {
+    const root = fixtureRoot();
+    const origin = hostileAuthOrigin();
+    const cases = [
       await runCli(root, ["auth", "verify", "--server", origin, "--challenge", challengeId, "--code-stdin"], `${"1".repeat(65)}\n`),
       await runCli(root, ["auth", "verify", "--server", origin, "--challenge", challengeId, "--code-stdin"], ""),
       await runCli(root, ["auth", "login", "--server", "http://example.test", "--email", "owner@example.test"]),
       await runCli(root, ["auth", "login", "--server", `${origin}/wrong-origin`, "--email", "owner@example.test"]),
     ];
-    expect(cases.map(({ exitCode }) => exitCode)).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
-    expect(cases.map(({ stdout }) => stdout)).toEqual(["", "", "", "", "", "", "", ""]);
+    expect(cases.map(({ exitCode }) => exitCode)).toEqual([1, 1, 1, 1]);
+    expect(cases.map(({ stdout }) => stdout)).toEqual(["", "", "", ""]);
     expect(cases.map(({ stderr }) => stderr)).toEqual([
-      "auth_redirect_rejected", "invalid_auth_response", "rate_limited", "invalid_auth_response",
       "invalid_auth_code", "auth_code_required", "invalid_auth_command", "invalid_auth_command",
     ].map((error) => `${JSON.stringify({ error })}\n`));
-    expect(cases.map(({ stderr }) => stderr).join("")).not.toContain("secret detail");
+  });
 
+  test("preserves or rejects credential stores across auth failures", async () => {
+    const root = fixtureRoot();
+    const origin = hostileAuthOrigin();
     const path = storePath(root);
     writeStoredAuthSession({ server: officialRegistryOrigin, accessToken: token, tokenType: "Bearer", expiresAt, accountId }, { storePath: path });
     const failedVerify = await runCli(root, ["auth", "verify", "--server", origin, "--challenge", challengeId, "--code-stdin"], "654321\n");
