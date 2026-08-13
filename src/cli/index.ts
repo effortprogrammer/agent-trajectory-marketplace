@@ -13,6 +13,7 @@ import { installUpdateServiceSchedule } from "@/trajectory/update-service-schedu
 
 import { parseCollectorCommand, runCollectorCli, runCollectorResidentCli, type CollectorCommand } from "./collector";
 import { isAuthInvocation, runAuthCli } from "./auth";
+import { datasetHelpText, isDatasetHelpInvocation, isDatasetInvocation, runDatasetCli } from "./dataset";
 import { isMarketplaceInvocation, runMarketplaceCli } from "./marketplace";
 
 const collectorErrorCode = (error: unknown): string => {
@@ -110,6 +111,14 @@ const main = async (): Promise<void> => {
     }
     if (isAuthInvocation(argumentsList)) {
       await runAuthCli(argumentsList, commandAbortController.signal);
+      return;
+    }
+    if (isDatasetInvocation(argumentsList)) {
+      if (isDatasetHelpInvocation(argumentsList)) {
+        console.log(datasetHelpText);
+        return;
+      }
+      console.log(JSON.stringify(runDatasetCli(argumentsList)));
       return;
     }
     if (isMarketplaceInvocation(argumentsList)) {
