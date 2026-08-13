@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +10,9 @@ import {
   officialGatewayProcessArguments,
   officialGatewayProcessEnvironment,
 } from "../fixtures/gateway-process";
+
+const processBoundaryTimeoutMs = 15_000;
+setDefaultTimeout(processBoundaryTimeoutMs);
 
 const roots: string[] = [];
 const servers: Bun.Server<unknown>[] = [];
