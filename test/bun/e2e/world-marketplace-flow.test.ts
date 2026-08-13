@@ -12,6 +12,12 @@ const instanceId = "instance-7f1a9c2e"
 const packDigest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 const worldId = "world/refund-unit"
 const fixture = (name: string): string => readFileSync(join(contractRoot, name), "utf8")
+const jsonFixture = (name: string): Response =>
+  new Response(fixture(name), { headers: { "content-type": "application/json" } })
+const hosted = `${JSON.stringify({
+  ok: true,
+  result: { instanceId, packDigest, revision: 0, status: "active", worldId },
+})}\n`
 
 const run = async (
   command: readonly string[],
@@ -50,16 +56,18 @@ describe("public Todo27 marketplace lifecycle", () => {
       async fetch(request) {
         const path = new URL(request.url).pathname
         observed.push(`${request.method} ${path} ${request.headers.get("authorization") ?? "-"}`)
-        if (path === "/v1/marketplace/worlds") return new Response(fixture("catalog-list-200.json"))
-        if (path === `/v1/marketplace/worlds/${worldId}`) return new Response(fixture("catalog-detail-200.json"))
-        if (path.endsWith(`/hosted/instances/${instanceId}`)) return new Response(fixture("hosted-status-200.json"))
+        if (path === "/v1/marketplace/worlds") return jsonFixture("catalog-list-200.json")
+        if (path === `/v1/marketplace/worlds/${worldId}`) return jsonFixture("catalog-detail-200.json")
+        if (path.endsWith(`/hosted/instances/${instanceId}`)) {
+          return new Response(hosted, { headers: { "content-type": "application/json" } })
+        }
         if (path.endsWith("/hosted/instances")) {
           expect(await request.text()).toBe("{\"seed\":7}")
           expect(request.headers.get("idempotency-key")).toBe("todo27-lifecycle")
           expect(request.headers.get("x-world-pack-digest")).toBe(packDigest)
-          return new Response(fixture("hosted-create-200.json"))
+          return new Response(hosted, { headers: { "content-type": "application/json" } })
         }
-        if (path.endsWith("/downloads")) return new Response(fixture("entitlement-download-200.json"))
+        if (path.endsWith("/downloads")) return jsonFixture("entitlement-download-200.json")
         return new Response(null, { status: 404 })
       },
       hostname: "127.0.0.1",
@@ -88,8 +96,8 @@ describe("public Todo27 marketplace lifecycle", () => {
     expect(results).toEqual([
       { exitCode: 0, stderr: "", stdout: fixture("catalog-list-200.json") },
       { exitCode: 0, stderr: "", stdout: fixture("catalog-detail-200.json") },
-      { exitCode: 0, stderr: "", stdout: fixture("hosted-create-200.json") },
-      { exitCode: 0, stderr: "", stdout: fixture("hosted-status-200.json") },
+      { exitCode: 0, stderr: "", stdout: hosted },
+      { exitCode: 0, stderr: "", stdout: hosted },
       { exitCode: 0, stderr: "", stdout: fixture("entitlement-download-200.json") },
     ])
     expect(observed).toEqual([
