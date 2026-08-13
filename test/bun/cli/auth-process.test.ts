@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +9,9 @@ import {
   officialGatewayProcessArguments,
   officialGatewayProcessEnvironment,
 } from "../fixtures/gateway-process";
+
+const processBoundaryTimeoutMs = 15_000;
+setDefaultTimeout(processBoundaryTimeoutMs);
 
 const roots: string[] = [];
 const servers: Bun.Server<unknown>[] = [];
@@ -307,7 +310,7 @@ describe("auth real CLI process boundary", () => {
     const failed = await runCli(root, ["auth", "logout", "--server", origin]);
     expect(failed).toEqual({ exitCode: 1, stdout: "", stderr: `${JSON.stringify({ error: "rate_limited" })}\n` });
     expect(String(readStoredAuthSession(officialRegistryOrigin, { storePath: path })?.accessToken)).toBe(token);
-  }, 15_000);
+  });
 
   test("clears unauthorized sessions", async () => {
     const root = fixtureRoot();
