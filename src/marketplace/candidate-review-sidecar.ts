@@ -6,14 +6,12 @@ import {
   fchmodSync,
   fstatSync,
   fsyncSync,
-  lstatSync,
-  mkdirSync,
   openSync,
   readFileSync,
   writeSync,
 } from "node:fs";
 import type { Stats } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 
 import { sanitizedArtifactDigest } from "./dataset-archive";
@@ -62,6 +60,8 @@ const sidecarStateSchema = z.object({
 type SidecarState = Readonly<z.infer<typeof sidecarStateSchema>>;
 
 type CandidateReviewSidecarTestHooks = Readonly<{
+  readonly afterCachePathValidatedBeforeCreate?: () => void;
+  readonly afterCacheComponentOpened?: (name: string) => void;
   readonly afterCacheRootValidated?: () => void;
   readonly afterCacheDirectoryOpened?: () => void;
   readonly afterTemporaryOpen?: (temporaryName: string) => void;
@@ -132,6 +132,7 @@ type FileStatus = Stats;
 
 const nativeSymbols = {
   openat: { args: ["i32", "ptr", "i32", "u32"], returns: "i32" },
+  mkdirat: { args: ["i32", "ptr", "u32"], returns: "i32" },
   renameat: { args: ["i32", "ptr", "i32", "ptr"], returns: "i32" },
   unlinkat: { args: ["i32", "ptr", "i32"], returns: "i32" },
 } as const;
@@ -153,44 +154,9 @@ const assertPrivateDirectoryStatus = (status: FileStatus): FileStatus => {
   return status;
 };
 
-const assertPrivateDirectory = (path: string): FileStatus => {
-  try {
-    return assertPrivateDirectoryStatus(lstatSync(path) as Stats);
-  } catch (error) {
-    if (isMissing(error)) return invalid();
-    throw error;
-  }
-};
-
 const resolvedPrivateCacheRoot = (cacheRoot: string): string => {
   if (!isAbsolute(cacheRoot) || cacheRoot.includes("\0")) return invalid();
   return resolve(cacheRoot);
-};
-
-const assertNoSymlinkedExistingAncestor = (path: string): void => {
-  let current = path;
-  while (true) {
-    try {
-      if (lstatSync(current).isSymbolicLink()) return invalid();
-    } catch (error) {
-      if (!isMissing(error)) return invalid();
-    }
-    const parent = dirname(current);
-    if (parent === current) return;
-    current = parent;
-  }
-};
-
-const ensurePrivateCacheRoot = (cacheRoot: string): void => {
-  assertNoSymlinkedExistingAncestor(cacheRoot);
-  try {
-    mkdirSync(cacheRoot, { recursive: true, mode: 0o700 });
-  } catch (error) {
-    if (error instanceof Error) return invalid();
-    throw error;
-  }
-  assertNoSymlinkedExistingAncestor(cacheRoot);
-  assertPrivateDirectory(cacheRoot);
 };
 
 function loadNative() {
@@ -213,25 +179,42 @@ const encodedName = (name: string): Uint8Array => {
 const openAt = (library: NativeLibrary, directory: number, name: string, flags: number, mode = 0): number =>
   library.symbols.openat(directory, encodedName(name), flags, mode);
 
+const mkdirAt = (library: NativeLibrary, directory: number, name: string): number =>
+  library.symbols.mkdirat(directory, encodedName(name), 0o700);
+
 const renameAt = (library: NativeLibrary, directory: number, source: string, destination: string): number =>
   library.symbols.renameat(directory, encodedName(source), directory, encodedName(destination));
 
 const unlinkAt = (library: NativeLibrary, directory: number, name: string): number =>
   library.symbols.unlinkat(directory, encodedName(name), 0);
 
-const openPrivateCacheDirectory = (cacheRoot: string): CacheDirectory => {
+const openPrivateCacheDirectory = (
+  cacheRoot: string,
+  testHooks: CandidateReviewSidecarTestHooks | undefined,
+): CacheDirectory => {
   let library: NativeLibrary | undefined;
   let descriptor: number | undefined;
   try {
     library = loadNative();
     descriptor = openSync("/", directoryFlags);
     for (const name of cacheRoot.split("/").filter((part) => part.length > 0)) {
-      const child = openAt(library, descriptor, name, directoryFlags);
-      if (child < 0) return invalid();
+      let child = openAt(library, descriptor, name, directoryFlags);
+      if (child < 0) {
+        testHooks?.afterCachePathValidatedBeforeCreate?.();
+        const created = mkdirAt(library, descriptor, name) === 0;
+        child = openAt(library, descriptor, name, directoryFlags);
+        if (child < 0) return invalid();
+        if (created) {
+          fchmodSync(child, 0o700);
+          assertPrivateDirectoryStatus(fstatSync(child));
+        }
+      }
+      testHooks?.afterCacheComponentOpened?.(name);
       closeSync(descriptor);
       descriptor = child;
     }
     assertPrivateDirectoryStatus(fstatSync(descriptor));
+    testHooks?.afterCacheRootValidated?.();
     return { library, descriptor };
   } catch (error) {
     if (descriptor !== undefined) closeSync(descriptor);
@@ -376,9 +359,7 @@ export const reviewPrivateCandidate = (request: PrivateCandidateReviewRequest): 
   const artifact = artifactFor(request.artifactBytes);
   const address = addressFor(artifact, identity);
   const cacheRoot = resolvedPrivateCacheRoot(request.cacheRoot);
-  ensurePrivateCacheRoot(cacheRoot);
-  request.testHooks?.afterCacheRootValidated?.();
-  const directory = openPrivateCacheDirectory(cacheRoot);
+  const directory = openPrivateCacheDirectory(cacheRoot, request.testHooks);
   try {
     request.testHooks?.afterCacheDirectoryOpened?.();
     const cached = readState(directory, address, artifact, identity);

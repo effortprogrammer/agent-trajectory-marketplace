@@ -189,7 +189,58 @@ describe("private content-addressed candidate review sidecars", () => {
     expect(existsSync(join(outside, "private-cache"))).toBe(false);
   });
 
-  test("cannot redirect a validated cache root to receive a temporary sidecar", () => {
+  test("does not create a cache beneath an ancestor replaced after validation", () => {
+    // Given: a missing cache path and an outside directory controlled by an attacker.
+    const root = fixtureRoot();
+    const outside = join(root, "outside");
+    const redirectedParent = join(root, "cache-parent");
+    const cacheRoot = join(redirectedParent, "private-cache");
+    mkdirSync(outside, { mode: 0o700 });
+
+    // When: the missing parent is replaced after pathname validation but before creation.
+    const action = (): unknown => reviewPrivateCandidate({
+      artifactBytes: artifact(), cacheRoot, identity: identity(), execute: () => review,
+      testHooks: {
+        afterCachePathValidatedBeforeCreate: (): void => symlinkSync(outside, redirectedParent, "dir"),
+      },
+    });
+
+    // Then: the confinement boundary fails without creating any cache state outside the requested path.
+    expect(action).toThrow("invalid_bundle_request");
+    expect(existsSync(join(outside, "private-cache"))).toBe(false);
+    expect(Array.from(new Bun.Glob("*").scanSync({ cwd: outside }))).toEqual([]);
+  });
+
+  test("pins creation beneath a newly opened cache component", () => {
+    // Given: a cache root with a missing parent and an outside directory controlled by an attacker.
+    const root = fixtureRoot();
+    const outside = join(root, "outside");
+    const cacheParent = join(root, "cache-parent");
+    const cacheRoot = join(cacheParent, "private-cache");
+    mkdirSync(outside, { mode: 0o700 });
+    let replaced = false;
+
+    // When: the newly created parent is replaced after its descriptor has opened but before its child is created.
+    const result = reviewPrivateCandidate({
+      artifactBytes: artifact(), cacheRoot, identity: identity(), execute: () => review,
+      testHooks: {
+        afterCacheComponentOpened: (name): void => {
+          if (name !== "cache-parent") return;
+          renameSync(cacheParent, join(root, "opened-cache-parent"));
+          symlinkSync(outside, cacheParent, "dir");
+          replaced = true;
+        },
+      },
+    });
+
+    // Then: descendant creation and sidecar writes stay beneath the pinned directory descriptor.
+    expect(replaced).toBe(true);
+    expect(result).toMatchObject({ source: "reviewed", review });
+    expect(Array.from(new Bun.Glob("*").scanSync({ cwd: outside }))).toEqual([]);
+    expect(Array.from(new Bun.Glob("*.json").scanSync({ cwd: join(root, "opened-cache-parent", "private-cache") }))).toHaveLength(1);
+  });
+
+  test("pins a validated cache root before its pathname is replaced", () => {
     // Given: a cache root that is private when validated and an outside directory controlled by an attacker.
     const root = fixtureRoot();
     const cacheRoot = join(root, "private-cache");
@@ -213,9 +264,10 @@ describe("private content-addressed candidate review sidecars", () => {
     });
 
     // Then: no private sidecar bytes can be opened in the redirected directory.
-    expect(action).toThrow("invalid_bundle_request");
+    expect(action()).toMatchObject({ source: "reviewed", review });
     expect(outsideTemporaryOpened).toBe(false);
     expect(Array.from(new Bun.Glob("*").scanSync({ cwd: outside }))).toEqual([]);
+    expect(Array.from(new Bun.Glob("*.json").scanSync({ cwd: join(root, "validated-cache") }))).toHaveLength(1);
   });
 
   test("pins sidecar reads to the opened cache directory", () => {
