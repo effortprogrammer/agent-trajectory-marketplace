@@ -19,7 +19,7 @@ import {
 const digest = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 
-const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
+export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
   let value: unknown;
   try {
     const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -62,7 +62,7 @@ const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
 };
 
 export const sanitizedArtifactDigest = (sourceBytes: Uint8Array): Readonly<{ byteCount: number; sha256: string }> => {
-  const bytes = sanitizedTraceBytes(Buffer.from(sourceBytes));
+  const bytes = sanitizedTraceBytes(sourceBytes);
   return Object.freeze({ byteCount: bytes.byteLength, sha256: digest(bytes) });
 };
 

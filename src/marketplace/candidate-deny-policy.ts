@@ -5,7 +5,9 @@ import { z } from "zod"
 import { MarketplaceError } from "./error"
 import { readFixtureFile } from "./fixture-reader"
 import { parseAdmissionJson } from "./json-preflight"
-import type { SelectionTrace } from "./selection-contract"
+import { sanitizedTraceBytes } from "./dataset-archive"
+import { normalizedSanitizedTraceProjection } from "./sanitized-search-projection"
+import type { FrozenTrace } from "./session-contract"
 
 const maximumPolicyBytes = 16 * 1024
 const maximumPatterns = 32
@@ -46,30 +48,28 @@ export const readCandidateDenyPolicy = (path: string): CandidateDenyPolicy => {
   return parsed.data
 }
 
-const searchableText = (trace: SelectionTrace): string => [
-  trace.runtime,
-  ...trace.summary.requests,
-  ...trace.summary.touched,
-  ...trace.summary.errors.map((error) => error.text),
-].join("\n").toLowerCase()
+const normalizedText = (text: string): string => text.normalize("NFC").toLowerCase()
 
-const normalizedPattern = (pattern: string): string => pattern.toLowerCase()
+// This is the sole policy/search view: the bounded bytes that would be uploaded,
+// never the editable selection summary or unsanitized native session content.
+const searchableText = (trace: FrozenTrace): string =>
+  normalizedSanitizedTraceProjection(sanitizedTraceBytes(trace.bytes))
 
-export const isDeniedCandidate = (trace: SelectionTrace, policy: CandidateDenyPolicy): boolean => {
+export const isDeniedCandidate = (trace: FrozenTrace, policy: CandidateDenyPolicy): boolean => {
   const text = searchableText(trace)
-  return policy.patterns.some((pattern) => text.includes(normalizedPattern(pattern)))
+  return policy.patterns.some((pattern) => text.includes(normalizedText(pattern)))
 }
 
 export const allowedCandidates = (
-  traces: readonly SelectionTrace[],
+  traces: readonly FrozenTrace[],
   policy: CandidateDenyPolicy | undefined,
-): readonly SelectionTrace[] => policy === undefined ? traces : traces.filter((trace) => !isDeniedCandidate(trace, policy))
+): readonly FrozenTrace[] => policy === undefined ? traces : traces.filter((trace) => !isDeniedCandidate(trace, policy))
 
 export const searchCandidates = (
-  traces: readonly SelectionTrace[],
+  traces: readonly FrozenTrace[],
   query: string,
   policy: CandidateDenyPolicy | undefined,
-): readonly SelectionTrace[] => {
-  const normalizedQuery = query.toLowerCase()
+): readonly FrozenTrace[] => {
+  const normalizedQuery = normalizedText(query)
   return allowedCandidates(traces, policy).filter((trace) => searchableText(trace).includes(normalizedQuery))
 }

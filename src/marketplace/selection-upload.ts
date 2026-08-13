@@ -57,15 +57,13 @@ const assertSelectionBuildable = (document: SelectionDocument): void => {
 }
 
 export const allowedCandidateTraces = (
-  root: string,
+  _root: string,
   traces: readonly FrozenTrace[],
   denyPolicyPath?: string,
 ): readonly FrozenTrace[] => {
   if (denyPolicyPath === undefined) return traces
   const policy = readCandidateDenyPolicy(denyPolicyPath)
-  const document = selectionDocumentFromTraces(root, traces)
-  const allowed = new Set(allowedCandidates(document.traces, policy).map((trace) => trace.selector))
-  return traces.filter((trace) => allowed.has(trace.selector))
+  return allowedCandidates(traces, policy)
 }
 
 export const selectionPreviewJson = (root: string, denyPolicyPath?: string): string => {
@@ -106,7 +104,7 @@ export const writeBundleFromSelection = (
   })
   if (
     policy !== undefined &&
-    selectionDocumentFromTraces(snapshot.root, selected).traces.some((trace) => isDeniedCandidate(trace, policy))
+    selected.some((trace) => isDeniedCandidate(trace, policy))
   ) {
     throw new MarketplaceError("denied_selection")
   }
@@ -116,8 +114,7 @@ export const writeBundleFromSelection = (
 export const candidateSearchJson = (root: string, query: string, denyPolicyPath?: string): string => {
   const snapshot = scanSessionSnapshot(root)
   const policy = denyPolicyPath === undefined ? undefined : readCandidateDenyPolicy(denyPolicyPath)
-  const document = selectionDocumentFromTraces(snapshot.root, snapshot.traces)
-  const matches = searchCandidates(document.traces, query, policy)
+  const matches = searchCandidates(snapshot.traces, query, policy)
   return JSON.stringify({ count: matches.length, selectors: matches.map((trace) => trace.selector) })
 }
 
