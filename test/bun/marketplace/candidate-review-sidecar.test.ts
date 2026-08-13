@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -18,7 +18,7 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 const fixtureRoot = (): string => {
-  const root = mkdtempSync(join(tmpdir(), "trajectory-review-sidecar-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "trajectory-review-sidecar-")));
   roots.push(root);
   return root;
 };
@@ -40,13 +40,9 @@ const artifact = (request = "first"): Uint8Array => encoder.encode(JSON.stringif
 }));
 
 const reviewRationale = "The trace is relevant to the candidate.";
-const reviewRawSession = "reviewer transcript with private instruction";
-const reviewSecretDerivedHash = "hmac-sha256:local-secret-derived-value";
 const review: PrivateCandidateReview = {
   decision: "approved",
   rationale: reviewRationale,
-  rawSession: reviewRawSession,
-  secretDerivedHashes: [reviewSecretDerivedHash],
 };
 
 afterEach(() => {
@@ -68,7 +64,7 @@ describe("private content-addressed candidate review sidecars", () => {
     const first = reviewPrivateCandidate({ artifactBytes: artifact(), cacheRoot, identity: identity(), execute });
     const second = reviewPrivateCandidate({ artifactBytes: artifact(), cacheRoot, identity: identity(), execute });
 
-    // Then: only the first review executes and private state remains in the sidecar.
+    // Then: only the first review executes and its bounded decision state remains in the sidecar.
     expect(first.source).toBe("reviewed");
     expect(second.source).toBe("cache");
     expect(calls).toBe(1);
@@ -77,7 +73,7 @@ describe("private content-addressed candidate review sidecars", () => {
     const sidecar = join(cacheRoot, `${first.address}.json`);
     expect(existsSync(sidecar)).toBe(true);
     expect(lstatSync(sidecar).mode & 0o777).toBe(0o600);
-    expect(readFileSync(sidecar, "utf8")).toContain(reviewRawSession);
+    expect(JSON.parse(readFileSync(sidecar, "utf8"))).toMatchObject({ review });
   });
 
   test("misses to a new address when the sanitized artifact changes", () => {
@@ -135,6 +131,27 @@ describe("private content-addressed candidate review sidecars", () => {
     expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({ review: { rationale: "fresh-1" } });
   });
 
+  test.each([
+    { rawSession: "native session bytes" },
+    { secretDerivedHashes: ["hmac-sha256:secret-derived-value"] },
+  ])("fails closed when a reviewer returns prohibited private field %s", (prohibited) => {
+    // Given: a reviewer that returns a legacy raw-session or secret-derived field.
+    const root = fixtureRoot();
+    const cacheRoot = join(root, "private-cache");
+    const execute = (): PrivateCandidateReview => ({
+      decision: "approved",
+      rationale: reviewRationale,
+      ...prohibited,
+    } as unknown as PrivateCandidateReview);
+
+    // When: the result reaches the strict sidecar boundary.
+    const action = (): unknown => reviewPrivateCandidate({ artifactBytes: artifact(), cacheRoot, identity: identity(), execute });
+
+    // Then: it is rejected before a sidecar can serialize prohibited review state.
+    expect(action).toThrow("invalid_bundle_request");
+    expect(Array.from(new Bun.Glob("*.json").scanSync({ cwd: cacheRoot }))).toEqual([]);
+  });
+
   test("rejects a symlinked cache root and leaves its target untouched", () => {
     // Given: a cache root path redirected outside the requested private cache location.
     const root = fixtureRoot();
@@ -153,8 +170,27 @@ describe("private content-addressed candidate review sidecars", () => {
     expect(Array.from(new Bun.Glob("*.json").scanSync({ cwd: outside }))).toEqual([]);
   });
 
+  test("rejects a cache root beneath a symlinked existing ancestor", () => {
+    // Given: an absent cache root whose existing parent redirects outside the requested path.
+    const root = fixtureRoot();
+    const outside = join(root, "outside");
+    mkdirSync(outside, { mode: 0o700 });
+    const redirectedParent = join(root, "cache-parent");
+    symlinkSync(outside, redirectedParent, "dir");
+    const cacheRoot = join(redirectedParent, "private-cache");
+
+    // When: sidecar creation follows the apparent cache-root path.
+    const action = (): unknown => reviewPrivateCandidate({
+      artifactBytes: artifact(), cacheRoot, identity: identity(), execute: () => review,
+    });
+
+    // Then: no directory or sidecar is created through the symlinked ancestor.
+    expect(action).toThrow("invalid_bundle_request");
+    expect(existsSync(join(outside, "private-cache"))).toBe(false);
+  });
+
   test("keeps review-only fields out of the candidate archive and manifest", () => {
-    // Given: a private sidecar holding rationale, raw session text, and a secret-derived hash.
+    // Given: a private sidecar holding only bounded review decision material.
     const root = fixtureRoot();
     const cacheRoot = join(root, "private-cache");
     const bytes = artifact();
@@ -178,7 +214,7 @@ describe("private content-addressed candidate review sidecars", () => {
 
     // Then: private review material is neither embedded nor named by any archive member or publish frame.
     expect(cached.source).toBe("reviewed");
-    for (const privateValue of [reviewRationale, reviewRawSession, reviewSecretDerivedHash, cached.address]) {
+    for (const privateValue of [reviewRationale, cached.address]) {
       expect(published).not.toContain(privateValue);
       expect(publishedFrame).not.toContain(privateValue);
     }

@@ -13,7 +13,7 @@ import {
   writeSync,
 } from "node:fs";
 import type { Stats } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 
 import { sanitizedArtifactDigest } from "./dataset-archive";
@@ -23,7 +23,6 @@ const reviewFormatVersion = 1;
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
 const boundedIdentityPart = z.string().trim().min(1).max(512);
 const boundedReviewText = z.string().max(64 * 1024);
-const boundedSecretHash = z.string().min(1).max(512);
 
 export const candidateReviewIdentitySchema = z.object({
   schema: boundedIdentityPart,
@@ -38,8 +37,6 @@ export type CandidateReviewIdentity = Readonly<z.infer<typeof candidateReviewIde
 export const privateCandidateReviewSchema = z.object({
   decision: z.enum(["approved", "rejected"]),
   rationale: boundedReviewText.optional(),
-  rawSession: boundedReviewText.optional(),
-  secretDerivedHashes: z.array(boundedSecretHash).max(256).optional(),
 }).strict();
 
 export type PrivateCandidateReview = Readonly<z.infer<typeof privateCandidateReviewSchema>>;
@@ -103,12 +100,7 @@ const parsedIdentity = (identity: CandidateReviewIdentity): CandidateReviewIdent
 const parsedReview = (review: PrivateCandidateReview): PrivateCandidateReview => {
   const result = privateCandidateReviewSchema.safeParse(review);
   if (!result.success) return invalid();
-  return Object.freeze({
-    ...result.data,
-    ...(result.data.secretDerivedHashes === undefined
-      ? {}
-      : { secretDerivedHashes: [...result.data.secretDerivedHashes] }),
-  });
+  return Object.freeze({ ...result.data });
 };
 
 const artifactFor = (bytes: Uint8Array): SanitizedArtifactIdentity => {
@@ -145,14 +137,34 @@ const assertPrivateDirectory = (path: string): FileStatus => {
   return status;
 };
 
-const ensurePrivateCacheRoot = (cacheRoot: string): FileStatus => {
+const resolvedPrivateCacheRoot = (cacheRoot: string): string => {
   if (!isAbsolute(cacheRoot) || cacheRoot.includes("\0")) return invalid();
+  return resolve(cacheRoot);
+};
+
+const assertNoSymlinkedExistingAncestor = (path: string): void => {
+  let current = path;
+  while (true) {
+    try {
+      if (lstatSync(current).isSymbolicLink()) return invalid();
+    } catch (error) {
+      if (!isMissing(error)) return invalid();
+    }
+    const parent = dirname(current);
+    if (parent === current) return;
+    current = parent;
+  }
+};
+
+const ensurePrivateCacheRoot = (cacheRoot: string): FileStatus => {
+  assertNoSymlinkedExistingAncestor(cacheRoot);
   try {
     mkdirSync(cacheRoot, { recursive: true, mode: 0o700 });
   } catch (error) {
     if (error instanceof Error) return invalid();
     throw error;
   }
+  assertNoSymlinkedExistingAncestor(cacheRoot);
   return assertPrivateDirectory(cacheRoot);
 };
 
@@ -258,13 +270,14 @@ export const reviewPrivateCandidate = (request: PrivateCandidateReviewRequest): 
   const identity = parsedIdentity(request.identity);
   const artifact = artifactFor(request.artifactBytes);
   const address = addressFor(artifact, identity);
-  const rootIdentity = ensurePrivateCacheRoot(request.cacheRoot);
-  const cached = readState(request.cacheRoot, rootIdentity, address, artifact, identity);
+  const cacheRoot = resolvedPrivateCacheRoot(request.cacheRoot);
+  const rootIdentity = ensurePrivateCacheRoot(cacheRoot);
+  const cached = readState(cacheRoot, rootIdentity, address, artifact, identity);
   if (cached !== undefined) {
     return Object.freeze({ address, artifact, identity, review: cached.review, source: "cache" });
   }
   const review = parsedReview(request.execute());
   const state = sidecarStateSchema.parse({ formatVersion: reviewFormatVersion, address, artifact, identity, review });
-  writeState(request.cacheRoot, rootIdentity, state);
+  writeState(cacheRoot, rootIdentity, state);
   return Object.freeze({ address, artifact, identity, review, source: "reviewed" });
 };

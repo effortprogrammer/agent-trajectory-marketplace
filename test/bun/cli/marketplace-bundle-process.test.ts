@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -77,7 +77,7 @@ type PtyCommand = Readonly<{
 }>;
 
 const fixtureRoot = (): string => {
-  const root = mkdtempSync(join(tmpdir(), "trajectory-bundle-cli-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "trajectory-bundle-cli-")));
   roots.push(root);
   return root;
 };
