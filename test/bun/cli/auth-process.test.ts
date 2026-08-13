@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,12 +6,10 @@ import { join } from "node:path";
 import { readStoredAuthSession, writeStoredAuthSession } from "../../../src/auth/store";
 import { officialRegistryOrigin } from "../../../src/auth/official-origin";
 import {
+  type OfficialGatewayStaticResponse,
   officialGatewayProcessArguments,
   officialGatewayProcessEnvironment,
 } from "../fixtures/gateway-process";
-
-const processBoundaryTimeoutMs = 15_000;
-setDefaultTimeout(processBoundaryTimeoutMs);
 
 const roots: string[] = [];
 const servers: Bun.Server<unknown>[] = [];
@@ -85,7 +83,12 @@ const storePath = (root: string): string => join(root, "agent-trajectory-marketp
 const json = (value: unknown, status = 200, headers: Readonly<Record<string, string>> = {}): Response =>
   Response.json(value, { headers, status });
 
-const runCli = async (root: string, argumentsList: readonly string[], input?: string): Promise<CliResult> => {
+const runCli = async (
+  root: string,
+  argumentsList: readonly string[],
+  input?: string,
+  staticResponse?: OfficialGatewayStaticResponse,
+): Promise<CliResult> => {
   const serverIndex = argumentsList.indexOf("--server");
   const candidateTarget = serverIndex < 0 ? undefined : argumentsList[serverIndex + 1];
   const targetUrl = candidateTarget === undefined ? undefined : new URL(candidateTarget);
@@ -101,10 +104,15 @@ const runCli = async (root: string, argumentsList: readonly string[], input?: st
         : argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1)),
     ],
     target,
+    staticResponse,
   );
   const child = Bun.spawn(invocation.argumentsList, {
     cwd: process.cwd(),
-    env: { ...process.env, ...officialGatewayProcessEnvironment(invocation.target), TRAJECTORY_MARKETPLACE_CONFIG_HOME: root },
+    env: {
+      ...process.env,
+      ...officialGatewayProcessEnvironment(invocation.target, invocation.staticResponse),
+      TRAJECTORY_MARKETPLACE_CONFIG_HOME: root,
+    },
     stderr: "pipe",
     stdin: input === undefined ? "ignore" : "pipe",
     stdout: "pipe",
@@ -299,32 +307,20 @@ describe("auth real CLI process boundary", () => {
 
   test("preserves credentials on logout failure", async () => {
     const root = fixtureRoot();
-    const server = Bun.serve({
-      port: 0,
-      fetch: () => json({ ok: false, error: { code: "rate_limited", message: "later" } }, 429),
-    });
-    servers.push(server);
-    const origin = `http://127.0.0.1:${server.port}`;
     const path = storePath(root);
     writeStoredAuthSession({ server: officialRegistryOrigin, accessToken: token, tokenType: "Bearer", expiresAt, accountId }, { storePath: path });
-    const failed = await runCli(root, ["auth", "logout", "--server", origin]);
+    const failed = await runCli(root, ["auth", "logout"], undefined, "auth-logout-rate-limited");
     expect(failed).toEqual({ exitCode: 1, stdout: "", stderr: `${JSON.stringify({ error: "rate_limited" })}\n` });
     expect(String(readStoredAuthSession(officialRegistryOrigin, { storePath: path })?.accessToken)).toBe(token);
   });
 
   test("clears unauthorized sessions", async () => {
     const root = fixtureRoot();
-    const server = Bun.serve({
-      port: 0,
-      fetch: () => json({ ok: false, error: { code: "unauthorized", message: "later" } }, 401),
-    });
-    servers.push(server);
-    const origin = `http://127.0.0.1:${server.port}`;
     const path = storePath(root);
     writeStoredAuthSession({ server: officialRegistryOrigin, accessToken: token, tokenType: "Bearer", expiresAt, accountId }, { storePath: path });
-    const unauthorized = await runCli(root, ["auth", "status", "--server", origin]);
+    const unauthorized = await runCli(root, ["auth", "status"], undefined, "auth-me-unauthorized");
     expect(unauthorized).toEqual({ exitCode: 0, stderr: "", stdout: `${JSON.stringify({ authenticated: false, server: officialRegistryOrigin })}\n` });
-    expect(readStoredAuthSession(origin, { storePath: path })).toBeUndefined();
+    expect(readStoredAuthSession(officialRegistryOrigin, { storePath: path })).toBeUndefined();
   });
 
   test("fails closed for hostile transport, OTP, origin, and store boundaries", async () => {
