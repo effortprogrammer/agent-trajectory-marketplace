@@ -2,24 +2,21 @@ type SignupRequest = Readonly<{
   readonly acceptTerms: true;
   readonly command: "auth-signup";
   readonly email: string;
-  readonly server: string;
 }>;
 
 type LoginRequest = Readonly<{
   readonly command: "auth-login";
   readonly email: string;
-  readonly server: string;
 }>;
 
 type VerifyRequest = Readonly<{
   readonly challenge: string;
   readonly codeSource: "stdin" | "tty";
   readonly command: "auth-verify";
-  readonly server: string;
 }>;
 
-type StatusRequest = Readonly<{ readonly command: "auth-status"; readonly server: string }>;
-type LogoutRequest = Readonly<{ readonly command: "auth-logout"; readonly server: string }>;
+type StatusRequest = Readonly<{ readonly command: "auth-status" }>;
+type LogoutRequest = Readonly<{ readonly command: "auth-logout" }>;
 type InvalidAuthCommand = Readonly<{ readonly command: "invalid_auth_command" }>;
 type AuthCodeRequired = Readonly<{ readonly command: "auth_code_required" }>;
 
@@ -37,7 +34,6 @@ type AuthOptions = Readonly<{
   readonly codeStdin: boolean;
   readonly challenge?: string;
   readonly email?: string;
-  readonly server?: string;
 }>;
 
 const invalidAuthCommand = (): InvalidAuthCommand => ({ command: "invalid_auth_command" });
@@ -53,7 +49,6 @@ const readOptions = (
   let codeStdin = false;
   let challenge: string | undefined;
   let email: string | undefined;
-  let server: string | undefined;
 
   for (let index = 0; index < argumentsList.length; index += 1) {
     const option = argumentsList[index];
@@ -70,10 +65,7 @@ const readOptions = (
     if (option === undefined || !valueOptions.includes(option)) return undefined;
     const value = argumentsList[index + 1];
     if (value === undefined || value.length === 0 || value.startsWith("--")) return undefined;
-    if (option === "--server") {
-      if (server !== undefined) return undefined;
-      server = value;
-    } else if (option === "--email") {
+    if (option === "--email") {
       if (email !== undefined) return undefined;
       email = value;
     } else if (option === "--challenge") {
@@ -85,7 +77,7 @@ const readOptions = (
     index += 1;
   }
 
-  return { acceptTerms, codeStdin, ...(challenge === undefined ? {} : { challenge }), ...(email === undefined ? {} : { email }), ...(server === undefined ? {} : { server }) };
+  return { acceptTerms, codeStdin, ...(challenge === undefined ? {} : { challenge }), ...(email === undefined ? {} : { email }) };
 };
 
 export const parseAuthCommand = (
@@ -99,34 +91,33 @@ export const parseAuthCommand = (
   const action = argumentsWithoutExecutable[1];
   const options = argumentsWithoutExecutable.slice(2);
   if (action === "signup") {
-    const parsed = readOptions(options, ["--server", "--email"], true, false);
-    if (parsed?.server === undefined || parsed.email === undefined || !parsed.acceptTerms) {
+    const parsed = readOptions(options, ["--email"], true, false);
+    if (parsed?.email === undefined || !parsed.acceptTerms) {
       return invalidAuthCommand();
     }
-    return { acceptTerms: true, command: "auth-signup", email: parsed.email, server: parsed.server };
+    return { acceptTerms: true, command: "auth-signup", email: parsed.email };
   }
   if (action === "login") {
-    const parsed = readOptions(options, ["--server", "--email"], false, false);
-    if (parsed?.server === undefined || parsed.email === undefined) return invalidAuthCommand();
-    return { command: "auth-login", email: parsed.email, server: parsed.server };
+    const parsed = readOptions(options, ["--email"], false, false);
+    if (parsed?.email === undefined) return invalidAuthCommand();
+    return { command: "auth-login", email: parsed.email };
   }
   if (action === "verify") {
-    const parsed = readOptions(options, ["--server", "--challenge"], false, true);
-    if (parsed?.server === undefined || parsed.challenge === undefined) return invalidAuthCommand();
+    const parsed = readOptions(options, ["--challenge"], false, true);
+    if (parsed?.challenge === undefined) return invalidAuthCommand();
     if (!parsed.codeStdin && !terminalInputAvailable) return authCodeRequired();
     return {
       challenge: parsed.challenge,
       codeSource: parsed.codeStdin ? "stdin" : "tty",
       command: "auth-verify",
-      server: parsed.server,
     };
   }
   if (action === "status" || action === "logout") {
-    const parsed = readOptions(options, ["--server"], false, false);
-    if (parsed?.server === undefined) return invalidAuthCommand();
+    const parsed = readOptions(options, [], false, false);
+    if (parsed === undefined) return invalidAuthCommand();
     return action === "status"
-      ? { command: "auth-status", server: parsed.server }
-      : { command: "auth-logout", server: parsed.server };
+      ? { command: "auth-status" }
+      : { command: "auth-logout" };
   }
   return invalidAuthCommand();
 };

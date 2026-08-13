@@ -3,9 +3,11 @@ import { isAbsolute } from "node:path";
 import {
   parseCandidateBundle,
   parseCandidatePublish,
+  parseCandidateStatus,
 } from "./marketplace-candidate-command";
 import type {
   CandidatePublishCommand,
+  CandidateStatusCommand,
   ExplicitCandidateBundleCommand,
   InteractiveCandidateBundleCommand,
   PreviewCandidateBundleCommand,
@@ -29,7 +31,6 @@ type SessionsInspectCommand = Readonly<{
 type WalletBalanceCommand = Readonly<{
   readonly apiKey: string | undefined;
   readonly command: "wallet-balance";
-  readonly server: string;
 }>;
 
 type InvalidCommand = Readonly<{ readonly command: "invalid_command" }>;
@@ -45,6 +46,7 @@ export type MarketplaceCommand =
   | PreviewCandidateBundleCommand
   | SelectionCandidateBundleCommand
   | CandidatePublishCommand
+  | CandidateStatusCommand
   | WalletBalanceCommand
   | InvalidCommand
   | InvalidBundleRequest;
@@ -123,17 +125,11 @@ const parseSessionsInspect = (
 };
 
 const parseWalletBalance = (argumentsList: readonly string[]): MarketplaceCommand => {
-  if (argumentsList.length !== 2 && argumentsList.length !== 4) return invalidCommand();
-  const [serverFlag, server, apiKeyFlag, apiKey] = argumentsList;
-  if (
-    serverFlag !== "--server" ||
-    server === undefined ||
-    server.length === 0 ||
-    server.startsWith("--")
-  ) return invalidCommand();
-  if (argumentsList.length === 2) return { apiKey: undefined, command: "wallet-balance", server };
+  if (argumentsList.length !== 0 && argumentsList.length !== 2) return invalidCommand();
+  if (argumentsList.length === 0) return { apiKey: undefined, command: "wallet-balance" };
+  const [apiKeyFlag, apiKey] = argumentsList;
   return apiKeyFlag === "--api-key" && apiKey !== undefined && apiKey.length > 0 && !apiKey.startsWith("--")
-    ? { apiKey, command: "wallet-balance", server }
+    ? { apiKey, command: "wallet-balance" }
     : invalidCommand();
 };
 
@@ -164,6 +160,9 @@ export const parseMarketplaceCommand = (
   }
   if (group === "candidate" && action === "publish") {
     return parseCandidatePublish(argumentsWithoutExecutable.slice(4));
+  }
+  if (group === "candidate" && action === "status") {
+    return parseCandidateStatus(argumentsWithoutExecutable.slice(4));
   }
   if (group === "wallet" && action === "balance") {
     return parseWalletBalance(argumentsWithoutExecutable.slice(4));

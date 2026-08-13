@@ -7,6 +7,7 @@ import { join } from "node:path"
 import { writeStoredAuthSession } from "../../../src/auth/store"
 import { encodeDatasetManifest } from "../../../src/marketplace/archive-contract"
 import { writeDatasetZip } from "../../../src/marketplace/stored-zip"
+import { officialGatewayProcessArguments, officialGatewayProcessEnvironment } from "../fixtures/gateway-process"
 
 const roots: string[] = []
 const servers: Bun.Server<undefined>[] = []
@@ -89,14 +90,16 @@ describe("marketplace candidate publish cancellation", () => {
     }, { storePath: join(root, "agent-trajectory-marketplace", "auth.json") })
 
     // When: the built CLI resolves a defined invalid higher-priority environment source.
-    const child = Bun.spawn([
+    const invocation = officialGatewayProcessArguments([
       process.execPath,
       "dist/collector.js",
       ...publishArguments(bundle(root), origin),
-    ], {
+    ])
+    const child = Bun.spawn(invocation.argumentsList, {
       cwd: process.cwd(),
       env: {
         ...process.env,
+        ...officialGatewayProcessEnvironment(invocation.target),
         TRAJECTORY_MARKETPLACE_CONFIG_HOME: root,
         TRAJECTORY_REGISTRY_API_KEY: " invalid-environment ",
       },
@@ -142,14 +145,15 @@ describe("marketplace candidate publish cancellation", () => {
         },
       })
       servers.push(server)
-      const child = Bun.spawn([
+      const invocation = officialGatewayProcessArguments([
         process.execPath,
         "dist/collector.js",
         ...publishArguments(bundle(root), `http://127.0.0.1:${server.port}`),
         "--api-key", "flag-sentinel",
-      ], {
+      ])
+      const child = Bun.spawn(invocation.argumentsList, {
         cwd: process.cwd(),
-        env: { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root },
+        env: { ...process.env, ...officialGatewayProcessEnvironment(invocation.target), TRAJECTORY_MARKETPLACE_CONFIG_HOME: root },
         stderr: "pipe",
         stdout: "pipe",
       })

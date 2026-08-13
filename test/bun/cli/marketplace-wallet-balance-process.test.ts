@@ -4,6 +4,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { writeStoredAuthSession } from "../../../src/auth/store"
+import { officialRegistryOrigin } from "../../../src/auth/official-origin"
+import { officialGatewayProcessArguments, officialGatewayProcessEnvironment } from "../fixtures/gateway-process"
 
 const roots: string[] = []
 const result = { ok: true, wallet: { currency: "USD", pendingCredits: 17, availableCredits: 29, reservedCredits: 5, lifetimeRedeemedCredits: 101, nextDistributionAt: "2030-01-02T03:04:05Z" } }
@@ -15,7 +17,8 @@ const root = (): string => {
 }
 
 const run = async (argumentsList: readonly string[], environment: Readonly<Record<string, string>>) => {
-  const child = Bun.spawn([process.execPath, "dist/collector.js", ...argumentsList], { cwd: process.cwd(), env: environment, stderr: "pipe", stdout: "pipe" })
+  const invocation = officialGatewayProcessArguments([process.execPath, "dist/collector.js", ...argumentsList])
+  const child = Bun.spawn(invocation.argumentsList, { cwd: process.cwd(), env: { ...environment, ...officialGatewayProcessEnvironment(invocation.target) }, stderr: "pipe", stdout: "pipe" })
   const [exitCode, stderr, stdout] = await Promise.all([child.exited, new Response(child.stderr).text(), new Response(child.stdout).text()])
   return { exitCode, stderr, stdout }
 }
@@ -69,7 +72,7 @@ describe("marketplace wallet balance process boundary", () => {
     }, hostname: "127.0.0.1", port: 0 })
     const config = root()
     const serverUrl = `http://127.0.0.1:${server.port}`
-    storeSession(config, serverUrl)
+    storeSession(config, officialRegistryOrigin)
 
     // When: the command runs.
     const output = await run(["marketplace", "seller", "wallet", "balance", "--server", serverUrl], environment(config))

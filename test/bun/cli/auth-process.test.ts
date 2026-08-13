@@ -4,6 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { readStoredAuthSession, writeStoredAuthSession } from "../../../src/auth/store";
+import { officialRegistryOrigin } from "../../../src/auth/official-origin";
+import {
+  officialGatewayProcessArguments,
+  officialGatewayProcessEnvironment,
+} from "../fixtures/gateway-process";
 
 const roots: string[] = [];
 const servers: Bun.Server<unknown>[] = [];
@@ -78,9 +83,10 @@ const json = (value: unknown, status = 200, headers: Readonly<Record<string, str
   Response.json(value, { headers, status });
 
 const runCli = async (root: string, argumentsList: readonly string[], input?: string): Promise<CliResult> => {
-  const child = Bun.spawn([process.execPath, "src/cli/index.ts", ...argumentsList], {
+  const invocation = officialGatewayProcessArguments([process.execPath, "src/cli/index.ts", ...argumentsList]);
+  const child = Bun.spawn(invocation.argumentsList, {
     cwd: process.cwd(),
-    env: { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root },
+    env: { ...process.env, ...officialGatewayProcessEnvironment(invocation.target), TRAJECTORY_MARKETPLACE_CONFIG_HOME: root },
     stderr: "pipe",
     stdin: input === undefined ? "ignore" : "pipe",
     stdout: "pipe",
@@ -110,15 +116,17 @@ const runPtyProcess = async (
   secret: string,
   options: Readonly<{ readonly eio?: boolean; readonly marker?: string; readonly nonEio?: boolean; readonly root?: string; readonly signal?: "SIGTERM" }> = {},
 ): Promise<CliResult> => {
-  const child = Bun.spawn([
+  const invocation = officialGatewayProcessArguments([
     "python3", "-c", pythonPtyDriver,
     Buffer.from(secret).toString("base64"), Buffer.from(options.marker ?? "Verification code: ").toString("base64"),
     Buffer.from(options.signal ?? "").toString("base64"),
     ...command,
-  ], {
+  ]);
+  const child = Bun.spawn(invocation.argumentsList, {
     cwd: process.cwd(),
     env: {
       ...process.env,
+      ...officialGatewayProcessEnvironment(invocation.target),
       ...(options.root === undefined ? {} : { TRAJECTORY_MARKETPLACE_CONFIG_HOME: options.root }),
       ...(options.eio === true ? { TRAJECTORY_TEST_PTY_EIO: "1" } : {}),
       ...(options.nonEio === true ? { TRAJECTORY_TEST_PTY_NON_EIO: "1" } : {}),
@@ -175,7 +183,7 @@ describe("auth real CLI process boundary", () => {
     const path = storePath(root);
     expect(lstatSync(join(root, "agent-trajectory-marketplace")).mode & 0o777).toBe(0o700);
     expect(lstatSync(path).mode & 0o777).toBe(0o600);
-    expect(String(readStoredAuthSession(origin, { storePath: path })?.accessToken)).toBe(token);
+    expect(String(readStoredAuthSession(officialRegistryOrigin, { storePath: path })?.accessToken)).toBe(token);
     results.push(await runCli(root, ["auth", "logout", "--server", origin]));
 
     expect(results.map(({ exitCode }) => exitCode)).toEqual([0, 0, 0, 0, 0]);
@@ -185,11 +193,11 @@ describe("auth real CLI process boundary", () => {
     expect(combinedOutput).not.toContain("654321");
     expect(combinedOutput).not.toContain("999999");
     expect(results.map(({ stdout }) => JSON.parse(stdout))).toEqual([
-      { challengeId, expiresAt, server: origin },
-      { challengeId, expiresAt, server: origin },
-      { accountId, expiresAt, server: origin },
-      { account: { accountId, email: "owner@example.test" }, expiresAt, server: origin },
-      { loggedOut: true, revoked: true, server: origin },
+      { challengeId, expiresAt, server: officialRegistryOrigin },
+      { challengeId, expiresAt, server: officialRegistryOrigin },
+      { accountId, expiresAt, server: officialRegistryOrigin },
+      { account: { accountId, email: "owner@example.test" }, expiresAt, server: officialRegistryOrigin },
+      { loggedOut: true, revoked: true, server: officialRegistryOrigin },
     ]);
     expect(requests).toEqual([
       { body: { email: "owner@example.test", acceptTerms: true }, method: "POST", path: "/v1/auth/signup" },
@@ -212,19 +220,19 @@ describe("auth real CLI process boundary", () => {
     servers.push(server);
     const origin = `http://127.0.0.1:${server.port}`;
     const path = storePath(root);
-    writeStoredAuthSession({ server: origin, accessToken: token, tokenType: "Bearer", expiresAt: "2020-01-01T00:00:00.000Z", accountId }, { storePath: path });
+    writeStoredAuthSession({ server: officialRegistryOrigin, accessToken: token, tokenType: "Bearer", expiresAt: "2020-01-01T00:00:00.000Z", accountId }, { storePath: path });
 
     const expired = await runCli(root, ["auth", "status", "--server", origin]);
-    expect({ hits, result: expired }).toEqual({ hits: 0, result: { exitCode: 0, stderr: "", stdout: `${JSON.stringify({ authenticated: false, server: origin })}\n` } });
-    expect(readStoredAuthSession(origin, { storePath: path })).toBeUndefined();
+    expect({ hits, result: expired }).toEqual({ hits: 0, result: { exitCode: 0, stderr: "", stdout: `${JSON.stringify({ authenticated: false, server: officialRegistryOrigin })}\n` } });
+    expect(readStoredAuthSession(officialRegistryOrigin, { storePath: path })).toBeUndefined();
 
-    writeStoredAuthSession({ server: origin, accessToken: token, tokenType: "Bearer", expiresAt, accountId }, { storePath: path });
+    writeStoredAuthSession({ server: officialRegistryOrigin, accessToken: token, tokenType: "Bearer", expiresAt, accountId }, { storePath: path });
     const failed = await runCli(root, ["auth", "logout", "--server", origin]);
     expect(failed).toEqual({ exitCode: 1, stdout: "", stderr: `${JSON.stringify({ error: "rate_limited" })}\n` });
-    expect(String(readStoredAuthSession(origin, { storePath: path })?.accessToken)).toBe(token);
+    expect(String(readStoredAuthSession(officialRegistryOrigin, { storePath: path })?.accessToken)).toBe(token);
     responseStatus = 401;
     const unauthorized = await runCli(root, ["auth", "status", "--server", origin]);
-    expect(unauthorized).toEqual({ exitCode: 0, stderr: "", stdout: `${JSON.stringify({ authenticated: false, server: origin })}\n` });
+    expect(unauthorized).toEqual({ exitCode: 0, stderr: "", stdout: `${JSON.stringify({ authenticated: false, server: officialRegistryOrigin })}\n` });
     expect(readStoredAuthSession(origin, { storePath: path })).toBeUndefined();
   });
 
@@ -253,15 +261,15 @@ describe("auth real CLI process boundary", () => {
     expect(cases.map(({ stdout }) => stdout)).toEqual(["", "", "", "", "", "", "", ""]);
     expect(cases.map(({ stderr }) => stderr)).toEqual([
       "auth_redirect_rejected", "invalid_auth_response", "rate_limited", "invalid_auth_response",
-      "invalid_auth_code", "auth_code_required", "insecure_server_url", "invalid_server_url",
+      "invalid_auth_code", "auth_code_required", "invalid_auth_command", "invalid_auth_command",
     ].map((error) => `${JSON.stringify({ error })}\n`));
     expect(cases.map(({ stderr }) => stderr).join("")).not.toContain("secret detail");
 
     const path = storePath(root);
-    writeStoredAuthSession({ server: origin, accessToken: token, tokenType: "Bearer", expiresAt, accountId }, { storePath: path });
+    writeStoredAuthSession({ server: officialRegistryOrigin, accessToken: token, tokenType: "Bearer", expiresAt, accountId }, { storePath: path });
     const failedVerify = await runCli(root, ["auth", "verify", "--server", origin, "--challenge", challengeId, "--code-stdin"], "654321\n");
     expect(failedVerify.stderr).toBe(`${JSON.stringify({ error: "invalid_auth_response" })}\n`);
-    expect(String(readStoredAuthSession(origin, { storePath: path })?.accessToken)).toBe(token);
+    expect(String(readStoredAuthSession(officialRegistryOrigin, { storePath: path })?.accessToken)).toBe(token);
 
     const malformedRoot = fixtureRoot();
     mkdirSync(join(malformedRoot, "agent-trajectory-marketplace"), { mode: 0o700 });
@@ -350,6 +358,6 @@ describe("auth real CLI process boundary", () => {
     );
     expect(interrupted.exitCode).toBe(1);
     expect(interrupted.stdout).toContain(JSON.stringify({ error: "auth_code_interrupted" }));
-    expect(String(readStoredAuthSession(origin, { storePath: storePath(root) })?.accessToken)).toBe(token);
+    expect(String(readStoredAuthSession(officialRegistryOrigin, { storePath: storePath(root) })?.accessToken)).toBe(token);
   });
 });
