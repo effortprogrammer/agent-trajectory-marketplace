@@ -5,7 +5,8 @@ import { join } from "node:path"
 import { z } from "zod"
 
 const publicRoot = join(import.meta.dir, "../../..")
-const registryRoot = join(publicRoot, "..", "agent-trajectory-registry-world-compiler")
+const registryRoot =
+  process.env.TRAJECTORY_REGISTRY_ROOT ?? join(publicRoot, "..", "agent-trajectory-registry-world-compiler")
 const coordinator = join(registryRoot, "scripts/qa/world_final_verify.py")
 const registryPython = join(registryRoot, ".venv/bin/python")
 const servers: Bun.Server<undefined>[] = []
