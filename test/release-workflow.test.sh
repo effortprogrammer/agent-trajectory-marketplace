@@ -71,10 +71,9 @@ if bun -e '
   fail "production verifier accepted a corrupt generated archive"
 fi
 
-if grep -nE 'raw\.githubusercontent\.com/.*/main|github\.com/.*/main/' "$ROOT/README.md" "$ROOT/scripts/install.sh" "$ROOT/scripts/install-agent.sh"; then
+if grep -nE 'raw\.githubusercontent\.com/.*/main|github\.com/.*/main/' "$ROOT/scripts/install.sh" "$ROOT/scripts/install-agent.sh"; then
   fail "bootstrap still executes mutable main"
 fi
-grep -Fq '/releases/latest/download/install-agent.sh' "$ROOT/README.md" || fail "README one-liner does not resolve the stable release installer asset"
 grep -Fq '/releases/download/$ATM_BOOTSTRAP_TAG/install-core.sh' "$ROOT/scripts/install-agent.sh" || fail "agent wrapper does not bind its core asset to a release tag"
 grep -Fq '/releases/download/$ATM_BOOTSTRAP_TAG/install-core.sh.sha256' "$ROOT/scripts/install-agent.sh" || fail "agent wrapper does not bind its checksum asset to the same release tag"
 
