@@ -16,20 +16,20 @@ describe("trajectory world CLI grammar", () => {
     expect(result).toEqual({ command: "world-help" });
   });
 
-  test("parses public catalog and detail requests with explicit servers", () => {
+  test("parses public catalog and detail requests for the official Registry", () => {
     // Given: canonical public catalog and world-detail invocations.
     const commands = [
-      ["world", "list", "--server", server],
-      ["trajectory", "world", "detail", "world-farm", "--server", server],
+      ["world", "list"],
+      ["trajectory", "world", "detail", "world-farm"],
     ] as const;
 
     // When: each request crosses the parser boundary.
     const results = commands.map(parseWorldCommand);
 
-    // Then: dispatch receives only their typed public identities and origin.
+    // Then: dispatch receives only their typed public identities.
     expect(results).toEqual([
-      { command: "world-list", server },
-      { command: "world-detail", server, worldId: "world-farm" },
+      { command: "world-list" },
+      { command: "world-detail", worldId: "world-farm" },
     ]);
   });
 
@@ -40,14 +40,14 @@ describe("trajectory world CLI grammar", () => {
     const entitlementId = "00000000-0000-4000-8000-000000000001";
     const commands = [
       [
-        "world", "run", "world/refund-unit", "--server", server, "--contract-id", contractId,
+        "world", "run", "world/refund-unit", "--contract-id", contractId,
         "--pack-digest", digest, "--seed", "7", "--idempotency-key", "run-7", "--api-key", "token", "--json",
       ],
       [
-        "world", "status", "world/refund-unit", "instance-7f1a9c2e", "--server", server,
+        "world", "status", "world/refund-unit", "instance-7f1a9c2e",
         "--contract-id", contractId, "--pack-digest", digest, "--api-key", "token",
       ],
-      ["world", "download", entitlementId, "--server", server, "--api-key", "token"],
+      ["world", "download", entitlementId, "--api-key", "token"],
     ] as const;
 
     // When: the requests cross the parser boundary.
@@ -57,28 +57,27 @@ describe("trajectory world CLI grammar", () => {
     expect(results).toEqual([
       {
         apiKey: "token", command: "world-run", contractId, idempotencyKey: "run-7",
-        json: true, packDigest: digest, seed: 7, server, worldId: "world/refund-unit",
+        json: true, packDigest: digest, seed: 7, worldId: "world/refund-unit",
       },
       {
         apiKey: "token", command: "world-status", contractId, instanceId: "instance-7f1a9c2e",
-        json: false, packDigest: digest, server, worldId: "world/refund-unit",
+        json: false, packDigest: digest, worldId: "world/refund-unit",
       },
-      { apiKey: "token", command: "world-download", entitlementId, json: false, server },
+      { apiKey: "token", command: "world-download", entitlementId, json: false },
     ]);
   });
 
   test.each([
-    ["missing server", ["world", "list"]],
-    ["missing detail identifier", ["world", "detail", "--server", server]],
-    ["flag-shaped detail identifier", ["world", "detail", "--server", server, "--unknown"]],
-    ["duplicate server", ["world", "list", "--server", server, "--server", server]],
-    ["unknown option", ["world", "list", "--server", server, "--unknown", "value"]],
-    ["trailing public argument", ["world", "list", "--server", server, "extra"]],
+    ["server override", ["world", "list", "--server", server]],
+    ["missing detail identifier", ["world", "detail"]],
+    ["flag-shaped detail identifier", ["world", "detail", "--unknown"]],
+    ["unknown option", ["world", "list", "--unknown", "value"]],
+    ["trailing public argument", ["world", "list", "extra"]],
     ["extra help argument", ["world", "--help", "--server", server]],
-    ["missing hosted contract", ["world", "run", "world/refund-unit", "--server", server, "--pack-digest", "0".repeat(64), "--seed", "7", "--idempotency-key", "run", "--api-key", "token"]],
-    ["negative hosted seed", ["world", "run", "world/refund-unit", "--server", server, "--contract-id", "00000000-0000-4000-8000-000000000002", "--pack-digest", "0".repeat(64), "--seed", "-1", "--idempotency-key", "run", "--api-key", "token"]],
-    ["duplicate credential", ["world", "download", "00000000-0000-4000-8000-000000000001", "--server", server, "--api-key", "one", "--api-key", "two"]],
-    ["missing status digest", ["world", "status", "world/refund-unit", "instance-7f1a9c2e", "--server", server, "--contract-id", "00000000-0000-4000-8000-000000000002", "--api-key", "token"]],
+    ["missing hosted contract", ["world", "run", "world/refund-unit", "--pack-digest", "0".repeat(64), "--seed", "7", "--idempotency-key", "run", "--api-key", "token"]],
+    ["negative hosted seed", ["world", "run", "world/refund-unit", "--contract-id", "00000000-0000-4000-8000-000000000002", "--pack-digest", "0".repeat(64), "--seed", "-1", "--idempotency-key", "run", "--api-key", "token"]],
+    ["duplicate credential", ["world", "download", "00000000-0000-4000-8000-000000000001", "--api-key", "one", "--api-key", "two"]],
+    ["missing status digest", ["world", "status", "world/refund-unit", "instance-7f1a9c2e", "--contract-id", "00000000-0000-4000-8000-000000000002", "--api-key", "token"]],
   ] as const)("rejects World grammar: %s", (_case, argumentsList) => {
     // Given: an incomplete, duplicate, or unsupported World command.
     // When: it crosses the parser boundary.

@@ -2,6 +2,10 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import {
+  officialGatewayProcessArguments,
+  officialGatewayProcessEnvironment,
+} from "../fixtures/gateway-process"
 
 const publicRoot = join(import.meta.dir, "../../..")
 const contractRoot = join(publicRoot, "contract/world/v1")
@@ -45,9 +49,15 @@ const todo27Trace = (content: string): string => JSON.stringify({
 
 const run = async (
   command: readonly string[],
+  target?: string,
 ): Promise<Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>> => {
-  const child = Bun.spawn([...command], {
+  const processConfiguration = officialGatewayProcessArguments(command, target)
+  const child = Bun.spawn(processConfiguration.argumentsList, {
     cwd: publicRoot,
+    env: {
+      ...process.env,
+      ...officialGatewayProcessEnvironment(processConfiguration.target),
+    },
     stderr: "pipe",
     stdout: "pipe",
   })
@@ -99,21 +109,21 @@ describe("public Todo27 marketplace lifecycle", () => {
     })
     servers.push(server)
     const base = `http://127.0.0.1:${server.port}`
-    const auth = ["--server", base, "--api-key", "api-token"]
+    const auth = ["--api-key", "api-token"]
 
     // When: one built CLI process traverses catalog, hosted execution, and download.
     const results = [
-      await run([process.execPath, "dist/collector.js", "world", "list", "--server", base]),
-      await run([process.execPath, "dist/collector.js", "world", "detail", worldId, "--server", base]),
+      await run([process.execPath, "dist/collector.js", "world", "list"], base),
+      await run([process.execPath, "dist/collector.js", "world", "detail", worldId], base),
       await run([
         process.execPath, "dist/collector.js", "world", "run", worldId, ...auth, "--contract-id", contractId,
         "--pack-digest", packDigest, "--seed", "7", "--idempotency-key", "todo27-lifecycle",
-      ]),
+      ], base),
       await run([
         process.execPath, "dist/collector.js", "world", "status", worldId, instanceId, ...auth,
         "--contract-id", contractId, "--pack-digest", packDigest,
-      ]),
-      await run([process.execPath, "dist/collector.js", "world", "download", entitlementId, ...auth]),
+      ], base),
+      await run([process.execPath, "dist/collector.js", "world", "download", entitlementId, ...auth], base),
     ]
 
     // Then: every step returns the exact shipped contract and authorization stays protected.
@@ -195,8 +205,6 @@ describe("public Todo27 marketplace lifecycle", () => {
       "world",
       "run",
       "world/refund-unit",
-      "--server",
-      base,
       "--api-key",
       "api-token",
       "--contract-id",
@@ -211,10 +219,10 @@ describe("public Todo27 marketplace lifecycle", () => {
 
     // When: malformed catalog, incompatible hosted, unauthorized, and revoked download requests run through the built CLI.
     const results = await Promise.all([
-      run([process.execPath, "dist/collector.js", "world", "list", "--server", base]),
-      run([process.execPath, "dist/collector.js", ...worldRun]),
-      run([process.execPath, "dist/collector.js", "world", "download", entitlementId, "--server", base, "--api-key", "api-token"]),
-      run([process.execPath, "dist/collector.js", "world", "download", entitlementId, "--server", base, "--api-key", "revoked-token"]),
+      run([process.execPath, "dist/collector.js", "world", "list"], base),
+      run([process.execPath, "dist/collector.js", ...worldRun], base),
+      run([process.execPath, "dist/collector.js", "world", "download", entitlementId, "--api-key", "api-token"], base),
+      run([process.execPath, "dist/collector.js", "world", "download", entitlementId, "--api-key", "revoked-token"], base),
     ])
 
     // Then: every public failure is redacted into the exact machine-safe error contract.

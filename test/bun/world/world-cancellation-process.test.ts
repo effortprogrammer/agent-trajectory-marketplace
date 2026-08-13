@@ -1,4 +1,8 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test"
+import {
+  officialGatewayProcessArguments,
+  officialGatewayProcessEnvironment,
+} from "../fixtures/gateway-process"
 
 const servers: Bun.Server<undefined>[] = []
 const contractId = "00000000-0000-4000-8000-000000000002"
@@ -53,10 +57,20 @@ describe("trajectory world caller cancellation", () => {
       },
     })
     servers.push(server)
-    const child = Bun.spawn([
-      process.execPath, "dist/collector.js", ...argumentsList,
-      "--server", `http://127.0.0.1:${server.port}`,
-    ], { cwd: process.cwd(), stderr: "pipe", stdout: "pipe" })
+    const target = `http://127.0.0.1:${server.port}`
+    const processConfiguration = officialGatewayProcessArguments(
+      [process.execPath, "dist/collector.js", ...argumentsList],
+      target,
+    )
+    const child = Bun.spawn(processConfiguration.argumentsList, {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        ...officialGatewayProcessEnvironment(processConfiguration.target),
+      },
+      stderr: "pipe",
+      stdout: "pipe",
+    })
     const stderr = new Response(child.stderr).text()
     const stdout = new Response(child.stdout).text()
 
