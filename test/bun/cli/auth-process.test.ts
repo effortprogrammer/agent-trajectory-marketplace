@@ -174,7 +174,73 @@ afterEach(() => {
 });
 
 describe("auth real CLI process boundary", () => {
-  test("runs signup, login, one-line stdin verify, status, and remote-first logout without secret output", async () => {
+  test("runs signup and login against the official gateway without secret output", async () => {
+    const root = fixtureRoot();
+    const requests: CapturedRequest[] = [];
+    const server = Bun.serve({ port: 0, async fetch(request) {
+      const url = new URL(request.url);
+      requests.push({
+        body: await parseBody(request), method: request.method, path: url.pathname,
+      });
+      return json({ ok: true, challengeId, expiresAt });
+    } });
+    servers.push(server);
+    const origin = `http://127.0.0.1:${server.port}`;
+
+    const results = [
+      await runCli(root, ["auth", "signup", "--server", origin, "--email", "OWNER@example.test", "--accept-terms"]),
+      await runCli(root, ["trajectory", "auth", "login", "--server", origin, "--email", "owner@example.test"]),
+    ];
+
+    expect(results.map(({ exitCode }) => exitCode)).toEqual([0, 0]);
+    expect(results.map(({ stderr }) => stderr)).toEqual(["", ""]);
+    const combinedOutput = results.map(({ stdout }) => stdout).join("");
+    expect(combinedOutput).not.toContain(token);
+    expect(results.map(({ stdout }) => JSON.parse(stdout))).toEqual([
+      { challengeId, expiresAt, server: officialRegistryOrigin },
+      { challengeId, expiresAt, server: officialRegistryOrigin },
+    ]);
+    expect(requests).toEqual([
+      { body: { email: "owner@example.test", acceptTerms: true }, method: "POST", path: "/v1/auth/signup" },
+      { body: { email: "owner@example.test" }, method: "POST", path: "/v1/auth/login" },
+    ]);
+  });
+
+  test("stores one-line stdin verification without exposing secrets", async () => {
+    const root = fixtureRoot();
+    const requests: CapturedRequest[] = [];
+    const server = Bun.serve({ port: 0, async fetch(request) {
+      const url = new URL(request.url);
+      requests.push({ body: await parseBody(request), method: request.method, path: url.pathname });
+      return json({ ok: true, accessToken: token, tokenType: "Bearer", expiresAt, accountId });
+    } });
+    servers.push(server);
+    const origin = `http://127.0.0.1:${server.port}`;
+
+    const result = await runCli(
+      root,
+      ["auth", "verify", "--server", origin, "--challenge", challengeId, "--code-stdin"],
+      "654321\n999999\n",
+    );
+    const path = storePath(root);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).not.toContain(token);
+    expect(result.stdout).not.toContain("654321");
+    expect(result.stdout).not.toContain("999999");
+    expect(JSON.parse(result.stdout)).toEqual(
+      { accountId, expiresAt, server: officialRegistryOrigin },
+    );
+    expect(lstatSync(join(root, "agent-trajectory-marketplace")).mode & 0o777).toBe(0o700);
+    expect(lstatSync(path).mode & 0o777).toBe(0o600);
+    expect(String(readStoredAuthSession(officialRegistryOrigin, { storePath: path })?.accessToken)).toBe(token);
+    expect(requests).toEqual([
+      { body: { challengeId, code: "654321" }, method: "POST", path: "/v1/auth/verify" },
+    ]);
+  });
+
+  test("runs status and remote-first logout with a stored session", async () => {
     const root = fixtureRoot();
     const requests: CapturedRequest[] = [];
     const server = Bun.serve({ port: 0, async fetch(request) {
@@ -183,53 +249,32 @@ describe("auth real CLI process boundary", () => {
         ...(request.headers.get("authorization") === null ? {} : { authorization: "Bearer [REDACTED]" }),
         body: await parseBody(request), method: request.method, path: url.pathname,
       });
-      if (url.pathname === "/v1/auth/signup" || url.pathname === "/v1/auth/login") {
-        return json({ ok: true, challengeId, expiresAt });
-      }
-      if (url.pathname === "/v1/auth/verify") {
-        return json({ ok: true, accessToken: token, tokenType: "Bearer", expiresAt, accountId });
-      }
-      if (url.pathname === "/v1/auth/me") {
-        return json({ ok: true, account: { accountId, email: "owner@example.test" } });
-      }
-      return json({ ok: true, revoked: true });
+      return url.pathname === "/v1/auth/me"
+        ? json({ ok: true, account: { accountId, email: "owner@example.test" } })
+        : json({ ok: true, revoked: true });
     } });
     servers.push(server);
     const origin = `http://127.0.0.1:${server.port}`;
-
-    const results = [
-      await runCli(root, ["auth", "signup", "--server", origin, "--email", "OWNER@example.test", "--accept-terms"]),
-      await runCli(root, ["trajectory", "auth", "login", "--server", origin, "--email", "owner@example.test"]),
-      await runCli(root, ["auth", "verify", "--server", origin, "--challenge", challengeId, "--code-stdin"], "654321\n999999\n"),
-      await runCli(root, ["auth", "status", "--server", origin]),
-    ];
     const path = storePath(root);
-    expect(lstatSync(join(root, "agent-trajectory-marketplace")).mode & 0o777).toBe(0o700);
-    expect(lstatSync(path).mode & 0o777).toBe(0o600);
-    expect(String(readStoredAuthSession(officialRegistryOrigin, { storePath: path })?.accessToken)).toBe(token);
-    results.push(await runCli(root, ["auth", "logout", "--server", origin]));
+    writeStoredAuthSession(
+      { server: officialRegistryOrigin, accessToken: token, tokenType: "Bearer", expiresAt, accountId },
+      { storePath: path },
+    );
 
-    expect(results.map(({ exitCode }) => exitCode)).toEqual([0, 0, 0, 0, 0]);
-    expect(results.map(({ stderr }) => stderr)).toEqual(["", "", "", "", ""]);
-    const combinedOutput = results.map(({ stdout }) => stdout).join("");
-    expect(combinedOutput).not.toContain(token);
-    expect(combinedOutput).not.toContain("654321");
-    expect(combinedOutput).not.toContain("999999");
-    expect(results.map(({ stdout }) => JSON.parse(stdout))).toEqual([
-      { challengeId, expiresAt, server: officialRegistryOrigin },
-      { challengeId, expiresAt, server: officialRegistryOrigin },
-      { accountId, expiresAt, server: officialRegistryOrigin },
+    const status = await runCli(root, ["auth", "status", "--server", origin]);
+    const logout = await runCli(root, ["auth", "logout", "--server", origin]);
+
+    expect([status.exitCode, logout.exitCode]).toEqual([0, 0]);
+    expect([status.stderr, logout.stderr]).toEqual(["", ""]);
+    expect([JSON.parse(status.stdout), JSON.parse(logout.stdout)]).toEqual([
       { account: { accountId, email: "owner@example.test" }, expiresAt, server: officialRegistryOrigin },
       { loggedOut: true, revoked: true, server: officialRegistryOrigin },
     ]);
     expect(requests).toEqual([
-      { body: { email: "owner@example.test", acceptTerms: true }, method: "POST", path: "/v1/auth/signup" },
-      { body: { email: "owner@example.test" }, method: "POST", path: "/v1/auth/login" },
-      { body: { challengeId, code: "654321" }, method: "POST", path: "/v1/auth/verify" },
       { authorization: "Bearer [REDACTED]", body: undefined, method: "GET", path: "/v1/auth/me" },
       { authorization: "Bearer [REDACTED]", body: {}, method: "POST", path: "/v1/auth/logout" },
     ]);
-    expect(readStoredAuthSession(origin, { storePath: path })).toBeUndefined();
+    expect(readStoredAuthSession(officialRegistryOrigin, { storePath: path })).toBeUndefined();
   });
 
   test("removes expired sessions without network", async () => {
