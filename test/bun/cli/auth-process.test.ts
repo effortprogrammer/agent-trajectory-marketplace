@@ -294,13 +294,12 @@ describe("auth real CLI process boundary", () => {
     expect(readStoredAuthSession(officialRegistryOrigin, { storePath: path })).toBeUndefined();
   });
 
-  test("preserves credentials on logout failure and clears unauthorized sessions", async () => {
+  test("preserves credentials on logout failure", async () => {
     const root = fixtureRoot();
-    let responseStatus = 429;
-    const server = Bun.serve({ port: 0, fetch() {
-      const code = responseStatus === 401 ? "unauthorized" : "rate_limited";
-      return json({ ok: false, error: { code, message: "later" } }, responseStatus);
-    } });
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => json({ ok: false, error: { code: "rate_limited", message: "later" } }, 429),
+    });
     servers.push(server);
     const origin = `http://127.0.0.1:${server.port}`;
     const path = storePath(root);
@@ -308,7 +307,18 @@ describe("auth real CLI process boundary", () => {
     const failed = await runCli(root, ["auth", "logout", "--server", origin]);
     expect(failed).toEqual({ exitCode: 1, stdout: "", stderr: `${JSON.stringify({ error: "rate_limited" })}\n` });
     expect(String(readStoredAuthSession(officialRegistryOrigin, { storePath: path })?.accessToken)).toBe(token);
-    responseStatus = 401;
+  });
+
+  test("clears unauthorized sessions", async () => {
+    const root = fixtureRoot();
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => json({ ok: false, error: { code: "unauthorized", message: "later" } }, 401),
+    });
+    servers.push(server);
+    const origin = `http://127.0.0.1:${server.port}`;
+    const path = storePath(root);
+    writeStoredAuthSession({ server: officialRegistryOrigin, accessToken: token, tokenType: "Bearer", expiresAt, accountId }, { storePath: path });
     const unauthorized = await runCli(root, ["auth", "status", "--server", origin]);
     expect(unauthorized).toEqual({ exitCode: 0, stderr: "", stdout: `${JSON.stringify({ authenticated: false, server: officialRegistryOrigin })}\n` });
     expect(readStoredAuthSession(origin, { storePath: path })).toBeUndefined();
