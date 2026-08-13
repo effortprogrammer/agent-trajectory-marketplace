@@ -8,6 +8,12 @@ import { sanitizedArtifactDigest } from "./dataset-archive"
 import { MarketplaceError } from "./error"
 import type { PublishBundle } from "./publish-bundle"
 import {
+  allowedCandidates,
+  isDeniedCandidate,
+  readCandidateDenyPolicy,
+  searchCandidates,
+} from "./candidate-deny-policy"
+import {
   SelectionContractError,
   encodeSelectionDocument,
   readSelectionDocument,
@@ -15,6 +21,7 @@ import {
 } from "./selection-contract"
 import type { SelectionDocument } from "./selection-contract"
 import { scanSessionSnapshot } from "./session-snapshot"
+import type { FrozenTrace } from "./session-contract"
 import { estimateZipBytes } from "./stored-zip"
 import { boundedRedactedString } from "../trajectory/adapters/contract"
 import type { CandidateBundleResult } from "./bundle-service"
@@ -49,11 +56,24 @@ const assertSelectionBuildable = (document: SelectionDocument): void => {
   }
 }
 
-export const selectionPreviewJson = (root: string): string => {
+export const allowedCandidateTraces = (
+  root: string,
+  traces: readonly FrozenTrace[],
+  denyPolicyPath?: string,
+): readonly FrozenTrace[] => {
+  if (denyPolicyPath === undefined) return traces
+  const policy = readCandidateDenyPolicy(denyPolicyPath)
+  const document = selectionDocumentFromTraces(root, traces)
+  const allowed = new Set(allowedCandidates(document.traces, policy).map((trace) => trace.selector))
+  return traces.filter((trace) => allowed.has(trace.selector))
+}
+
+export const selectionPreviewJson = (root: string, denyPolicyPath?: string): string => {
   const snapshot = scanSessionSnapshot(root)
-  const document = selectionDocumentFromTraces(snapshot.root, snapshot.traces)
-  assertSelectionBuildable(document)
-  const encoded = encodeSelectionDocument(document)
+  const filteredTraces = allowedCandidateTraces(snapshot.root, snapshot.traces, denyPolicyPath)
+  const filtered = selectionDocumentFromTraces(snapshot.root, filteredTraces)
+  assertSelectionBuildable(filtered)
+  const encoded = encodeSelectionDocument(filtered)
   if (encoded.byteLength > maximumSelectionBytes) return invalidSelection()
   return encoded.toString("utf8")
 }
@@ -62,8 +82,10 @@ export const writeBundleFromSelection = (
   root: string,
   selectionPath: string,
   outputPath: string,
+  denyPolicyPath?: string,
 ): CandidateBundleResult => {
   const snapshot = scanSessionSnapshot(root)
+  const policy = denyPolicyPath === undefined ? undefined : readCandidateDenyPolicy(denyPolicyPath)
   const document = readSelectionDocument(selectionPath)
   if (document.root !== snapshot.root) throw new MarketplaceError("invalid_bundle_request")
   const selected = document.traces.map((entry) => {
@@ -82,7 +104,21 @@ export const writeBundleFromSelection = (
     }
     return trace
   })
+  if (
+    policy !== undefined &&
+    selectionDocumentFromTraces(snapshot.root, selected).traces.some((trace) => isDeniedCandidate(trace, policy))
+  ) {
+    throw new MarketplaceError("denied_selection")
+  }
   return writeCandidateBundle(snapshot, selected, outputPath)
+}
+
+export const candidateSearchJson = (root: string, query: string, denyPolicyPath?: string): string => {
+  const snapshot = scanSessionSnapshot(root)
+  const policy = denyPolicyPath === undefined ? undefined : readCandidateDenyPolicy(denyPolicyPath)
+  const document = selectionDocumentFromTraces(snapshot.root, snapshot.traces)
+  const matches = searchCandidates(document.traces, query, policy)
+  return JSON.stringify({ count: matches.length, selectors: matches.map((trace) => trace.selector) })
 }
 
 export const approvedMembership = (bundle: PublishBundle, selectionPath: string): readonly string[] => {

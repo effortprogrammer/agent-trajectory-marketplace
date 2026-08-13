@@ -3,10 +3,12 @@ import { isAbsolute } from "node:path";
 import {
   parseCandidateBundle,
   parseCandidatePublish,
+  parseCandidateSearch,
   parseCandidateStatus,
 } from "./marketplace-candidate-command";
 import type {
   CandidatePublishCommand,
+  CandidateSearchCommand,
   CandidateStatusCommand,
   ExplicitCandidateBundleCommand,
   InteractiveCandidateBundleCommand,
@@ -45,6 +47,7 @@ export type MarketplaceCommand =
   | ExplicitCandidateBundleCommand
   | PreviewCandidateBundleCommand
   | SelectionCandidateBundleCommand
+  | CandidateSearchCommand
   | CandidatePublishCommand
   | CandidateStatusCommand
   | WalletBalanceCommand
@@ -160,6 +163,9 @@ export const parseMarketplaceCommand = (
   }
   if (group === "candidate" && action === "publish") {
     return parseCandidatePublish(argumentsWithoutExecutable.slice(4));
+  }
+  if (group === "candidate" && action === "search") {
+    return parseCandidateSearch(argumentsWithoutExecutable.slice(4));
   }
   if (group === "candidate" && action === "status") {
     return parseCandidateStatus(argumentsWithoutExecutable.slice(4));
