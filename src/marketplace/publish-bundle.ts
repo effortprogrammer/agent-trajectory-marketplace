@@ -17,6 +17,7 @@ import { createCandidateFromExactBytes } from "./publish-contract"
 import type { PublishCandidate } from "./publish-contract"
 import { crc32 } from "./zip-crc32"
 import { parseAdmissionJson } from "./json-preflight"
+import { ResidualSecretScanError, assertNoResidualSecrets } from "./residual-secret-scan"
 import {
   boundedRedactedString,
   harnessTraceDocumentSchema,
@@ -187,6 +188,12 @@ const assertTraceAdmission = (data: Buffer): void => {
     if (event.payload === undefined) continue
     const sanitized = sanitizeHarnessPayload(event.payload)
     if (sanitized === undefined || !isDeepStrictEqual(sanitized, event.payload)) return invalid()
+  }
+  try {
+    assertNoResidualSecrets(data)
+  } catch (error) {
+    if (error instanceof ResidualSecretScanError) return invalid()
+    throw error
   }
 }
 

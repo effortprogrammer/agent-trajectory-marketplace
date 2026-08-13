@@ -7,6 +7,7 @@ import {
   encodeDatasetManifest,
 } from "./archive-contract";
 import { MarketplaceError } from "./error";
+import { ResidualSecretScanError, assertNoResidualSecrets } from "./residual-secret-scan";
 import type { FrozenTrace } from "./session-contract";
 import { StoredZipError, writeDatasetZip } from "./stored-zip";
 import type { StoredZipEntry } from "./stored-zip";
@@ -90,6 +91,14 @@ export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
       throw new MarketplaceError("trace_drift");
     }
     const bytes = sanitizedTraceBytes(sourceBytes);
+    try {
+      assertNoResidualSecrets(bytes);
+    } catch (error) {
+      if (error instanceof ResidualSecretScanError) {
+        throw new MarketplaceError("invalid_bundle_request");
+      }
+      throw error;
+    }
     const sha256 = digest(bytes);
     if (bytes.length === 0 || bytes.length > datasetArchivePolicy.maxTraceBytes) {
       throw new MarketplaceError("invalid_bundle_request");

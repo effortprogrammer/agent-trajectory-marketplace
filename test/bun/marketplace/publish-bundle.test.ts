@@ -376,6 +376,27 @@ describe("publish bundle ZIP integrity", () => {
     expect(parse).toThrow(PublishBundleError)
   })
 
+  test("re-admits existing bundles through the residual-secret gate", () => {
+    // Given: a manifest-consistent archive built outside the local construction flow.
+    const residual = `github_pat_${"a".repeat(82)}`
+    const trace = Buffer.from(JSON.stringify({
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 1,
+      events: [{ kind: "message", name: "assistant", payload: { content: residual } }],
+    }), "utf8")
+    const archive = archiveForTrace(trace)
+
+    // When: the publish boundary independently admits the archive bytes.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: bundles created before this gate cannot bypass it.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
   test.each([
     ["runtime", {
       runtime: "Bearer TOP_SECRET_123456789",
