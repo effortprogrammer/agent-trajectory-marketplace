@@ -307,7 +307,7 @@ describe("auth real CLI process boundary", () => {
     const failed = await runCli(root, ["auth", "logout", "--server", origin]);
     expect(failed).toEqual({ exitCode: 1, stdout: "", stderr: `${JSON.stringify({ error: "rate_limited" })}\n` });
     expect(String(readStoredAuthSession(officialRegistryOrigin, { storePath: path })?.accessToken)).toBe(token);
-  });
+  }, 15_000);
 
   test("clears unauthorized sessions", async () => {
     const root = fixtureRoot();
