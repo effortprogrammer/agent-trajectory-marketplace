@@ -45,3 +45,4 @@ temp/
 # Documentation stays local; never push docs or markdown.
 docs/
 *.md
+!README.md

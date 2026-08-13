@@ -96,6 +96,7 @@ export const createStatusClient = (
         },
       );
       if (response.status >= 300 && response.status < 400) {
+        await response.body?.cancel();
         throw new StatusClientError("unavailable");
       }
       const parsed = parsePublishResponse(
@@ -104,6 +105,9 @@ export const createStatusClient = (
       );
       if ("code" in parsed) throw new StatusClientError(parsed.code);
       if ("statusUrl" in parsed) throw new StatusClientError("invalid_response");
+      if (parsed.submissionId !== request.submissionId) {
+        throw new StatusClientError("invalid_response");
+      }
       return parsed;
     } catch (error) {
       if (error instanceof StatusClientError) throw error;

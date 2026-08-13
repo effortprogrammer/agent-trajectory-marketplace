@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import type { KyInstance } from "ky";
 
 import {
   createStatusClient,
@@ -86,6 +87,43 @@ describe("candidate status client", () => {
     await expect(createStatusClient(redirectOrigin).read(request)).rejects.toEqual(
       new StatusClientError("unavailable"),
     );
+  });
+
+  test("cancels a redirect response body before rejecting it", async () => {
+    let cancelled = false;
+    const response = new Response(
+      new ReadableStream({
+        cancel() {
+          cancelled = true;
+        },
+      }),
+      { headers: { location: "https://example.test" }, status: 302 },
+    );
+    const requestClient = {
+      get: async () => response,
+    } as unknown as KyInstance;
+
+    await expect(
+      createStatusClient("https://gateway.getatm.io", { requestClient }).read({
+        credential,
+        submissionId,
+      }),
+    ).rejects.toEqual(new StatusClientError("unavailable"));
+    expect(cancelled).toBe(true);
+  });
+
+  test("rejects a status response for a different submission", async () => {
+    const origin = serverUrl(() =>
+      Response.json({
+        protocolVersion: 1,
+        submissionId: "sub_11111111111111111111111111",
+        status: "completed",
+      }),
+    );
+
+    await expect(
+      createStatusClient(origin).read({ credential, submissionId }),
+    ).rejects.toEqual(new StatusClientError("invalid_response"));
   });
 
   test("rejects chunked responses immediately after the byte cap", async () => {
