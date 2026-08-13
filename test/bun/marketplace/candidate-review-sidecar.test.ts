@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import {
   reviewPrivateCandidate,
@@ -187,6 +187,91 @@ describe("private content-addressed candidate review sidecars", () => {
     // Then: no directory or sidecar is created through the symlinked ancestor.
     expect(action).toThrow("invalid_bundle_request");
     expect(existsSync(join(outside, "private-cache"))).toBe(false);
+  });
+
+  test("cannot redirect a validated cache root to receive a temporary sidecar", () => {
+    // Given: a cache root that is private when validated and an outside directory controlled by an attacker.
+    const root = fixtureRoot();
+    const cacheRoot = join(root, "private-cache");
+    const outside = join(root, "outside");
+    mkdirSync(cacheRoot, { mode: 0o700 });
+    mkdirSync(outside, { mode: 0o700 });
+    let outsideTemporaryOpened = false;
+
+    // When: the root is atomically replaced with a symlink immediately after validation.
+    const action = (): unknown => reviewPrivateCandidate({
+      artifactBytes: artifact(), cacheRoot, identity: identity(), execute: () => review,
+      testHooks: {
+        afterCacheRootValidated: (): void => {
+          renameSync(cacheRoot, join(root, "validated-cache"));
+          symlinkSync(outside, cacheRoot, "dir");
+        },
+        afterTemporaryOpen: (temporaryPath): void => {
+          outsideTemporaryOpened = existsSync(join(outside, basename(temporaryPath)));
+        },
+      },
+    });
+
+    // Then: no private sidecar bytes can be opened in the redirected directory.
+    expect(action).toThrow("invalid_bundle_request");
+    expect(outsideTemporaryOpened).toBe(false);
+    expect(Array.from(new Bun.Glob("*").scanSync({ cwd: outside }))).toEqual([]);
+  });
+
+  test("pins sidecar reads to the opened cache directory", () => {
+    // Given: a populated cache and an attacker-controlled replacement target.
+    const root = fixtureRoot();
+    const cacheRoot = join(root, "private-cache");
+    const outside = join(root, "outside");
+    mkdirSync(outside, { mode: 0o700 });
+    const cached = reviewPrivateCandidate({ artifactBytes: artifact(), cacheRoot, identity: identity(), execute: () => review });
+    let executeCalls = 0;
+
+    // When: the cache path is replaced after its verified directory descriptor has opened.
+    const result = reviewPrivateCandidate({
+      artifactBytes: artifact(), cacheRoot, identity: identity(),
+      execute: (): PrivateCandidateReview => ({ ...review, rationale: `unexpected-${++executeCalls}` }),
+      testHooks: {
+        afterCacheDirectoryOpened: (): void => {
+          renameSync(cacheRoot, join(root, "validated-cache"));
+          symlinkSync(outside, cacheRoot, "dir");
+        },
+      },
+    });
+
+    // Then: the cache hit comes from the descriptor-pinned original directory, not the replacement path.
+    expect(result).toMatchObject({ address: cached.address, source: "cache", review });
+    expect(executeCalls).toBe(0);
+    expect(Array.from(new Bun.Glob("*").scanSync({ cwd: outside }))).toEqual([]);
+  });
+
+  test("pins sidecar writes to the opened cache directory", () => {
+    // Given: an empty private cache and an attacker-controlled replacement target.
+    const root = fixtureRoot();
+    const cacheRoot = join(root, "private-cache");
+    const outside = join(root, "outside");
+    mkdirSync(outside, { mode: 0o700 });
+    let outsideTemporaryOpened = false;
+
+    // When: the cache path is replaced immediately before a cache miss writes its sidecar.
+    const result = reviewPrivateCandidate({
+      artifactBytes: artifact(), cacheRoot, identity: identity(), execute: () => review,
+      testHooks: {
+        afterCacheDirectoryOpened: (): void => {
+          renameSync(cacheRoot, join(root, "validated-cache"));
+          symlinkSync(outside, cacheRoot, "dir");
+        },
+        afterTemporaryOpen: (temporaryName): void => {
+          outsideTemporaryOpened = existsSync(join(outside, temporaryName));
+        },
+      },
+    });
+
+    // Then: the private bytes are committed only beneath the opened original directory.
+    expect(result.source).toBe("reviewed");
+    expect(outsideTemporaryOpened).toBe(false);
+    expect(Array.from(new Bun.Glob("*").scanSync({ cwd: outside }))).toEqual([]);
+    expect(Array.from(new Bun.Glob("*.json").scanSync({ cwd: join(root, "validated-cache") }))).toHaveLength(1);
   });
 
   test("keeps review-only fields out of the candidate archive and manifest", () => {

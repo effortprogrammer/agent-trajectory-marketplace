@@ -1,19 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
+import { dlopen } from "bun:ffi";
 import {
   closeSync,
   constants,
+  fchmodSync,
   fstatSync,
   fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
-  renameSync,
-  unlinkSync,
   writeSync,
 } from "node:fs";
 import type { Stats } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 
 import { sanitizedArtifactDigest } from "./dataset-archive";
@@ -61,11 +61,18 @@ const sidecarStateSchema = z.object({
 
 type SidecarState = Readonly<z.infer<typeof sidecarStateSchema>>;
 
+type CandidateReviewSidecarTestHooks = Readonly<{
+  readonly afterCacheRootValidated?: () => void;
+  readonly afterCacheDirectoryOpened?: () => void;
+  readonly afterTemporaryOpen?: (temporaryName: string) => void;
+}>;
+
 export type PrivateCandidateReviewRequest = Readonly<{
   readonly artifactBytes: Uint8Array;
   readonly cacheRoot: string;
   readonly identity: CandidateReviewIdentity;
   readonly execute: () => PrivateCandidateReview;
+  readonly testHooks?: CandidateReviewSidecarTestHooks;
 }>;
 
 export type PrivateCandidateReviewResult = Readonly<{
@@ -123,18 +130,36 @@ const addressFor = (artifact: SanitizedArtifactIdentity, identity: CandidateRevi
 
 type FileStatus = Stats;
 
-const assertPrivateDirectory = (path: string): FileStatus => {
-  let status: FileStatus;
-  try {
-    status = lstatSync(path) as Stats;
-  } catch (error) {
-    if (isMissing(error)) return invalid();
-    throw error;
-  }
+const nativeSymbols = {
+  openat: { args: ["i32", "ptr", "i32", "u32"], returns: "i32" },
+  renameat: { args: ["i32", "ptr", "i32", "ptr"], returns: "i32" },
+  unlinkat: { args: ["i32", "ptr", "i32"], returns: "i32" },
+} as const;
+
+const directoryFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
+const fileFlags = constants.O_RDONLY | constants.O_NOFOLLOW;
+
+type NativeLibrary = ReturnType<typeof loadNative>;
+
+type CacheDirectory = Readonly<{
+  readonly library: NativeLibrary;
+  readonly descriptor: number;
+}>;
+
+const assertPrivateDirectoryStatus = (status: FileStatus): FileStatus => {
   const owner = currentUserId();
   if (!status.isDirectory() || status.isSymbolicLink() || (status.mode & 0o077) !== 0 ||
     (owner !== undefined && status.uid !== owner)) return invalid();
   return status;
+};
+
+const assertPrivateDirectory = (path: string): FileStatus => {
+  try {
+    return assertPrivateDirectoryStatus(lstatSync(path) as Stats);
+  } catch (error) {
+    if (isMissing(error)) return invalid();
+    throw error;
+  }
 };
 
 const resolvedPrivateCacheRoot = (cacheRoot: string): string => {
@@ -156,7 +181,7 @@ const assertNoSymlinkedExistingAncestor = (path: string): void => {
   }
 };
 
-const ensurePrivateCacheRoot = (cacheRoot: string): FileStatus => {
+const ensurePrivateCacheRoot = (cacheRoot: string): void => {
   assertNoSymlinkedExistingAncestor(cacheRoot);
   try {
     mkdirSync(cacheRoot, { recursive: true, mode: 0o700 });
@@ -165,10 +190,72 @@ const ensurePrivateCacheRoot = (cacheRoot: string): FileStatus => {
     throw error;
   }
   assertNoSymlinkedExistingAncestor(cacheRoot);
-  return assertPrivateDirectory(cacheRoot);
+  assertPrivateDirectory(cacheRoot);
 };
 
-const sidecarPath = (cacheRoot: string, address: string): string => join(cacheRoot, `${address}.json`);
+function loadNative() {
+  const path = process.platform === "darwin"
+    ? "/usr/lib/libSystem.B.dylib"
+    : process.platform === "linux" ? "libc.so.6" : undefined;
+  if (path === undefined) return invalid();
+  try {
+    return dlopen(path, nativeSymbols);
+  } catch {
+    return invalid();
+  }
+}
+
+const encodedName = (name: string): Uint8Array => {
+  if (name.length === 0 || name === "." || name === ".." || name.includes("/") || name.includes("\0")) return invalid();
+  return new TextEncoder().encode(`${name}\0`);
+};
+
+const openAt = (library: NativeLibrary, directory: number, name: string, flags: number, mode = 0): number =>
+  library.symbols.openat(directory, encodedName(name), flags, mode);
+
+const renameAt = (library: NativeLibrary, directory: number, source: string, destination: string): number =>
+  library.symbols.renameat(directory, encodedName(source), directory, encodedName(destination));
+
+const unlinkAt = (library: NativeLibrary, directory: number, name: string): number =>
+  library.symbols.unlinkat(directory, encodedName(name), 0);
+
+const openPrivateCacheDirectory = (cacheRoot: string): CacheDirectory => {
+  let library: NativeLibrary | undefined;
+  let descriptor: number | undefined;
+  try {
+    library = loadNative();
+    descriptor = openSync("/", directoryFlags);
+    for (const name of cacheRoot.split("/").filter((part) => part.length > 0)) {
+      const child = openAt(library, descriptor, name, directoryFlags);
+      if (child < 0) return invalid();
+      closeSync(descriptor);
+      descriptor = child;
+    }
+    assertPrivateDirectoryStatus(fstatSync(descriptor));
+    return { library, descriptor };
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    library?.close();
+    if (error instanceof MarketplaceError) throw error;
+    return invalid();
+  }
+};
+
+const closeCacheDirectory = (directory: CacheDirectory): void => {
+  try {
+    closeSync(directory.descriptor);
+  } finally {
+    directory.library.close();
+  }
+};
+
+const sidecarName = (address: string): string => `${address}.json`;
+
+const isPrivateSidecar = (status: FileStatus): boolean => {
+  const owner = currentUserId();
+  return status.isFile() && !status.isSymbolicLink() && (status.mode & 0o077) === 0 &&
+    (owner === undefined || status.uid === owner);
+};
 
 const stateMatches = (
   state: SidecarState,
@@ -186,26 +273,17 @@ const stateMatches = (
   state.identity.context === identity.context;
 
 const readState = (
-  cacheRoot: string,
-  rootIdentity: FileStatus,
+  directory: CacheDirectory,
   address: string,
   artifact: SanitizedArtifactIdentity,
   identity: CandidateReviewIdentity,
 ): SidecarState | undefined => {
-  const path = sidecarPath(cacheRoot, address);
   let descriptor: number | undefined;
   try {
-    const before = lstatSync(path);
-    const owner = currentUserId();
-    if (!before.isFile() || before.isSymbolicLink() || (before.mode & 0o077) !== 0 ||
-      (owner !== undefined && before.uid !== owner)) return undefined;
-    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    const opened = fstatSync(descriptor);
-    if (!sameFile(before, opened)) return undefined;
-    const text = readFileSync(descriptor, "utf8");
-    const after = lstatSync(path);
-    if (!sameFile(before, after) || !sameFile(rootIdentity, assertPrivateDirectory(cacheRoot))) return undefined;
-    const parsed = sidecarStateSchema.safeParse(JSON.parse(text));
+    descriptor = openAt(directory.library, directory.descriptor, sidecarName(address), fileFlags);
+    if (descriptor < 0) return undefined;
+    if (!isPrivateSidecar(fstatSync(descriptor))) return undefined;
+    const parsed = sidecarStateSchema.safeParse(JSON.parse(readFileSync(descriptor, "utf8")));
     if (!parsed.success || !stateMatches(parsed.data, address, artifact, identity)) return undefined;
     return parsed.data;
   } catch (error) {
@@ -213,7 +291,7 @@ const readState = (
     if (error instanceof MarketplaceError) throw error;
     return undefined;
   } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
+    if (descriptor !== undefined && descriptor >= 0) closeSync(descriptor);
   }
 };
 
@@ -226,37 +304,64 @@ const writeAll = (descriptor: number, bytes: Buffer): void => {
   }
 };
 
-const writeState = (cacheRoot: string, rootIdentity: FileStatus, state: SidecarState): void => {
-  const output = sidecarPath(cacheRoot, state.address);
-  const temporary = join(dirname(output), `.${state.address}.${process.pid}.${randomUUID()}.tmp`);
+const writeState = (
+  directory: CacheDirectory,
+  state: SidecarState,
+  testHooks: CandidateReviewSidecarTestHooks | undefined,
+): void => {
+  const temporaryName = `.${state.address}.${process.pid}.${randomUUID()}.tmp`;
+  const outputName = sidecarName(state.address);
   const bytes = Buffer.from(`${JSON.stringify(state)}\n`, "utf8");
   let descriptor: number | undefined;
+  let temporaryStatus: FileStatus | undefined;
+  let temporaryCreated = false;
+  let temporaryCommitted = false;
   try {
-    descriptor = openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-    const temporaryStatus = fstatSync(descriptor);
-    const owner = currentUserId();
-    if (!temporaryStatus.isFile() || (temporaryStatus.mode & 0o077) !== 0 ||
-      (owner !== undefined && temporaryStatus.uid !== owner)) return invalid();
+    descriptor = openAt(
+      directory.library,
+      directory.descriptor,
+      temporaryName,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600,
+    );
+    if (descriptor < 0) return invalid();
+    temporaryCreated = true;
+    // Bun FFI cannot pass openat's variadic mode argument on Darwin, so apply
+    // the required private mode directly to the newly created descriptor.
+    fchmodSync(descriptor, 0o600);
+    testHooks?.afterTemporaryOpen?.(temporaryName);
+    temporaryStatus = fstatSync(descriptor);
+    if (!isPrivateSidecar(temporaryStatus)) return invalid();
     writeAll(descriptor, bytes);
     fsyncSync(descriptor);
     closeSync(descriptor);
     descriptor = undefined;
-    const beforeRenameRoot = assertPrivateDirectory(cacheRoot);
-    const beforeRenameTemporary = lstatSync(temporary);
-    if (!sameFile(rootIdentity, beforeRenameRoot) || !sameFile(temporaryStatus, beforeRenameTemporary) ||
-      beforeRenameTemporary.isSymbolicLink()) return invalid();
-    renameSync(temporary, output);
-    const committed = lstatSync(output);
-    if (!committed.isFile() || committed.isSymbolicLink() || (committed.mode & 0o077) !== 0 ||
-      !sameFile(beforeRenameTemporary, committed) || !sameFile(rootIdentity, assertPrivateDirectory(cacheRoot))) {
-      return invalid();
+    const currentTemporary = openAt(directory.library, directory.descriptor, temporaryName, fileFlags);
+    if (currentTemporary < 0) return invalid();
+    try {
+      if (!sameFile(temporaryStatus, fstatSync(currentTemporary))) return invalid();
+    } finally {
+      closeSync(currentTemporary);
+    }
+    if (renameAt(directory.library, directory.descriptor, temporaryName, outputName) < 0) return invalid();
+    temporaryCommitted = true;
+    const committed = openAt(directory.library, directory.descriptor, outputName, fileFlags);
+    if (committed < 0) return invalid();
+    try {
+      if (!sameFile(temporaryStatus, fstatSync(committed)) || !isPrivateSidecar(fstatSync(committed))) return invalid();
+    } finally {
+      closeSync(committed);
     }
   } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
-    try {
-      unlinkSync(temporary);
-    } catch (error) {
-      if (!isMissing(error)) throw error;
+    if (descriptor !== undefined && descriptor >= 0) closeSync(descriptor);
+    if (temporaryCreated && !temporaryCommitted) {
+      const currentTemporary = openAt(directory.library, directory.descriptor, temporaryName, fileFlags);
+      if (currentTemporary >= 0) {
+        const currentStatus = fstatSync(currentTemporary);
+        closeSync(currentTemporary);
+        if (temporaryStatus !== undefined && sameFile(temporaryStatus, currentStatus) &&
+          unlinkAt(directory.library, directory.descriptor, temporaryName) < 0) invalid();
+      }
     }
   }
 };
@@ -271,13 +376,20 @@ export const reviewPrivateCandidate = (request: PrivateCandidateReviewRequest): 
   const artifact = artifactFor(request.artifactBytes);
   const address = addressFor(artifact, identity);
   const cacheRoot = resolvedPrivateCacheRoot(request.cacheRoot);
-  const rootIdentity = ensurePrivateCacheRoot(cacheRoot);
-  const cached = readState(cacheRoot, rootIdentity, address, artifact, identity);
-  if (cached !== undefined) {
-    return Object.freeze({ address, artifact, identity, review: cached.review, source: "cache" });
+  ensurePrivateCacheRoot(cacheRoot);
+  request.testHooks?.afterCacheRootValidated?.();
+  const directory = openPrivateCacheDirectory(cacheRoot);
+  try {
+    request.testHooks?.afterCacheDirectoryOpened?.();
+    const cached = readState(directory, address, artifact, identity);
+    if (cached !== undefined) {
+      return Object.freeze({ address, artifact, identity, review: cached.review, source: "cache" });
+    }
+    const review = parsedReview(request.execute());
+    const state = sidecarStateSchema.parse({ formatVersion: reviewFormatVersion, address, artifact, identity, review });
+    writeState(directory, state, request.testHooks);
+    return Object.freeze({ address, artifact, identity, review, source: "reviewed" });
+  } finally {
+    closeCacheDirectory(directory);
   }
-  const review = parsedReview(request.execute());
-  const state = sidecarStateSchema.parse({ formatVersion: reviewFormatVersion, address, artifact, identity, review });
-  writeState(cacheRoot, rootIdentity, state);
-  return Object.freeze({ address, artifact, identity, review, source: "reviewed" });
 };
