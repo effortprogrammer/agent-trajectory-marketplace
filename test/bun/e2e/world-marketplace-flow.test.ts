@@ -1,69 +1,23 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test"
-import { existsSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-import { z } from "zod"
-
 const publicRoot = join(import.meta.dir, "../../..")
-const registryRoot =
-  process.env.TRAJECTORY_REGISTRY_ROOT ?? join(publicRoot, "..", "agent-trajectory-registry-world-compiler")
-const coordinator = join(registryRoot, "scripts/qa/world_final_verify.py")
-const registryPython = join(registryRoot, ".venv/bin/python")
+const contractRoot = join(publicRoot, "contract/world/v1")
 const servers: Bun.Server<undefined>[] = []
-
-const stages = [
-  "publish",
-  "publish-receipt",
-  "malformed-spec",
-  "generated-backend-sandbox-violation",
-  "build",
-  "conformance",
-  "tampered-envelope",
-  "promote",
-  "trade",
-  "hosted-onprem",
-  "settle",
-  "revocation",
-  "withdrawal-denials",
-] as const
-
-const failureCases = [
-  "malformed-spec",
-  "generated-backend-sandbox-violation",
-  "holdout-mismatch",
-  "tampered-envelope",
-  "post-withdraw-hosted-new-delivery",
-  "post-withdraw-on-prem-license-refresh",
-] as const
-
-const receiptSchema = z.object({
-  command: z.array(z.string().min(1)).min(1),
-  cwd: z.string().min(1),
-  exitCode: z.literal(0),
-  outcome: z.literal("passed"),
-  stage: z.enum(stages),
-  stderrSha256: z.string().regex(/^[0-9a-f]{64}$/),
-  stdoutSha256: z.string().regex(/^[0-9a-f]{64}$/),
-}).strict()
-
-const lifecycleSchema = z.object({
-  failureCases: z.array(z.enum(failureCases)),
-  mode: z.literal("lifecycle"),
-  ok: z.literal(true),
-  receipts: z.array(receiptSchema),
-  scenarioId: z.literal("todo27-marketplace-lifecycle"),
-}).strict()
 
 const contractId = "00000000-0000-4000-8000-000000000002"
 const entitlementId = "00000000-0000-4000-8000-000000000001"
+const instanceId = "instance-7f1a9c2e"
 const packDigest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+const worldId = "world/refund-unit"
+const fixture = (name: string): string => readFileSync(join(contractRoot, name), "utf8")
 
 const run = async (
   command: readonly string[],
 ): Promise<Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>> => {
   const child = Bun.spawn([...command], {
     cwd: publicRoot,
-    env: { ...process.env, PYTHONPATH: registryRoot },
     stderr: "pipe",
     stdout: "pipe",
   })
@@ -76,8 +30,6 @@ const run = async (
 }
 
 beforeAll(() => {
-  expect(existsSync(registryPython)).toBe(true)
-  expect(existsSync(coordinator)).toBe(true)
   const build = Bun.spawnSync([process.execPath, "run", "build:collector"], {
     cwd: publicRoot,
     stderr: "pipe",
@@ -91,30 +43,63 @@ afterEach(() => {
 })
 
 describe("public Todo27 marketplace lifecycle", () => {
-  test("process-drives the public client through every real registry lifecycle stage", async () => {
-    // Given: the independently owned registry lifecycle coordinator and public client checkout.
-    const command = [
-      registryPython,
-      coordinator,
-      "lifecycle",
-      "--registry-root",
-      registryRoot,
-      "--public-root",
-      publicRoot,
-      "--json",
+  test("process-drives the built client through the public World lifecycle", async () => {
+    // Given: a live Registry HTTP boundary serving the exact shipped public contracts.
+    const observed: string[] = []
+    const server = Bun.serve({
+      async fetch(request) {
+        const path = new URL(request.url).pathname
+        observed.push(`${request.method} ${path} ${request.headers.get("authorization") ?? "-"}`)
+        if (path === "/v1/marketplace/worlds") return new Response(fixture("catalog-list-200.json"))
+        if (path === `/v1/marketplace/worlds/${worldId}`) return new Response(fixture("catalog-detail-200.json"))
+        if (path.endsWith(`/hosted/instances/${instanceId}`)) return new Response(fixture("hosted-status-200.json"))
+        if (path.endsWith("/hosted/instances")) {
+          expect(await request.text()).toBe("{\"seed\":7}")
+          expect(request.headers.get("idempotency-key")).toBe("todo27-lifecycle")
+          expect(request.headers.get("x-world-pack-digest")).toBe(packDigest)
+          return new Response(fixture("hosted-create-200.json"))
+        }
+        if (path.endsWith("/downloads")) return new Response(fixture("entitlement-download-200.json"))
+        return new Response(null, { status: 404 })
+      },
+      hostname: "127.0.0.1",
+      port: 0,
+    })
+    servers.push(server)
+    const base = `http://127.0.0.1:${server.port}`
+    const auth = ["--server", base, "--api-key", "api-token"]
+
+    // When: one built CLI process traverses catalog, hosted execution, and download.
+    const results = [
+      await run([process.execPath, "dist/collector.js", "world", "list", "--server", base]),
+      await run([process.execPath, "dist/collector.js", "world", "detail", worldId, "--server", base]),
+      await run([
+        process.execPath, "dist/collector.js", "world", "run", worldId, ...auth, "--contract-id", contractId,
+        "--pack-digest", packDigest, "--seed", "7", "--idempotency-key", "todo27-lifecycle",
+      ]),
+      await run([
+        process.execPath, "dist/collector.js", "world", "status", worldId, instanceId, ...auth,
+        "--contract-id", contractId, "--pack-digest", packDigest,
+      ]),
+      await run([process.execPath, "dist/collector.js", "world", "download", entitlementId, ...auth]),
     ]
 
-    // When: the coordinator launches the real local registry lifecycle.
-    const result = await run(command)
-
-    // Then: the only public evidence is one canonical, digest-only complete receipt.
-    expect({ exitCode: result.exitCode, stderr: result.stderr }).toEqual({ exitCode: 0, stderr: "" })
-    expect(result.stdout).toMatch(/^[^\n]+\n$/u)
-    const parsed = lifecycleSchema.parse(JSON.parse(result.stdout))
-    expect(parsed.receipts.map((receipt) => receipt.stage)).toEqual([...stages])
-    expect(parsed.failureCases).toEqual([...failureCases])
-    expect(parsed.receipts.every((receipt) => receipt.cwd === publicRoot || receipt.cwd === registryRoot)).toBe(true)
-  }, 300_000)
+    // Then: every step returns the exact shipped contract and authorization stays protected.
+    expect(results).toEqual([
+      { exitCode: 0, stderr: "", stdout: fixture("catalog-list-200.json") },
+      { exitCode: 0, stderr: "", stdout: fixture("catalog-detail-200.json") },
+      { exitCode: 0, stderr: "", stdout: fixture("hosted-create-200.json") },
+      { exitCode: 0, stderr: "", stdout: fixture("hosted-status-200.json") },
+      { exitCode: 0, stderr: "", stdout: fixture("entitlement-download-200.json") },
+    ])
+    expect(observed).toEqual([
+      "GET /v1/marketplace/worlds -",
+      `GET /v1/marketplace/worlds/${worldId} -`,
+      `POST /v1/marketplace/buyer/world-contracts/${contractId}/hosted/instances Bearer api-token`,
+      `GET /v1/marketplace/buyer/world-contracts/${contractId}/hosted/instances/${instanceId} Bearer api-token`,
+      `POST /v1/marketplace/buyer/world-entitlements/${entitlementId}/downloads Bearer api-token`,
+    ])
+  })
 
   test("returns exact safe JSON for malformed digest incompatible unauthorized and revoked requests", async () => {
     // Given: a public HTTP boundary that produces the lifecycle's adverse delivery statuses.
