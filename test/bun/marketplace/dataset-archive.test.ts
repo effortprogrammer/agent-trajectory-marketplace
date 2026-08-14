@@ -222,6 +222,34 @@ describe("selected trace dataset archive", () => {
     expect(manifest.artifacts[0]?.byteCount).toBe(traceBytes.byteLength);
   });
 
+  test("rejects residual credential-like tokens after sanitization without rewriting benign credential-adjacent text", () => {
+    // Given: sanitized ATF content with a GitHub fine-grained token that the redactor does not recognize,
+    // and nearby instructional text that must remain publishable.
+    const residual = `github_pat_${"a".repeat(82)}`;
+    const unsafe = frozenTrace("8", JSON.stringify({
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 1,
+      events: [{ kind: "message", name: "assistant", payload: { content: residual } }],
+    }));
+    const benign = frozenTrace("9", JSON.stringify({
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 1,
+      events: [{ kind: "message", name: "assistant", payload: { content: "Set GITHUB_TOKEN in your environment; never paste a token value." } }],
+    }));
+
+    // When: candidate archives are assembled from the exact reviewed inputs.
+    const reject = (): Buffer => buildDatasetArchive([unsafe]);
+    const archive = buildDatasetArchive([benign]);
+
+    // Then: the residual token fails closed while credential-adjacent prose stays unchanged.
+    expect(reject).toThrow(new MarketplaceError("invalid_bundle_request"));
+    expect(localEntries(archive).get(`traces/${benign.selector}.atf.json`)).toEqual(benign.bytes);
+  });
+
   test("rejects empty, duplicate, and mutated frozen selections", () => {
     // Given: empty, duplicate, post-freeze mismatch, zero-byte, and over-limit memberships.
     const original = frozenTrace("5", new TextDecoder().decode(validAtf("codex")));

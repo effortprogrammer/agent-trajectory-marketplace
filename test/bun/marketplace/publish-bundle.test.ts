@@ -376,6 +376,66 @@ describe("publish bundle ZIP integrity", () => {
     expect(parse).toThrow(PublishBundleError)
   })
 
+  test("re-admits existing bundles through the residual-secret gate", () => {
+    // Given: a manifest-consistent archive built outside the local construction flow.
+    const residual = `github_pat_${"a".repeat(82)}`
+    const trace = Buffer.from(JSON.stringify({
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 1,
+      events: [{ kind: "message", name: "assistant", payload: { content: residual } }],
+    }), "utf8")
+    const archive = archiveForTrace(trace)
+
+    // When: the publish boundary independently admits the archive bytes.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: bundles created before this gate cannot bypass it.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
+  test("rejects an existing bundle whose JSON-escaped payload decodes to a credential", () => {
+    // Given: a manifest-consistent trace whose serialized content conceals a GitHub token.
+    const trace = Buffer.from(`{"runtime":"codex","status":"collected","formatVersion":2,"eventCount":1,"events":[{"kind":"message","name":"assistant","payload":{"content":"github_pat_\\u0061${"a".repeat(81)}"}}]}`, "utf8")
+    const archive = archiveForTrace(trace)
+
+    // When: the existing bundle crosses direct publication admission.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: admission scans decoded semantic trace content rather than escape bytes.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
+  test("rejects an existing bundle whose decoded property name carries a credential", () => {
+    // Given: a manifest-consistent trace whose payload key itself contains a GitHub token.
+    const token = `github_pat_${"a".repeat(82)}`
+    const trace = Buffer.from(JSON.stringify({
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 1,
+      events: [{
+        kind: "tool",
+        name: "read",
+        payload: { input: { [token]: "redacted" } },
+      }],
+    }), "utf8")
+    const archive = archiveForTrace(trace)
+
+    // When: the existing bundle crosses direct publication admission.
+    const parse = (): void => {
+      parsePublishBundle(archive)
+    }
+
+    // Then: property names cannot carry residual credentials to the registry.
+    expect(parse).toThrow(PublishBundleError)
+  })
+
   test.each([
     ["runtime", {
       runtime: "Bearer TOP_SECRET_123456789",
