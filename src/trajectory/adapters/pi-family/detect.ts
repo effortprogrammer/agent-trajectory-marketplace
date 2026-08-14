@@ -1,3 +1,5 @@
+import { basename, dirname, resolve } from "node:path";
+
 import type { PiSessionFile } from "./parse";
 import { type PiFamilyRuntime, piFamilyVariants } from "./variants";
 
@@ -19,11 +21,28 @@ export type PiFamilyDetection = Readonly<{
   runtime: PiFamilyRuntime | undefined;
   strong: boolean;
   evidence: readonly string[];
+  // Weak lineage remains visible even when a config-dir path supplies the
+  // primary strong claim, so copied fork records cannot hide under `.pi`.
+  weakRuntime: PiFamilyRuntime | undefined;
+  weakEvidence: readonly string[];
 }>;
 
 const gajaeOnlyEntryTypes = ["mcp_tool_selection", "discovered_builtin_tool_selection"] as const;
 const ompLineageEntryTypes = ["session_init", "mode_change", "ttsr_injection"] as const;
 const gajaeScopeDirPattern = /(^|[/\\])v2-[a-z2-7]{40,64}([/\\]|$)/;
+
+// Upstream Pi's SessionManager derives its default scope from the resolved
+// header cwd: `--${cwd-with-separators-replaced-by-dashes}--`. This is path
+// evidence, not a cryptographic producer claim: v3/v4 bytes carry no runtime
+// fingerprint, so a deliberately hand-shaped generic file can reproduce it.
+// The pi adapter therefore fails closed when this native evidence is absent
+// or when any fork-lineage marker is present.
+export const hasNativePiSessionScope = (sessionPath: string, cwd: string | undefined): boolean => {
+  if (cwd === undefined || cwd.length === 0) return false;
+  const resolvedCwd = resolve(cwd);
+  const expectedScope = `--${resolvedCwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+  return dirname(sessionPath) !== sessionPath && basename(dirname(sessionPath)) === expectedScope;
+};
 
 export const detectPiFamilyVariant = (
   sessionPath: string,
@@ -65,7 +84,19 @@ export const detectPiFamilyVariant = (
   if (file.rawRecordTypes.has("session_info")) claimWeak("senpi", "entryType:session_info");
 
   if (strongRuntime !== undefined) {
-    return { runtime: strongRuntime, strong: true, evidence: strongEvidence };
+    return {
+      runtime: strongRuntime,
+      strong: true,
+      evidence: strongEvidence,
+      weakRuntime,
+      weakEvidence,
+    };
   }
-  return { runtime: weakRuntime, strong: false, evidence: weakEvidence };
+  return {
+    runtime: weakRuntime,
+    strong: false,
+    evidence: weakEvidence,
+    weakRuntime,
+    weakEvidence,
+  };
 };

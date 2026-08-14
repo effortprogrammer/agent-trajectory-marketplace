@@ -10,7 +10,7 @@ import {
   sanitizeHarnessPayload,
   TrajectoryAdapterError,
 } from "../contract";
-import { detectPiFamilyVariant } from "./detect";
+import { detectPiFamilyVariant, hasNativePiSessionScope } from "./detect";
 import { parsePiSessionFile } from "./parse";
 import type { PiAgentMessage, PiContentBlock } from "./schema";
 import type { PiFamilyVariant } from "./variants";
@@ -57,6 +57,28 @@ export const convertPiFamilySession = (
   // Provenance gate: a session whose fingerprint strongly claims a sibling
   // fork must be exported under that fork's runtime, never misattributed.
   const detection = detectPiFamilyVariant(sessionPath, file);
+  if (variant.runtime === "pi") {
+    // Fork lineage markers (strong or weak) disqualify upstream attribution.
+    const forkRuntime =
+      detection.runtime !== undefined && detection.runtime !== variant.runtime
+        ? detection.runtime
+        : detection.weakRuntime;
+    if (forkRuntime !== undefined && forkRuntime !== variant.runtime) {
+      throw new TrajectoryAdapterError(
+        "invalid_session",
+        `invalid_session: ${sessionPath} carries ${forkRuntime} lineage evidence (${[...detection.evidence, ...detection.weakEvidence].join(", ")}) and cannot be attributed to upstream Pi`,
+      );
+    }
+    // Without fork markers, upstream attribution still requires the native
+    // cwd-derived scope the upstream writer produces; anything else is
+    // ambiguous and fails closed rather than being silently stamped as pi.
+    if (!hasNativePiSessionScope(sessionPath, file.header.cwd)) {
+      throw new TrajectoryAdapterError(
+        "invalid_session",
+        `invalid_session: ${sessionPath} lacks upstream Pi's cwd-derived --scope-- path evidence`,
+      );
+    }
+  }
   if (
     detection.strong &&
     detection.runtime !== undefined &&

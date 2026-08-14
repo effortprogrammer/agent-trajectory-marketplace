@@ -78,7 +78,13 @@ const writeAllRuntimeFixtures = (home: string, xdgDataHome: string): void => {
     [".senpi", "senpi-native"],
     [".gjc", "gajae-code-native"],
   ] as const) {
-    const scopeDir = join(home, configDir, "agent", "sessions", "-repo");
+    const scopeDir = join(
+      home,
+      configDir,
+      "agent",
+      "sessions",
+      configDir === ".pi" ? "--repo--" : "-repo",
+    );
     mkdirSync(scopeDir, { recursive: true });
     const path = join(scopeDir, `${sessionId}.jsonl`);
     writeFileSync(path, [

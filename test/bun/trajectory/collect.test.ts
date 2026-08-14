@@ -86,7 +86,7 @@ const nativeFixtures = (root: string): readonly NativeFixture[] => {
     { runtime: "gajae-code", configDir: ".gjc" },
   ].map(({ runtime, configDir }) => {
     const source = join(root, configDir, "agent", "sessions");
-    const scopeDir = join(source, "-tmp-project");
+    const scopeDir = join(source, runtime === "pi" ? "--tmp--" : "-tmp-project");
     mkdirSync(scopeDir, { recursive: true });
     writeJsonl(join(scopeDir, `${runtime}-session.jsonl`), [
       { type: "session", version: 3, id: `${runtime}-session`, timestamp: "2026-07-01T13:00:00.000Z", cwd: "/tmp" },
