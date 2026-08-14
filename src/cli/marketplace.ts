@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 
-import { normalizeAuthServerUrl } from "../auth/server-url";
+import { officialRegistryOrigin } from "../auth/official-origin";
 import { MarketplaceCliError, resolveMarketplaceCredential } from "./marketplace-credentials";
 import { printMarketplaceHelp } from "./marketplace-help";
 import { parseMarketplaceCommand } from "./marketplace-command";
@@ -9,6 +9,7 @@ import { writeCandidateBundle } from "../marketplace/bundle-service";
 import { MarketplaceError } from "../marketplace/error";
 import { readPublishBundle } from "../marketplace/publish-bundle";
 import { createPublishClient, validPublishCredential } from "../marketplace/publish-client";
+import { createStatusClient } from "../marketplace/status-client";
 import {
   approvedMembership,
   selectionPreviewJson,
@@ -190,7 +191,7 @@ export const runMarketplaceCli = async (
       }
     }
     case "candidate-publish": {
-      const server = normalizeAuthServerUrl(command.server);
+      const server = officialRegistryOrigin;
       const bundle = readPublishBundle(command.bundle);
       const membership = command.selection === undefined
         ? undefined
@@ -204,8 +205,22 @@ export const runMarketplaceCli = async (
       console.log(JSON.stringify(membership === undefined ? receipt : { ...receipt, membership }));
       return;
     }
+    case "candidate-status": {
+      const credential = resolveMarketplaceCredential(
+        officialRegistryOrigin,
+        command.apiKey,
+        "missing_publish_credential",
+      );
+      const status = await createStatusClient(officialRegistryOrigin).read({
+        credential,
+        signal,
+        submissionId: command.submissionId,
+      });
+      console.log(JSON.stringify(status));
+      return;
+    }
     case "wallet-balance": {
-      const server = normalizeAuthServerUrl(command.server);
+      const server = officialRegistryOrigin;
       const credential = resolveMarketplaceCredential(server, command.apiKey, "missing_wallet_credential");
       const response = await createWalletBalanceClient(server).read({ credential, signal });
       console.log(JSON.stringify(response));

@@ -114,7 +114,7 @@ describe("trajectory marketplace seller CLI grammar", () => {
     // Given: an explicit publish request with each supported option exactly once.
     const argumentsList = [
       "trajectory", "marketplace", "seller", "candidate", "publish",
-      "--bundle", "/tmp/candidate.zip", "--server", "https://registry.example.test", "--api-key", "flag-value",
+      "--bundle", "/tmp/candidate.zip", "--api-key", "flag-value",
     ];
 
     // When: the arguments cross the marketplace parser boundary.
@@ -125,7 +125,6 @@ describe("trajectory marketplace seller CLI grammar", () => {
       apiKey: "flag-value",
       bundle: "/tmp/candidate.zip",
       command: "candidate-publish",
-      server: "https://registry.example.test",
     });
   });
 
@@ -133,9 +132,9 @@ describe("trajectory marketplace seller CLI grammar", () => {
     // Given: unknown flags, duplicate publication options, and malformed inspect requests.
     const invalidArguments = [
       ["marketplace", "seller", "candidate", "publish"],
-      ["marketplace", "seller", "candidate", "publish", "--bundle", "relative.zip", "--server", "https://registry.example.test"],
-      ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--server", "https://registry.example.test", "--server", "https://two.example.test"],
-      ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--server", "https://registry.example.test", "--unknown", "value"],
+      ["marketplace", "seller", "candidate", "publish", "--bundle", "relative.zip"],
+      ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--server", "https://registry.example.test"],
+      ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--unknown", "value"],
       ["marketplace", "seller", "sessions", "list", "--root", "/tmp/traces", "--unknown"],
       ["marketplace", "seller", "sessions", "inspect", "s-short", "--root", "/tmp/traces"],
       ["marketplace", "seller", "sessions", "list", "--root", "relative"],
@@ -171,22 +170,38 @@ describe("trajectory marketplace seller CLI grammar", () => {
 
   test("parses wallet balance commands with an optional explicit api key", () => {
     // Given: canonical wallet balance invocations with and without the credential flag.
-    const plain = parseMarketplaceCommand(["marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com"]);
-    const keyed = parseMarketplaceCommand(["trajectory", "marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com", "--api-key", "sentinel"]);
+    const plain = parseMarketplaceCommand(["marketplace", "seller", "wallet", "balance"]);
+    const keyed = parseMarketplaceCommand(["trajectory", "marketplace", "seller", "wallet", "balance", "--api-key", "sentinel"]);
 
     // When: the arguments cross the parser boundary.
-    // Then: the typed wallet request preserves server and key selection.
-    expect(plain).toEqual({ apiKey: undefined, command: "wallet-balance", server: "https://registry.example.com" });
-    expect(keyed).toEqual({ apiKey: "sentinel", command: "wallet-balance", server: "https://registry.example.com" });
+    // Then: the typed wallet request preserves key selection.
+    expect(plain).toEqual({ apiKey: undefined, command: "wallet-balance" });
+    expect(keyed).toEqual({ apiKey: "sentinel", command: "wallet-balance" });
+  });
+
+  test("parses candidate status without a registry override", () => {
+    expect(
+      parseMarketplaceCommand([
+        "marketplace",
+        "seller",
+        "candidate",
+        "status",
+        "--submission",
+        "sub_00000000000000000000000000",
+      ]),
+    ).toEqual({
+      command: "candidate-status",
+      submissionId: "sub_00000000000000000000000000",
+    });
   });
 
   test.each([
-    ["missing server value", ["marketplace", "seller", "wallet", "balance", "--server"]],
-    ["missing api key value", ["marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com", "--api-key"]],
-    ["flag-shaped api key", ["marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com", "--api-key", "--server"]],
-    ["trailing argument", ["marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com", "extra"]],
-    ["unknown flag", ["marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com", "--token", "x"]],
-    ["joined spelling", ["marketplace", "seller", "wallet-balance", "--server", "https://registry.example.com"]],
+    ["server override", ["marketplace", "seller", "wallet", "balance", "--server", "https://registry.example.com"]],
+    ["missing api key value", ["marketplace", "seller", "wallet", "balance", "--api-key"]],
+    ["flag-shaped api key", ["marketplace", "seller", "wallet", "balance", "--api-key", "--server"]],
+    ["trailing argument", ["marketplace", "seller", "wallet", "balance", "extra"]],
+    ["unknown flag", ["marketplace", "seller", "wallet", "balance", "--token", "x"]],
+    ["joined spelling", ["marketplace", "seller", "wallet-balance"]],
   ] as const)("rejects wallet grammar: %s", (_case, argumentsList) => {
     // Given: a malformed wallet invocation.
     // When: the arguments cross the parser boundary.

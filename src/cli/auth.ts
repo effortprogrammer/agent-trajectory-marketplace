@@ -4,7 +4,7 @@ import {
   authOtpCodeSchema,
 } from "../auth/contract";
 import { AuthClientError, createAuthClient } from "../auth/client";
-import { normalizeAuthServerUrl } from "../auth/server-url";
+import { officialRegistryOrigin } from "../auth/official-origin";
 import {
   readStoredAuthSession,
   removeStoredAuthSession,
@@ -70,7 +70,6 @@ const readHiddenTtyLine = (signal: AbortSignal): Promise<string> => {
   if (input.isTTY !== true || typeof input.setRawMode !== "function") {
     throw new AuthCliError("auth_code_required");
   }
-  process.stderr.write("Verification code: ");
   input.setRawMode(true);
   input.resume();
   return new Promise((resolve, reject) => {
@@ -113,6 +112,7 @@ const readHiddenTtyLine = (signal: AbortSignal): Promise<string> => {
     }
     input.on("data", onData);
     signal.addEventListener("abort", onAbort);
+    process.stderr.write("Verification code: ");
   });
 };
 
@@ -141,7 +141,7 @@ export const runAuthCli = async (argumentsList: readonly string[], signal: Abort
       throw new AuthCliError("auth_code_required");
     case "auth-signup":
     case "auth-login": {
-      const server = normalizeAuthServerUrl(command.server);
+      const server = officialRegistryOrigin;
       const email = authEmailSchema.safeParse(command.email);
       if (!email.success) return invalidCommand();
       const client = createAuthClient(server);
@@ -152,7 +152,7 @@ export const runAuthCli = async (argumentsList: readonly string[], signal: Abort
       return;
     }
     case "auth-verify": {
-      const server = normalizeAuthServerUrl(command.server);
+      const server = officialRegistryOrigin;
       const challenge = authChallengeIdSchema.safeParse(command.challenge);
       if (!challenge.success) return invalidCommand();
       const code = parseOtp(command.codeSource === "stdin" ? await readStdinLine() : await readHiddenTtyLine(signal));
@@ -168,7 +168,7 @@ export const runAuthCli = async (argumentsList: readonly string[], signal: Abort
       return;
     }
     case "auth-status": {
-      const server = normalizeAuthServerUrl(command.server);
+      const server = officialRegistryOrigin;
       const session = readStoredAuthSession(server);
       if (session === undefined) {
         printJson({ authenticated: false, server });
@@ -190,7 +190,7 @@ export const runAuthCli = async (argumentsList: readonly string[], signal: Abort
       return;
     }
     case "auth-logout": {
-      const server = normalizeAuthServerUrl(command.server);
+      const server = officialRegistryOrigin;
       const session = readStoredAuthSession(server);
       if (session === undefined) {
         printJson({ loggedOut: true, revoked: false, server });

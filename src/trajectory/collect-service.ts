@@ -34,6 +34,7 @@ export {
 export const collectServiceLabel = "com.agent-trajectory-marketplace-clean.collect-watch";
 
 const serviceConfigSchema = z.object({
+  declareRuntime: z.literal("pi").optional(),
   intervalSeconds: z.number().int().positive(),
   outDir: z.string().min(1),
   // Empty means "all registered runtimes": no --runtime flags are rendered, so
@@ -116,6 +117,9 @@ export const renderCollectWatchPlist = (input: Readonly<{
     "--out",
     resolve(workingDirectory, config.outDir),
     ...config.runtimes.flatMap((runtime) => ["--runtime", runtime]),
+    ...(config.declareRuntime === undefined
+      ? []
+      : ["--declare-runtime", config.declareRuntime]),
     ...(config.sourceDir === undefined ? [] : ["--source", resolve(config.sourceDir)]),
     "--interval-seconds",
     String(config.intervalSeconds),

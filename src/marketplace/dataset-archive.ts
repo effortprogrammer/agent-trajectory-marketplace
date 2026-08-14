@@ -53,6 +53,9 @@ const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
   });
   const sanitized = harnessTraceDocumentSchema.safeParse({
     runtime: boundedRedactedString(parsed.data.runtime).text,
+    ...(parsed.data.runtimeAttribution === undefined
+      ? {}
+      : { runtimeAttribution: parsed.data.runtimeAttribution }),
     status: parsed.data.status,
     ...(parsed.data.formatVersion === undefined ? {} : { formatVersion: parsed.data.formatVersion }),
     eventCount: parsed.data.eventCount,

@@ -154,6 +154,9 @@ export const buildSessionListItem = (trace: ValidatedTrace): SessionListItem => 
   return {
     selector: trace.frozenTrace.selector,
     runtime: runtime.text,
+    ...(trace.document.runtimeAttribution === undefined
+      ? {}
+      : { runtimeAttribution: trace.document.runtimeAttribution }),
     earliestTimestamp: earliestTimestamp(events),
     eventCount: trace.document.eventCount,
     byteCount: trace.frozenTrace.byteCount,
@@ -177,6 +180,9 @@ export const buildSessionReport = (trace: ValidatedTrace): SessionReport => {
   return {
     selector: trace.frozenTrace.selector,
     runtime: runtime.text,
+    ...(trace.document.runtimeAttribution === undefined
+      ? {}
+      : { runtimeAttribution: trace.document.runtimeAttribution }),
     items: candidates.slice(0, maximumEvidenceItems),
     omittedItemCount: Math.max(0, candidates.length - maximumEvidenceItems),
     markers: dedupeMarkers(markers),
@@ -189,6 +195,9 @@ export const renderSessionReport = (report: SessionReport): string => {
   const header = [
     `selector: ${safeText(String(report.selector)).text}`,
     `runtime: ${safeText(report.runtime).text}`,
+    ...(report.runtimeAttribution === undefined
+      ? []
+      : [`runtime-attribution: ${report.runtimeAttribution}`]),
   ];
   const items = report.items.map((item) => {
     const timestamp = item.timestamp === undefined ? "unknown" : safeText(item.timestamp).text;
@@ -202,6 +211,9 @@ export const renderSessionList = (items: SessionList): string => items.map((item
   return [
     `selector: ${safeText(String(item.selector)).text}`,
     `runtime: ${safeText(item.runtime).text}`,
+    ...(item.runtimeAttribution === undefined
+      ? []
+      : [`runtime-attribution: ${item.runtimeAttribution}`]),
     `earliest: ${safeText(item.earliestTimestamp).text}`,
     `events: ${item.eventCount}`,
     `bytes: ${item.byteCount}`,
