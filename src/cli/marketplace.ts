@@ -14,7 +14,9 @@ import { readPublishBundle } from "../marketplace/publish-bundle";
 import { createPublishClient, validPublishCredential } from "../marketplace/publish-client";
 import { createStatusClient } from "../marketplace/status-client";
 import {
+  allowedCandidateTraces,
   approvedMembership,
+  candidateSearchJson,
   selectionPreviewJson,
   writeBundleFromSelection,
 } from "../marketplace/selection-upload";
@@ -124,25 +126,27 @@ export const runMarketplaceCli = async (
     }
     case "candidate-bundle": {
       if (command.mode === "preview") {
-        process.stdout.write(selectionPreviewJson(command.root));
+        process.stdout.write(selectionPreviewJson(command.root, command.denyPolicy));
         return;
       }
       if (command.mode === "selection") {
-        console.log(JSON.stringify(writeBundleFromSelection(command.root, command.selection, command.out)));
+        console.log(JSON.stringify(writeBundleFromSelection(command.root, command.selection, command.out, command.denyPolicy)));
         return;
       }
       if (command.mode === "explicit") {
         const snapshot = readExplicitTraces(command.root, command.traces);
+        const selected = allowedCandidateTraces(snapshot.root, snapshot.traces, command.denyPolicy);
         const result = command.review === undefined
-          ? writeCandidateBundle(snapshot, snapshot.traces, command.out)
-          : writeCandidateBundleWithPrivateReview(snapshot, snapshot.traces, command.out, command.review);
+          ? writeCandidateBundle(snapshot, selected, command.out)
+          : writeCandidateBundleWithPrivateReview(snapshot, selected, command.out, command.review);
         console.log(JSON.stringify(result));
         return;
       }
       if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
         throw new MarketplaceError("invalid_bundle_request");
       }
-      const snapshot = scanSessionSnapshot(command.root);
+      const scanned = scanSessionSnapshot(command.root);
+      const snapshot = { ...scanned, traces: allowedCandidateTraces(scanned.root, scanned.traces, command.denyPolicy) };
       for (const selector of command.excludes) resolveTraceSelector(snapshot, selector);
       const lineReader = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
       const lines = lineReader[Symbol.asyncIterator]();
@@ -198,6 +202,10 @@ export const runMarketplaceCli = async (
         signal.removeEventListener("abort", cancel);
         lineReader.close();
       }
+    }
+    case "candidate-search": {
+      console.log(candidateSearchJson(command.root, command.query, command.denyPolicy));
+      return;
     }
     case "candidate-publish": {
       const server = officialRegistryOrigin;

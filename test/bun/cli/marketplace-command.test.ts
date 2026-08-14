@@ -110,6 +110,25 @@ describe("trajectory marketplace seller CLI grammar", () => {
     });
   });
 
+  test("parses candidate search with an optional bounded-policy file", () => {
+    // Given: a search query over a canonical absolute session root and policy file.
+    const argumentsList = [
+      "marketplace", "seller", "candidate", "search",
+      "--root", "/tmp/traces", "--query", "safe text", "--deny-policy", "/tmp/deny-policy.json",
+    ];
+
+    // When: the arguments cross the marketplace parser boundary.
+    const result = parseMarketplaceCommand(argumentsList);
+
+    // Then: dispatch receives a typed search request without accepting ambiguous flag forms.
+    expect(result).toEqual({
+      command: "candidate-search",
+      denyPolicy: "/tmp/deny-policy.json",
+      query: "safe text",
+      root: "/tmp/traces",
+    });
+  });
+
   test("parses a paired private review cache and bounded policy only for candidate bundle review", () => {
     // Given: an explicit bundle request with a private cache location and resolved policy revision.
     const argumentsList = [
@@ -153,6 +172,9 @@ describe("trajectory marketplace seller CLI grammar", () => {
   test("returns invalid command for unsupported marketplace spellings and session syntax", () => {
     // Given: unknown flags, duplicate publication options, and malformed inspect requests.
     const invalidArguments = [
+      ["marketplace", "seller", "candidate", "search", "--root", "/tmp/traces"],
+      ["marketplace", "seller", "candidate", "search", "--root", "relative", "--query", "text"],
+      ["marketplace", "seller", "candidate", "search", "--root", "/tmp/traces", "--query", "text", "--query", "again"],
       ["marketplace", "seller", "candidate", "publish"],
       ["marketplace", "seller", "candidate", "publish", "--bundle", "relative.zip"],
       ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--server", "https://registry.example.test"],

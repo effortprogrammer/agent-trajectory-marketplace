@@ -7,6 +7,7 @@ export type PrivateReviewCacheOptions = Readonly<{
 
 export type InteractiveCandidateBundleCommand = Readonly<{
   readonly command: "candidate-bundle";
+  readonly denyPolicy?: string;
   readonly excludes: readonly string[];
   readonly mode: "interactive";
   readonly out: string;
@@ -16,6 +17,7 @@ export type InteractiveCandidateBundleCommand = Readonly<{
 
 export type ExplicitCandidateBundleCommand = Readonly<{
   readonly command: "candidate-bundle";
+  readonly denyPolicy?: string;
   readonly mode: "explicit";
   readonly out: string;
   readonly review?: PrivateReviewCacheOptions;
@@ -25,16 +27,25 @@ export type ExplicitCandidateBundleCommand = Readonly<{
 
 export type PreviewCandidateBundleCommand = Readonly<{
   readonly command: "candidate-bundle";
+  readonly denyPolicy?: string;
   readonly mode: "preview";
   readonly root: string;
 }>;
 
 export type SelectionCandidateBundleCommand = Readonly<{
   readonly command: "candidate-bundle";
+  readonly denyPolicy?: string;
   readonly mode: "selection";
   readonly out: string;
   readonly root: string;
   readonly selection: string;
+}>;
+
+export type CandidateSearchCommand = Readonly<{
+  readonly command: "candidate-search";
+  readonly denyPolicy?: string;
+  readonly query: string;
+  readonly root: string;
 }>;
 
 export type CandidatePublishCommand = Readonly<{
@@ -60,6 +71,7 @@ export type CandidateCommand =
   | ExplicitCandidateBundleCommand
   | PreviewCandidateBundleCommand
   | SelectionCandidateBundleCommand
+  | CandidateSearchCommand
   | CandidatePublishCommand
   | CandidateStatusCommand
   | InvalidCommand
@@ -94,6 +106,7 @@ const isExplicitTrace = (value: string): boolean => {
 export const parseCandidateBundle = (
   argumentsList: readonly string[],
 ): CandidateCommand => {
+  let denyPolicy: string | undefined;
   let out: string | undefined;
   let root: string | undefined;
   let printSelection = false;
@@ -114,6 +127,9 @@ export const parseCandidateBundle = (
     if (option === "--root") {
       if (root !== undefined || !isAbsolutePath(value)) return invalidBundleRequest();
       root = value;
+    } else if (option === "--deny-policy") {
+      if (denyPolicy !== undefined || !isAbsolutePath(value)) return invalidBundleRequest();
+      denyPolicy = value;
     } else if (option === "--out") {
       if (out !== undefined || !isAbsolutePath(value)) return invalidBundleRequest();
       out = value;
@@ -145,20 +161,55 @@ export const parseCandidateBundle = (
   if ((reviewCache === undefined) !== (reviewPolicy === undefined)) return invalidBundleRequest();
   if (printSelection) {
     return root !== undefined && out === undefined && selection === undefined && excludes.length === 0 && traces.length === 0 && review === undefined
-      ? { command: "candidate-bundle", mode: "preview", root }
+      ? { command: "candidate-bundle", ...(denyPolicy === undefined ? {} : { denyPolicy }), mode: "preview", root }
       : invalidBundleRequest();
   }
   if (selection !== undefined) {
     return root !== undefined && out !== undefined && excludes.length === 0 && traces.length === 0 && review === undefined
-      ? { command: "candidate-bundle", mode: "selection", out, root, selection }
+      ? { command: "candidate-bundle", ...(denyPolicy === undefined ? {} : { denyPolicy }), mode: "selection", out, root, selection }
       : invalidBundleRequest();
   }
   if (root === undefined || out === undefined || (traces.length > 0 && excludes.length > 0)) {
     return invalidBundleRequest();
   }
   return traces.length > 0
-    ? { command: "candidate-bundle", mode: "explicit", out, root, traces, ...(review === undefined ? {} : { review }) }
-    : { command: "candidate-bundle", excludes, mode: "interactive", out, root, ...(review === undefined ? {} : { review }) };
+    ? {
+      command: "candidate-bundle",
+      ...(denyPolicy === undefined ? {} : { denyPolicy }),
+      mode: "explicit",
+      out,
+      root,
+      traces,
+      ...(review === undefined ? {} : { review }),
+    }
+    : {
+      command: "candidate-bundle",
+      ...(denyPolicy === undefined ? {} : { denyPolicy }),
+      excludes,
+      mode: "interactive",
+      out,
+      root,
+      ...(review === undefined ? {} : { review }),
+    };
+};
+
+export const parseCandidateSearch = (argumentsList: readonly string[]): CandidateCommand => {
+  let denyPolicy: string | undefined;
+  let query: string | undefined;
+  let root: string | undefined;
+  for (let index = 0; index < argumentsList.length; index += 1) {
+    const option = argumentsList[index];
+    const value = argumentsList[index + 1];
+    if (value === undefined || value.startsWith("--")) return invalidCommand();
+    if (option === "--root" && root === undefined && isAbsolutePath(value)) root = value;
+    else if (option === "--query" && query === undefined && value.length > 0 && value.length <= 256) query = value;
+    else if (option === "--deny-policy" && denyPolicy === undefined && isAbsolutePath(value)) denyPolicy = value;
+    else return invalidCommand();
+    index += 1;
+  }
+  return root === undefined || query === undefined
+    ? invalidCommand()
+    : { command: "candidate-search", ...(denyPolicy === undefined ? {} : { denyPolicy }), query, root };
 };
 
 export const parseCandidatePublish = (argumentsList: readonly string[]): CandidateCommand => {
