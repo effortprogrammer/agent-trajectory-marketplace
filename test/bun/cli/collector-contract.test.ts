@@ -24,6 +24,34 @@ describe("trajectory collect CLI grammar", () => {
     expect(command).toEqual({ command: "sessions", limit: 1, runtime: "codex" });
   });
 
+  test("parses explicit Pi runtime declarations for export and watch", () => {
+    expect(
+      parseCollectorCommand([
+        "trajectory",
+        "collect",
+        "export",
+        "pi",
+        "--session",
+        "native",
+        "--export",
+        "/tmp/native.atf.json",
+        "--declare-runtime",
+        "pi",
+      ]),
+    ).toMatchObject({ command: "export", declareRuntime: "pi", runtime: "pi" });
+    expect(
+      parseCollectorCommand([
+        "trajectory",
+        "collect",
+        "watch",
+        "--out",
+        "/tmp/out",
+        "--declare-runtime",
+        "pi",
+      ]),
+    ).toMatchObject({ command: "watch", declareRuntime: "pi" });
+  });
+
   test("parses canonical export and watch defaults", () => {
     // Given: canonical export and watch arguments.
     const exportCommand = parseCollectorCommand([

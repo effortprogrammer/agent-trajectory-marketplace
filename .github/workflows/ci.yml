@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - dev
   pull_request:
     branches:
       - main
+      - dev
 
 jobs:
   quality:
@@ -58,3 +60,6 @@ jobs:
 
       - name: Release workflow regression
         run: bash test/release-workflow.test.sh
+
+      - name: Promotion workflow regression
+        run: bash test/promotion-workflow.test.sh

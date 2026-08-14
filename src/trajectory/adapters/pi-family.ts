@@ -70,3 +70,4 @@ const adapterFor = (runtime: PiFamilyVariant["runtime"]): HarnessAdapter => {
 export const ohMyPiAdapter = adapterFor("oh-my-pi");
 export const senpiAdapter = adapterFor("senpi");
 export const gajaeCodeAdapter = adapterFor("gajae-code");
+export const piAdapter = adapterFor("pi");

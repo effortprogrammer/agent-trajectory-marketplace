@@ -12,6 +12,7 @@ fail() {
 }
 
 [[ -f "$WORKFLOW" ]] || fail "release workflow is missing"
+[[ -f "$ROOT/.github/workflows/promotion-policy.yml" ]] || fail "promotion policy workflow is missing"
 grep -Fq "'v*.*.*'" "$WORKFLOW" || fail "release workflow is not restricted to stable version tags"
 grep -Fq 'github.ref_protected' "$WORKFLOW" || fail "release workflow does not require protected tags"
 grep -Fq 'scripts/build-release-assets.sh "$TAG" "$GITHUB_SHA"' "$WORKFLOW" || fail "workflow does not execute the release artifact builder"

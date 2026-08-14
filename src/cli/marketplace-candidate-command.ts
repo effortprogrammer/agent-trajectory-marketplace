@@ -1,11 +1,17 @@
 import { isAbsolute } from "node:path";
 
+export type PrivateReviewCacheOptions = Readonly<{
+  readonly cacheRoot: string;
+  readonly policy: string;
+}>;
+
 export type InteractiveCandidateBundleCommand = Readonly<{
   readonly command: "candidate-bundle";
   readonly denyPolicy?: string;
   readonly excludes: readonly string[];
   readonly mode: "interactive";
   readonly out: string;
+  readonly review?: PrivateReviewCacheOptions;
   readonly root: string;
 }>;
 
@@ -14,6 +20,7 @@ export type ExplicitCandidateBundleCommand = Readonly<{
   readonly denyPolicy?: string;
   readonly mode: "explicit";
   readonly out: string;
+  readonly review?: PrivateReviewCacheOptions;
   readonly root: string;
   readonly traces: readonly string[];
 }>;
@@ -79,6 +86,9 @@ const invalidBundleRequest = (): InvalidBundleRequest => ({
 
 const isAbsolutePath = (value: string): boolean => value.length > 0 && isAbsolute(value);
 
+const isReviewPolicy = (value: string): boolean =>
+  value.length > 0 && value.length <= 512 && value === value.trim() && !value.includes("\0");
+
 const isExplicitTrace = (value: string): boolean => {
   if (
     value.length === 0 ||
@@ -101,6 +111,8 @@ export const parseCandidateBundle = (
   let root: string | undefined;
   let printSelection = false;
   let selection: string | undefined;
+  let reviewCache: string | undefined;
+  let reviewPolicy: string | undefined;
   const excludes: string[] = [];
   const traces: string[] = [];
   for (let index = 0; index < argumentsList.length; index += 1) {
@@ -124,6 +136,12 @@ export const parseCandidateBundle = (
     } else if (option === "--selection") {
       if (selection !== undefined || !isAbsolutePath(value)) return invalidBundleRequest();
       selection = value;
+    } else if (option === "--review-cache") {
+      if (reviewCache !== undefined || !isAbsolutePath(value)) return invalidBundleRequest();
+      reviewCache = value;
+    } else if (option === "--review-policy") {
+      if (reviewPolicy !== undefined || !isReviewPolicy(value)) return invalidBundleRequest();
+      reviewPolicy = value;
     } else if (option === "--exclude") {
       if (!fullSelector.test(value)) return invalidBundleRequest();
       excludes.push(value);
@@ -135,13 +153,19 @@ export const parseCandidateBundle = (
     }
     index += 1;
   }
+  const review = reviewCache === undefined && reviewPolicy === undefined
+    ? undefined
+    : reviewCache !== undefined && reviewPolicy !== undefined
+      ? { cacheRoot: reviewCache, policy: reviewPolicy }
+      : undefined;
+  if ((reviewCache === undefined) !== (reviewPolicy === undefined)) return invalidBundleRequest();
   if (printSelection) {
-    return root !== undefined && out === undefined && selection === undefined && excludes.length === 0 && traces.length === 0
+    return root !== undefined && out === undefined && selection === undefined && excludes.length === 0 && traces.length === 0 && review === undefined
       ? { command: "candidate-bundle", ...(denyPolicy === undefined ? {} : { denyPolicy }), mode: "preview", root }
       : invalidBundleRequest();
   }
   if (selection !== undefined) {
-    return root !== undefined && out !== undefined && excludes.length === 0 && traces.length === 0
+    return root !== undefined && out !== undefined && excludes.length === 0 && traces.length === 0 && review === undefined
       ? { command: "candidate-bundle", ...(denyPolicy === undefined ? {} : { denyPolicy }), mode: "selection", out, root, selection }
       : invalidBundleRequest();
   }
@@ -149,8 +173,24 @@ export const parseCandidateBundle = (
     return invalidBundleRequest();
   }
   return traces.length > 0
-    ? { command: "candidate-bundle", ...(denyPolicy === undefined ? {} : { denyPolicy }), mode: "explicit", out, root, traces }
-    : { command: "candidate-bundle", ...(denyPolicy === undefined ? {} : { denyPolicy }), excludes, mode: "interactive", out, root };
+    ? {
+      command: "candidate-bundle",
+      ...(denyPolicy === undefined ? {} : { denyPolicy }),
+      mode: "explicit",
+      out,
+      root,
+      traces,
+      ...(review === undefined ? {} : { review }),
+    }
+    : {
+      command: "candidate-bundle",
+      ...(denyPolicy === undefined ? {} : { denyPolicy }),
+      excludes,
+      mode: "interactive",
+      out,
+      root,
+      ...(review === undefined ? {} : { review }),
+    };
 };
 
 export const parseCandidateSearch = (argumentsList: readonly string[]): CandidateCommand => {

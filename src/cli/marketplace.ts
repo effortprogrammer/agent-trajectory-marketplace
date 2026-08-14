@@ -5,7 +5,10 @@ import { MarketplaceCliError, resolveMarketplaceCredential } from "./marketplace
 import { printMarketplaceHelp } from "./marketplace-help";
 import { parseMarketplaceCommand } from "./marketplace-command";
 import { datasetArchivePolicy } from "../marketplace/archive-contract";
-import { writeCandidateBundle } from "../marketplace/bundle-service";
+import {
+  writeCandidateBundle,
+  writeCandidateBundleWithPrivateReview,
+} from "../marketplace/bundle-service";
 import { MarketplaceError } from "../marketplace/error";
 import { readPublishBundle } from "../marketplace/publish-bundle";
 import { createPublishClient, validPublishCredential } from "../marketplace/publish-client";
@@ -133,7 +136,10 @@ export const runMarketplaceCli = async (
       if (command.mode === "explicit") {
         const snapshot = readExplicitTraces(command.root, command.traces);
         const selected = allowedCandidateTraces(snapshot.root, snapshot.traces, command.denyPolicy);
-        console.log(JSON.stringify(writeCandidateBundle(snapshot, selected, command.out)));
+        const result = command.review === undefined
+          ? writeCandidateBundle(snapshot, selected, command.out)
+          : writeCandidateBundleWithPrivateReview(snapshot, selected, command.out, command.review);
+        console.log(JSON.stringify(result));
         return;
       }
       if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
@@ -184,7 +190,10 @@ export const runMarketplaceCli = async (
           },
         });
         if (outcome.kind === "approved") {
-          console.log(JSON.stringify(writeCandidateBundle(snapshot, outcome.traces, command.out)));
+          const result = command.review === undefined
+            ? writeCandidateBundle(snapshot, outcome.traces, command.out)
+            : writeCandidateBundleWithPrivateReview(snapshot, outcome.traces, command.out, command.review);
+          console.log(JSON.stringify(result));
           return;
         }
         console.log(JSON.stringify({ status: outcome.kind }));

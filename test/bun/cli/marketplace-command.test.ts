@@ -129,6 +129,28 @@ describe("trajectory marketplace seller CLI grammar", () => {
     });
   });
 
+  test("parses a paired private review cache and bounded policy only for candidate bundle review", () => {
+    // Given: an explicit bundle request with a private cache location and resolved policy revision.
+    const argumentsList = [
+      "marketplace", "seller", "candidate", "bundle",
+      "--root", "/tmp/traces", "--out", "/tmp/candidate.zip", "--trace", "one.atf.json",
+      "--review-cache", "/tmp/private-review-cache", "--review-policy", "policy-v1",
+    ];
+
+    // When: the options cross the CLI grammar boundary.
+    const result = parseMarketplaceCommand(argumentsList);
+
+    // Then: dispatch receives a complete, private review-cache configuration.
+    expect(result).toEqual({
+      command: "candidate-bundle",
+      mode: "explicit",
+      out: "/tmp/candidate.zip",
+      review: { cacheRoot: "/tmp/private-review-cache", policy: "policy-v1" },
+      root: "/tmp/traces",
+      traces: ["one.atf.json"],
+    });
+  });
+
   test("parses the only candidate publication spelling", () => {
     // Given: an explicit publish request with each supported option exactly once.
     const argumentsList = [
@@ -181,6 +203,9 @@ describe("trajectory marketplace seller CLI grammar", () => {
       ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--trace", "one.atf.json", "--exclude", selector],
       ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--trace", "one.atf.json", "two.atf.json"],
       ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--exclude", "not-a-selector"],
+      ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--trace", "one.atf.json", "--review-cache", "/tmp/private-review-cache"],
+      ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--trace", "one.atf.json", "--review-policy", "policy-v1"],
+      ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--trace", "one.atf.json", "--review-cache", "/tmp/private-review-cache", "--review-policy", " policy-v1"],
     ];
 
     // When: each request crosses the marketplace parser boundary.
