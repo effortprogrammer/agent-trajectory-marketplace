@@ -16,6 +16,20 @@ import { isAuthInvocation, runAuthCli } from "./auth";
 import { isMarketplaceInvocation, runMarketplaceCli } from "./marketplace";
 import { isWorldInvocation, runWorldCli } from "./world";
 
+const rootHelp = `Usage: trajectory <command>
+
+Commands:
+  collect runtimes|sessions|export|watch|service|telemetry
+  auth signup|login|verify|status|logout
+  marketplace seller candidate bundle
+  marketplace seller candidate publish
+  marketplace seller candidate status
+  marketplace seller wallet balance
+  world --help|list|detail|run|status|download
+  update
+
+Run a command with --help for command-specific usage.`;
+
 const collectorErrorCode = (error: unknown): string => {
   if (error instanceof Error && "code" in error && typeof error.code === "string") return error.code;
   return error instanceof Error ? error.message : "collector_failed";
@@ -90,6 +104,10 @@ const main = async (): Promise<void> => {
   process.once("SIGTERM", stop);
 
   try {
+    if (argumentsList.length === 1 && (argumentsList[0] === "--help" || argumentsList[0] === "-h")) {
+      console.log(rootHelp);
+      return;
+    }
     if (
       argumentsList.length === 6 &&
       argumentsList[0] === "trajectory" &&

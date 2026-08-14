@@ -67,6 +67,15 @@ afterEach(() => {
 });
 
 describe("marketplace sessions process boundary", () => {
+  test("prints root help from the real CLI entrypoint", () => {
+    const result = runCli(["--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(decoder.decode(result.stderr)).toBe("");
+    expect(decoder.decode(result.stdout)).toContain("Usage: trajectory <command>");
+    expect(decoder.decode(result.stdout)).toContain("marketplace seller candidate status");
+  });
+
   test("rejects excessively deep payloads as invalid_trace", () => {
     // Given: a raw JSON ATF with 100,000 nested input objects, without JSON.stringify recursion.
     const root = fixtureRoot();
