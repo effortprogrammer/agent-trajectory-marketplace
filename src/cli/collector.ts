@@ -7,7 +7,6 @@ import {
   uninstallCollectWatchService,
 } from "@/trajectory/collect-service";
 import {
-  type CollectSweepConfig,
   type CollectSweepSummary,
   resolveCollectWatchRuntimes,
   runCollectSweep,
@@ -22,6 +21,7 @@ import {
   listCollectSessions,
 } from "@/trajectory/collect";
 import { CollectorRequestError } from "./collector-error";
+import { collectSweepConfig } from "./collector-sweep-config";
 
 export { CollectorRequestError } from "./collector-error";
 
@@ -36,9 +36,9 @@ type CollectorCliResult =
 
 export { parseUpdateCommand, type UpdateCommand } from "./update-command";
 
-type CollectWatchRequest = Readonly<{ readonly command: "watch"; readonly intervalSeconds: number; readonly once: boolean; readonly outDir?: string; readonly outputRoot?: string; readonly runtimes: readonly string[]; readonly settleSeconds: number; readonly sourceDir?: string }>;
+type CollectWatchRequest = Readonly<{ readonly command: "watch"; readonly declareRuntime?: "pi"; readonly intervalSeconds: number; readonly once: boolean; readonly outDir?: string; readonly outputRoot?: string; readonly runtimes: readonly string[]; readonly settleSeconds: number; readonly sourceDir?: string }>;
 
-export type CollectorCommand = Readonly<{ readonly command: "runtimes" }> | Readonly<{ readonly command: "sessions"; readonly limit: number; readonly runtime: string; readonly sourceDir?: string }> | Readonly<{ readonly command: "export"; readonly exportPath: string; readonly outputRoot?: string; readonly runtime: string; readonly session: string; readonly sourceDir?: string }> | CollectWatchRequest | Readonly<{ readonly command: "service"; readonly verb: "status" | "uninstall" }> | Readonly<{ readonly command: "service"; readonly dryRun: boolean; readonly intervalSeconds: number; readonly outDir?: string; readonly outputRoot?: string; readonly runtimes?: readonly string[]; readonly settleSeconds: number; readonly sourceDir?: string; readonly verb: "install" }> | Readonly<{ readonly command: "telemetry"; readonly outDir: string; readonly verb: "installed" }>;
+export type CollectorCommand = Readonly<{ readonly command: "runtimes" }> | Readonly<{ readonly command: "sessions"; readonly limit: number; readonly runtime: string; readonly sourceDir?: string }> | Readonly<{ readonly command: "export"; readonly declareRuntime?: "pi"; readonly exportPath: string; readonly outputRoot?: string; readonly runtime: string; readonly session: string; readonly sourceDir?: string }> | CollectWatchRequest | Readonly<{ readonly command: "service"; readonly verb: "status" | "uninstall" }> | Readonly<{ readonly command: "service"; readonly declareRuntime?: "pi"; readonly dryRun: boolean; readonly intervalSeconds: number; readonly outDir?: string; readonly outputRoot?: string; readonly runtimes?: readonly string[]; readonly settleSeconds: number; readonly sourceDir?: string; readonly verb: "install" }> | Readonly<{ readonly command: "telemetry"; readonly outDir: string; readonly verb: "installed" }>;
 
 type RawOptions = Readonly<{ flags: ReadonlySet<string>; values: Readonly<Record<string, string>>; variadic: Readonly<Record<string, readonly string[]>> }>;
 
@@ -86,9 +86,14 @@ const readOptions = (
 };
 
 const required = (value: string | undefined): string => (value === undefined || value.length === 0 ? invalid() : value);
+const declaration = (value: string | undefined, runtime?: string): Readonly<{ declareRuntime?: "pi" }> => {
+  if (value === undefined) return {};
+  if (value !== "pi" || (runtime !== undefined && runtime !== "pi")) return invalid();
+  return { declareRuntime: "pi" };
+};
 
 const parseCollectWatch = (args: readonly string[], canonical: boolean, service = false): CollectorCommand => {
-  const values = canonical ? new Set(["--out", "--runtime", "--source", "--interval-seconds", "--settle-seconds"]) : new Set(["--runtime", "--source-dir", "--output-root", "--interval-seconds", "--settle-seconds"]);
+  const values = canonical ? new Set(["--out", "--runtime", "--source", "--declare-runtime", "--interval-seconds", "--settle-seconds"]) : new Set(["--runtime", "--source-dir", "--output-root", "--declare-runtime", "--interval-seconds", "--settle-seconds"]);
   const options = readOptions(args, values, new Set(service ? ["--dry-run"] : ["--once"]), canonical ? new Set(["--runtime"]) : new Set());
   const runtimes = canonical ? options.variadic["--runtime"] ?? [] : options.values["--runtime"] === undefined ? [] : [options.values["--runtime"]];
   const sourceDir = options.values[canonical ? "--source" : "--source-dir"];
@@ -100,6 +105,7 @@ const parseCollectWatch = (args: readonly string[], canonical: boolean, service 
   else required(outputRoot);
   const parsed: CollectWatchRequest = {
     command: "watch",
+    ...declaration(options.values["--declare-runtime"]),
     intervalSeconds: integer(options.values["--interval-seconds"], 30, true),
     once: options.flags.has("--once"),
     ...(outDir === undefined ? {} : { outDir }),
@@ -111,6 +117,7 @@ const parseCollectWatch = (args: readonly string[], canonical: boolean, service 
   if (!service) return parsed;
   const serviceRequest = {
     command: "service" as const,
+    ...declaration(options.values["--declare-runtime"]),
     dryRun: options.flags.has("--dry-run"),
     intervalSeconds: parsed.intervalSeconds,
     ...(parsed.outDir === undefined ? {} : { outDir: parsed.outDir }),
@@ -136,8 +143,8 @@ const parseCanonical = (args: readonly string[]): CollectorCommand => {
   if (action === "export") {
     const runtime = args[3];
     if (runtime === undefined || runtime.startsWith("--")) invalid();
-    const options = readOptions(args.slice(4), new Set(["--session", "--export", "--source"]));
-    return { command: "export", exportPath: required(options.values["--export"]), runtime, session: required(options.values["--session"]), ...(options.values["--source"] === undefined ? {} : { sourceDir: options.values["--source"] }) };
+    const options = readOptions(args.slice(4), new Set(["--session", "--export", "--source", "--declare-runtime"]));
+    return { command: "export", ...declaration(options.values["--declare-runtime"], runtime), exportPath: required(options.values["--export"]), runtime, session: required(options.values["--session"]), ...(options.values["--source"] === undefined ? {} : { sourceDir: options.values["--source"] }) };
   }
   if (action === "watch") return parseCollectWatch(args.slice(3), true);
   if (action === "telemetry") {
@@ -162,8 +169,9 @@ const parseFlat = (args: readonly string[]): CollectorCommand => {
     return { command: "sessions", limit: integer(options.values["--limit"], 20, true), runtime: required(options.values["--runtime"]), sourceDir: required(options.values["--source-dir"]) };
   }
   if (action === "export") {
-    const options = readOptions(args.slice(1), new Set(["--runtime", "--source-dir", "--output-root", "--session", "--export-path"]));
-    return { command: "export", exportPath: required(options.values["--export-path"]), outputRoot: required(options.values["--output-root"]), runtime: required(options.values["--runtime"]), session: required(options.values["--session"]), sourceDir: required(options.values["--source-dir"]) };
+    const options = readOptions(args.slice(1), new Set(["--runtime", "--source-dir", "--output-root", "--session", "--export-path", "--declare-runtime"]));
+    const runtime = required(options.values["--runtime"]);
+    return { command: "export", ...declaration(options.values["--declare-runtime"], runtime), exportPath: required(options.values["--export-path"]), outputRoot: required(options.values["--output-root"]), runtime, session: required(options.values["--session"]), sourceDir: required(options.values["--source-dir"]) };
   }
   if (action === "watch") return parseCollectWatch(args.slice(1), false);
   if (action === "service") {
@@ -181,17 +189,6 @@ export const parseCollectorCommand = (argumentsList: readonly string[]): Collect
   return parseFlat(argumentsList);
 };
 
-const collectSweepConfig = (command: CollectWatchRequest): CollectSweepConfig => {
-  const outDir = command.outDir ?? command.outputRoot;
-  if (outDir === undefined) return invalid();
-  return {
-    outDir,
-    runtimes: command.runtimes,
-    settleSeconds: command.settleSeconds,
-    ...(command.sourceDir === undefined ? {} : { sourceDir: command.sourceDir }),
-  };
-};
-
 export const runCollectorCli = (argumentsList: readonly string[]): CollectorCliResult => {
   const command = parseCollectorCommand(argumentsList);
   switch (command.command) {
@@ -205,6 +202,7 @@ export const runCollectorCli = (argumentsList: readonly string[]): CollectorCliR
       });
     case "export":
       return exportCollectedSession({
+        ...(command.declareRuntime === "pi" ? { runtimeAttribution: "operator_declared" as const } : {}),
         exportPath: command.exportPath,
         ...(command.outputRoot === undefined ? {} : { outputRoot: command.outputRoot }),
         runtime: command.runtime,
@@ -223,9 +221,10 @@ export const runCollectorCli = (argumentsList: readonly string[]): CollectorCliR
           // service follows the adapter registry across updates instead of
           // pinning the set registered at install time.
           resolveCollectWatchRuntimes(requested);
-          const sweep = collectSweepConfig({ ...command, command: "watch", once: false, runtimes: requested });
+          const sweep = collectSweepConfig({ ...command, runtimes: requested });
           return installCollectWatchService({
             config: {
+              ...(command.declareRuntime === undefined ? {} : { declareRuntime: command.declareRuntime }),
               ...sweep,
               intervalSeconds: command.intervalSeconds,
               runtimes: requested,

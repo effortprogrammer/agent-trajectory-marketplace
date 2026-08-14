@@ -30,6 +30,7 @@ type WatchEntry = z.infer<typeof watchEntrySchema>;
 type WatchState = z.infer<typeof watchStateSchema>;
 
 const collectSweepConfigSchema = z.object({
+  declareRuntime: z.literal("pi").optional(),
   outDir: z.string().min(1),
   runtimes: z.array(z.string().min(1)),
   settleSeconds: z.number().int().nonnegative(),
@@ -40,6 +41,7 @@ const collectSweepConfigSchema = z.object({
 );
 
 export type CollectSweepConfig = Readonly<{
+  declareRuntime?: "pi";
   outDir: string;
   runtimes?: readonly string[];
   settleSeconds: number;
@@ -181,7 +183,13 @@ export const runCollectSweep = (
         continue;
       }
       try {
-        const trace = adapter.convertSession({ sessionId: ref.sessionId, sessionPath: ref.sessionPath });
+        const trace = adapter.convertSession({
+          sessionId: ref.sessionId,
+          sessionPath: ref.sessionPath,
+          ...(runtime === "pi" && parsed.declareRuntime === "pi"
+            ? { runtimeAttribution: "operator_declared" as const }
+            : {}),
+        });
         const runtimeDir = join(outDir, runtime);
         const exportPath = join(
           runtimeDir,

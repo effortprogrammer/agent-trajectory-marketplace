@@ -22,6 +22,7 @@ const selectionTraceSchema = z
     earliestTimestamp: z.string().min(1).max(64),
     eventCount: z.number().int().nonnegative(),
     runtime: z.string().min(1),
+    runtimeAttribution: z.literal("operator_declared").optional(),
     selector: fullSelectorSchema,
     sha256: traceHashSchema,
     summary: sessionSummarySchema,
@@ -42,6 +43,12 @@ const selectionDocumentSchema = z
         context.addIssue({ code: "custom", path: ["traces", index, "selector"], message: "duplicate selector" })
       }
       selectors.add(trace.selector)
+      if (trace.runtime === "pi" && trace.runtimeAttribution !== "operator_declared") {
+        context.addIssue({ code: "custom", path: ["traces", index, "runtimeAttribution"], message: "pi attribution required" })
+      }
+      if (trace.runtime !== "pi" && trace.runtimeAttribution !== undefined) {
+        context.addIssue({ code: "custom", path: ["traces", index, "runtimeAttribution"], message: "unexpected runtime attribution" })
+      }
     }
   })
 
@@ -52,6 +59,7 @@ export type SelectionTrace = Readonly<{
   earliestTimestamp: string
   eventCount: number
   runtime: string
+  runtimeAttribution?: "operator_declared"
   selector: FrozenTrace["selector"]
   sha256: FrozenTrace["hash"]
   summary: SessionSummary
@@ -94,6 +102,9 @@ export const selectionDocumentFromTraces = (root: string, traces: readonly Froze
         earliestTimestamp: trace.earliestTimestamp,
         eventCount: trace.eventCount,
         runtime: boundedRedactedString(trace.runtime).text,
+        ...(trace.runtimeAttribution === undefined
+          ? {}
+          : { runtimeAttribution: trace.runtimeAttribution }),
         selector: trace.selector,
         sha256: trace.hash,
         summary: summaryForTrace(trace),

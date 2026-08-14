@@ -18,6 +18,7 @@ export type SnapshotReadOptions = ConfinementOptions & Readonly<{
 
 type TraceMetadata = Readonly<{
   readonly runtime: string;
+  readonly runtimeAttribution?: "operator_declared";
   readonly eventCount: number;
   readonly earliestTimestamp: string | "unknown";
 }>;
@@ -79,7 +80,14 @@ function validateBytes(bytes: Uint8Array): TraceMetadata {
       earliestTime = time;
     }
   }
-  return { runtime: parsed.data.runtime, eventCount: parsed.data.eventCount, earliestTimestamp };
+  return {
+    runtime: parsed.data.runtime,
+    ...(parsed.data.runtimeAttribution === undefined
+      ? {}
+      : { runtimeAttribution: parsed.data.runtimeAttribution }),
+    eventCount: parsed.data.eventCount,
+    earliestTimestamp,
+  };
 }
 
 function freezeTrace(relativePath: string, bytes: Uint8Array, metadata: TraceMetadata): FrozenTrace {
@@ -175,6 +183,7 @@ export function assertTracesUnchanged(snapshot: SessionSnapshot,
       original.hash !== trace.hash ||
       original.byteCount !== trace.byteCount ||
       original.runtime !== trace.runtime ||
+      original.runtimeAttribution !== trace.runtimeAttribution ||
       original.eventCount !== trace.eventCount ||
       original.earliestTimestamp !== trace.earliestTimestamp
     ) {

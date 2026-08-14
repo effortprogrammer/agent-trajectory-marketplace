@@ -18,6 +18,7 @@ export const frozenTraceSchema = z
     hash: traceHashSchema,
     byteCount: z.number().int().nonnegative(),
     runtime: z.string().min(1),
+    runtimeAttribution: z.literal("operator_declared").optional(),
     eventCount: z.number().int().nonnegative(),
     earliestTimestamp: z.union([z.iso.datetime({ offset: true }).max(64), z.literal("unknown")]),
     bytes: z.instanceof(Uint8Array),
@@ -39,6 +40,7 @@ export type FrozenTrace = Readonly<{
   readonly hash: TraceHash;
   readonly byteCount: number;
   readonly runtime: string;
+  readonly runtimeAttribution?: "operator_declared";
   readonly eventCount: number;
   readonly earliestTimestamp: string | "unknown";
   readonly bytes: Uint8Array;
@@ -140,6 +142,7 @@ export type SessionSummary = Readonly<{
 export type SessionListItem = Readonly<{
   readonly selector: FullSelector;
   readonly runtime: string;
+  readonly runtimeAttribution?: "operator_declared";
   readonly earliestTimestamp: string | "unknown";
   readonly eventCount: number;
   readonly byteCount: number;
@@ -164,6 +167,7 @@ export type SessionWorkItem = Readonly<{
 export type SessionReport = Readonly<{
   readonly selector: FullSelector;
   readonly runtime: string;
+  readonly runtimeAttribution?: "operator_declared";
   readonly items: readonly SessionWorkItem[];
   readonly omittedItemCount: number;
   readonly markers: readonly SessionMarker[];
