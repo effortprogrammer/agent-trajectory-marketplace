@@ -23,7 +23,7 @@ jobs:
             const base = context.payload.pull_request.base.ref;
             const head = context.payload.pull_request.head.ref;
 
-            if (base == "main" && !(head == "dev" || head.startsWith("hotfix/"))) {
+            if (base === "main" && !(head === "dev" || head.startsWith("hotfix/"))) {
               core.setFailed("Feature pull requests must target dev. Only dev or hotfix/* may target main.");
               return;
             }
