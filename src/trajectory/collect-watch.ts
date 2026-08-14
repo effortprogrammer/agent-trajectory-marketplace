@@ -106,7 +106,7 @@ const writeState = (statePath: string, state: WatchState): void => {
 };
 
 const rejectExistingSymlink = (path: string): void => {
-  if (existsSync(path) && lstatSync(path).isSymbolicLink()) {
+  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) {
     throw new TrajectoryAdapterError("invalid_export_path", `invalid_export_path: ${path}`);
   }
 };
@@ -171,7 +171,7 @@ export const runCollectSweep = (
       const stateKey = `${runtime}:${ref.sessionPath}:${ref.sessionId}`;
       const previous = sessions[stateKey];
       if (
-        previous?.modifiedAt === ref.modifiedAt
+        previous?.outcome === "exported" && previous.modifiedAt === ref.modifiedAt
         && previous.sizeBytes === ref.sizeBytes
         && previous.outputNameVersion === outputNameVersion
       ) {

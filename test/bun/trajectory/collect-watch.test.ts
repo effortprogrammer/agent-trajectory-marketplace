@@ -174,11 +174,11 @@ describe("native multi-runtime collect watch", () => {
     const first = runCollectSweep(config, new Date("2026-07-02T00:00:00.000Z"));
     const second = runCollectSweep(config, new Date("2026-07-02T00:00:01.000Z"));
 
-    // Then: valid work survives, failures are typed, and unchanged failed fingerprints are not retried.
+    // Then: valid work survives, failures are typed, and failed fingerprints remain retryable.
     expect(first).toMatchObject({ exported: 1, failed: 1 });
     expect(first.failedSessions[0]).toMatchObject({ runtime: "claude-code", sessionId: "broken", errorCode: "invalid_session" });
     expect(first.missingSources).toEqual([]);
-    expect(second).toMatchObject({ exported: 0, failed: 0, unchanged: 2 });
+    expect(second).toMatchObject({ exported: 0, failed: 1, unchanged: 1 });
     expect(() => JSON.parse(readFileSync(join(outDir, collectWatchStateFileName), "utf8"))).not.toThrow();
   });
 
