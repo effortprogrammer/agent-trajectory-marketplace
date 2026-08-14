@@ -56,6 +56,9 @@ export const renderCollectWatchSystemdUnit = (input: Readonly<{
     "--out",
     resolve(workingDirectory, input.config.outDir),
     ...input.config.runtimes.flatMap((runtime) => ["--runtime", runtime]),
+    ...(input.config.declareRuntime === undefined
+      ? []
+      : ["--declare-runtime", input.config.declareRuntime]),
     ...(input.config.sourceDir === undefined ? [] : ["--source", resolve(input.config.sourceDir)]),
     "--interval-seconds",
     String(input.config.intervalSeconds),

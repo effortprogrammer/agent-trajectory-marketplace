@@ -16,7 +16,9 @@ if (target !== undefined) {
     const targetUrl = new URL(target);
     targetUrl.pathname = url.pathname;
     targetUrl.search = url.search;
-    return nativeFetch(new Request(targetUrl.toString(), request));
+    const targetRequest = new Request(targetUrl.toString(), request);
+    targetRequest.headers.set("connection", "close");
+    return nativeFetch(targetRequest);
   };
   gatewayFetch.preconnect = nativeFetch.preconnect;
   globalThis.fetch = gatewayFetch;

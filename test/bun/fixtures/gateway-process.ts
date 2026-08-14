@@ -3,9 +3,11 @@ export const officialGatewayProcessArguments = (
   target?: string,
 ): Readonly<{ readonly argumentsList: string[]; readonly target?: string }> => {
   if (target === undefined) return { argumentsList: [...argumentsList] };
-  const targetUrl = new URL(target);
-  if (targetUrl.hostname !== "127.0.0.1" || targetUrl.pathname !== "/") {
-    return { argumentsList: [...argumentsList] };
+  if (target !== undefined) {
+    const targetUrl = new URL(target);
+    if (targetUrl.hostname !== "127.0.0.1" || targetUrl.pathname !== "/") {
+      return { argumentsList: [...argumentsList] };
+    }
   }
   return {
     argumentsList: (() => {

@@ -1,6 +1,6 @@
 {
   "name": "agent-trajectory-marketplace",
-  "version": "1.0.5",
+  "version": "1.0.9",
   "private": true,
   "packageManager": "bun@1.3.14",
   "description": "Bun CLI for collecting and publishing credential-redacted agent trajectories",
@@ -36,7 +36,7 @@
     "verify:publish-wire": "bun contract/publish-wire/v1/generate.ts --check contract/publish-wire/v1 && bun contract/publish-wire/v1/verify.ts --manifest contract/publish-wire/v1/manifest.json",
     "test": "bun test test/bun",
     "test:e2e:registry": "bun test test/bun/e2e/world-marketplace-flow.test.ts",
-    "check": "bun run typecheck && bun run verify:publish-wire && bun run verify:wallet-balance && bun test test/bun && bun run build:collector",
+    "check": "bun run typecheck && bun run verify:publish-wire && bun run verify:wallet-balance && bun test test/bun && bun run build:collector && bash test/promotion-workflow.test.sh",
     "verify:wallet-balance": "bun contract/wallet-balance/v1/verify.ts --manifest contract/wallet-balance/v1/manifest.json"
   },
   "dependencies": {
