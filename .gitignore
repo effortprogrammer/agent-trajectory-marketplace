@@ -41,7 +41,9 @@ next-env.d.ts
 
 # Local temp files
 temp/
+.omo/
 
 # Documentation stays local; never push docs or markdown.
 docs/
 *.md
+!README.md

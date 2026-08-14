@@ -8,6 +8,7 @@ import { encodeDatasetManifest } from "../../../src/marketplace/archive-contract
 import { writeDatasetZip } from "../../../src/marketplace/stored-zip"
 import { writeStoredAuthSession } from "../../../src/auth/store"
 import { parsePublishFrame } from "../../../src/marketplace/publish-frame"
+import { officialGatewayProcessArguments, officialGatewayProcessEnvironment } from "../fixtures/gateway-process"
 
 const roots: string[] = []
 
@@ -31,9 +32,16 @@ const bundle = (root: string): string => {
 }
 
 const runCli = async (argumentsList: readonly string[], environment: Readonly<Record<string, string | undefined>>): Promise<Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>> => {
-  const child = Bun.spawn([process.execPath, "dist/collector.js", ...argumentsList], {
+  const serverIndex = argumentsList.indexOf("--server")
+  const invocation = officialGatewayProcessArguments(
+    [process.execPath, "dist/collector.js", ...(serverIndex < 0
+      ? argumentsList
+      : argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1))],
+    serverIndex < 0 ? undefined : argumentsList[serverIndex + 1],
+  )
+  const child = Bun.spawn(invocation.argumentsList, {
     cwd: process.cwd(),
-    env: environment,
+    env: { ...environment, ...officialGatewayProcessEnvironment(invocation.target) },
     stderr: "pipe",
     stdout: "pipe",
   })
@@ -69,7 +77,8 @@ describe("marketplace candidate publish process boundary", () => {
       result: { exitCode: 0, stderr: "" },
     })
     expect(result.stdout).toContain("trajectory marketplace seller candidate publish")
-    for (const option of ["--bundle", "--server", "--api-key"]) expect(result.stdout).toContain(option)
+    for (const option of ["--bundle", "--api-key"]) expect(result.stdout).toContain(option)
+    expect(result.stdout).not.toContain("--server")
     expect(`${result.stdout}${result.stderr}`).not.toContain("environment-sentinel")
   })
 

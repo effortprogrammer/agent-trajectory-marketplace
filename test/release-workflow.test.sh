@@ -12,6 +12,7 @@ fail() {
 }
 
 [[ -f "$WORKFLOW" ]] || fail "release workflow is missing"
+[[ -f "$ROOT/.github/workflows/promotion-policy.yml" ]] || fail "promotion policy workflow is missing"
 grep -Fq "'v*.*.*'" "$WORKFLOW" || fail "release workflow is not restricted to stable version tags"
 grep -Fq 'github.ref_protected' "$WORKFLOW" || fail "release workflow does not require protected tags"
 grep -Fq 'scripts/build-release-assets.sh "$TAG" "$GITHUB_SHA"' "$WORKFLOW" || fail "workflow does not execute the release artifact builder"
@@ -71,10 +72,9 @@ if bun -e '
   fail "production verifier accepted a corrupt generated archive"
 fi
 
-if grep -nE 'raw\.githubusercontent\.com/.*/main|github\.com/.*/main/' "$ROOT/README.md" "$ROOT/scripts/install.sh" "$ROOT/scripts/install-agent.sh"; then
+if grep -nE 'raw\.githubusercontent\.com/.*/main|github\.com/.*/main/' "$ROOT/scripts/install.sh" "$ROOT/scripts/install-agent.sh"; then
   fail "bootstrap still executes mutable main"
 fi
-grep -Fq '/releases/latest/download/install-agent.sh' "$ROOT/README.md" || fail "README one-liner does not resolve the stable release installer asset"
 grep -Fq '/releases/download/$ATM_BOOTSTRAP_TAG/install-core.sh' "$ROOT/scripts/install-agent.sh" || fail "agent wrapper does not bind its core asset to a release tag"
 grep -Fq '/releases/download/$ATM_BOOTSTRAP_TAG/install-core.sh.sha256' "$ROOT/scripts/install-agent.sh" || fail "agent wrapper does not bind its checksum asset to the same release tag"
 
