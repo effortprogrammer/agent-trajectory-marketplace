@@ -115,7 +115,7 @@ describe("pi-family adapters", () => {
       "2026-07-20_sess0001.jsonl",
       baseRecords,
     );
-    const trace = piAdapter.convertSession({ sessionPath });
+    const trace = piAdapter.convertSession({ sessionPath, runtimeAttribution: "operator_declared" });
 
     expect(trace.runtime).toBe("pi");
     expect(trace.events[0]?.sourceEventId).toBe("pi:session:sess0001");

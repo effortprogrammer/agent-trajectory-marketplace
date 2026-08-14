@@ -75,6 +75,7 @@ export const writeBundleFromSelection = (
       trace.eventCount !== entry.eventCount ||
       trace.earliestTimestamp !== entry.earliestTimestamp ||
       boundedRedactedString(trace.runtime).text !== entry.runtime
+      || trace.runtimeAttribution !== entry.runtimeAttribution
     ) throw new MarketplaceError("invalid_bundle_request")
     const artifact = sanitizedArtifactDigest(trace.bytes)
     if (artifact.sha256 !== entry.artifactSha256 || artifact.byteCount !== entry.artifactByteCount) {

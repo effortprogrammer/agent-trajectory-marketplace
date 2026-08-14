@@ -19,6 +19,7 @@ const listSessionsInputSchema = z.object({
 
 const exportInputSchema = z.object({
   runtime: z.string().min(1),
+  runtimeAttribution: z.literal("operator_declared").optional(),
   session: z.string().min(1),
   sourceDir: z.string().min(1).optional(),
   outputRoot: z.string().min(1).optional(),
@@ -118,10 +119,19 @@ const resolveSessionInput = (input: Readonly<{
   session: string;
   sourceDir?: string;
 }>): HarnessSessionInput => {
-  if (existsSync(input.session) && statSync(input.session).isFile()) {
-    return { sessionPath: resolve(input.session) };
-  }
   const discovery = discoverSessions(input.runtime, input.sourceDir);
+  if (existsSync(input.session)) {
+    if (lstatSync(input.session).isSymbolicLink() || !statSync(input.session).isFile()) {
+      throw new TrajectoryAdapterError("invalid_session", "invalid_session");
+    }
+    const canonicalSource = realpathSync(discovery.sourceDir);
+    const canonicalSession = realpathSync(input.session);
+    const relation = relative(canonicalSource, canonicalSession);
+    if (relation === ".." || relation.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || isAbsolute(relation)) {
+      throw new TrajectoryAdapterError("invalid_session", "invalid_session");
+    }
+    return { sessionPath: canonicalSession };
+  }
   const selected = discovery.sessions.find((candidate) => candidate.sessionId === input.session);
   if (selected === undefined) {
     throw new TrajectoryAdapterError(
@@ -160,6 +170,7 @@ export const listCollectSessions = (input: Readonly<{
 
 export const exportCollectedSession = (input: Readonly<{
   runtime: string;
+  runtimeAttribution?: "operator_declared";
   session: string;
   sourceDir?: string;
   outputRoot?: string;
@@ -172,7 +183,12 @@ export const exportCollectedSession = (input: Readonly<{
     session: parsed.session,
     ...(parsed.sourceDir === undefined ? {} : { sourceDir: parsed.sourceDir }),
   });
-  const trace = adapter.convertSession(session);
+  const trace = adapter.convertSession({
+    ...session,
+    ...(parsed.runtimeAttribution === undefined
+      ? {}
+      : { runtimeAttribution: parsed.runtimeAttribution }),
+  });
   const exportPath = resolveExportPath(parsed.exportPath, parsed.outputRoot);
   rejectExistingSymlink(exportPath);
   mkdirSync(dirname(exportPath), { recursive: true });

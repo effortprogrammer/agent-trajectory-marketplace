@@ -108,6 +108,7 @@ export type HarnessTraceEvent = z.infer<typeof harnessTraceEventSchema>;
 export const harnessTraceDocumentSchema = z
   .object({
     runtime: z.string().min(1),
+    runtimeAttribution: z.literal("operator_declared").optional(),
     status: z.literal(harnessCollectedStatus),
     formatVersion: z.union([z.literal(1), z.literal(2)]).optional(),
     eventCount: z.number().int().nonnegative(),
@@ -115,6 +116,20 @@ export const harnessTraceDocumentSchema = z
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.runtime === "pi" && value.runtimeAttribution !== "operator_declared") {
+      context.addIssue({
+        code: "custom",
+        path: ["runtimeAttribution"],
+        message: "pi_runtime_requires_operator_declaration",
+      });
+    }
+    if (value.runtime !== "pi" && value.runtimeAttribution !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["runtimeAttribution"],
+        message: "runtime_attribution_only_allowed_for_pi",
+      });
+    }
     const requiresVersionTwo = value.events.some(
       (event) =>
         event.payload !== undefined ||
@@ -151,6 +166,7 @@ export const harnessTraceDocumentSchema = z
   });
 export type HarnessTraceDocument = Readonly<{
   runtime: string;
+  runtimeAttribution?: "operator_declared";
   status: typeof harnessCollectedStatus;
   formatVersion?: 1 | 2;
   eventCount: number;
@@ -176,6 +192,7 @@ export type HarnessSessionRef = z.infer<typeof harnessSessionRefSchema>;
 export type HarnessSessionInput = Readonly<{
   sessionPath: string;
   sessionId?: string;
+  runtimeAttribution?: "operator_declared";
 }>;
 
 export type HarnessAdapter = Readonly<{

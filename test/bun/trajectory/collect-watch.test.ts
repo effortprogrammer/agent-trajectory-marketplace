@@ -105,7 +105,7 @@ describe("native multi-runtime collect watch", () => {
 
     // When: one sweep resolves the empty runtime list to every registered adapter.
     const summary = runCollectSweep(
-      { outDir, runtimes: [], settleSeconds: 0 },
+      { declareRuntime: "pi", outDir, runtimes: [], settleSeconds: 0 },
       new Date("2026-07-02T00:00:00.000Z"),
       {
         "claude-code": join(home, ".claude", "projects"),

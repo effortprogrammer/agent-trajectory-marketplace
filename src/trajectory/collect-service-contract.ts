@@ -1,6 +1,7 @@
 export type ServiceCommandResult = Readonly<{ success: boolean }>;
 
 export type CollectServiceConfig = Readonly<{
+  declareRuntime?: "pi";
   intervalSeconds: number;
   outDir: string;
   runtimes: readonly string[];

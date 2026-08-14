@@ -51,18 +51,24 @@ export const convertPiFamilySession = (
   variant: PiFamilyVariant,
   session: HarnessSessionInput,
 ): HarnessTraceDocument => {
+  if (variant.runtime === "pi" && session.runtimeAttribution !== "operator_declared") {
+    throw new TrajectoryAdapterError(
+      "invalid_session",
+      "invalid_session: upstream Pi conversion requires an explicit operator declaration",
+    );
+  }
   const { sessionPath } = session;
   const file = parsePiSessionFile(sessionPath);
 
   // Provenance gate: a session whose fingerprint strongly claims a sibling
   // fork must be exported under that fork's runtime, never misattributed.
   const detection = detectPiFamilyVariant(sessionPath, file);
+  const strongForkRuntime = detection.strongRuntimes.find(
+    (runtime) => runtime !== variant.runtime,
+  );
   if (variant.runtime === "pi") {
     // Fork lineage markers (strong or weak) disqualify upstream attribution.
-    const forkRuntime =
-      detection.runtime !== undefined && detection.runtime !== variant.runtime
-        ? detection.runtime
-        : detection.weakRuntime;
+    const forkRuntime = strongForkRuntime ?? detection.weakRuntime;
     if (forkRuntime !== undefined && forkRuntime !== variant.runtime) {
       throw new TrajectoryAdapterError(
         "invalid_session",
@@ -79,14 +85,10 @@ export const convertPiFamilySession = (
       );
     }
   }
-  if (
-    detection.strong &&
-    detection.runtime !== undefined &&
-    detection.runtime !== variant.runtime
-  ) {
+  if (strongForkRuntime !== undefined) {
     throw new TrajectoryAdapterError(
       "invalid_session",
-      `invalid_session: ${sessionPath} fingerprints as ${detection.runtime} (${detection.evidence.join(", ")}); export it with runtime ${detection.runtime}`,
+      `invalid_session: ${sessionPath} fingerprints as ${strongForkRuntime} (${detection.evidence.join(", ")}); export it with runtime ${strongForkRuntime}`,
     );
   }
 
@@ -271,6 +273,9 @@ export const convertPiFamilySession = (
 
   return harnessTraceDocumentSchema.parse({
     runtime: variant.runtime,
+    ...(variant.runtime === "pi"
+      ? { runtimeAttribution: "operator_declared" as const }
+      : {}),
     status: harnessCollectedStatus,
     ...(hasAttestation || hasPayload ? { formatVersion: 2 as const } : {}),
     eventCount: events.length,

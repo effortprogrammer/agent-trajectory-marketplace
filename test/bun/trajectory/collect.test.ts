@@ -120,7 +120,15 @@ describe("native collector facade", () => {
     // When: each fixture is discovered and exported through the facade.
     const results = fixtures.map((fixture) => {
       const listed = listCollectSessions({ runtime: fixture.runtime, sourceDir: fixture.sourceDir });
-      const exported = exportCollectedSession({ runtime: fixture.runtime, session: fixture.sessionId, sourceDir: fixture.sourceDir, exportPath: join(output, `${fixture.runtime}.atf.json`) });
+      const exported = exportCollectedSession({
+        runtime: fixture.runtime,
+        ...(fixture.runtime === "pi"
+          ? { runtimeAttribution: "operator_declared" as const }
+          : {}),
+        session: fixture.sessionId,
+        sourceDir: fixture.sourceDir,
+        exportPath: join(output, `${fixture.runtime}.atf.json`),
+      });
       return { exported, listed };
     });
 
@@ -183,8 +191,8 @@ describe("native collector facade", () => {
     const sessions = listCollectSessions({ runtime: "claude-code", sourceDir }).sessions;
 
     // When: callers select the duplicates by their existing paths and unsafe legacy paths are attempted.
-    const first = exportCollectedSession({ runtime: "claude-code", session: sessions[0]?.sessionPath ?? "", exportPath: join(root, "first.atf.json") });
-    const second = exportCollectedSession({ runtime: "claude-code", session: sessions[1]?.sessionPath ?? "", exportPath: join(root, "second.atf.json") });
+    const first = exportCollectedSession({ runtime: "claude-code", session: sessions[0]?.sessionPath ?? "", sourceDir, exportPath: join(root, "first.atf.json") });
+    const second = exportCollectedSession({ runtime: "claude-code", session: sessions[1]?.sessionPath ?? "", sourceDir, exportPath: join(root, "second.atf.json") });
     const traversal = () => exportCollectedSession({ runtime: "claude-code", session: "same", sourceDir, outputRoot, exportPath: "../outside.atf.json" });
     const symlinkEscape = () => exportCollectedSession({ runtime: "claude-code", session: "same", sourceDir, outputRoot, exportPath: "escape/outside.atf.json" });
 
@@ -228,5 +236,33 @@ describe("native collector facade", () => {
     // When / Then: invalid runtime and session identities retain typed adapter errors.
     expect(() => listCollectSessions({ runtime: "unknown", sourceDir })).toThrow("unknown_runtime");
     expect(() => exportCollectedSession({ runtime: "codex", session: "missing", sourceDir, exportPath: join(sourceDir, "missing.atf.json") })).toThrow("missing_session");
+  });
+
+  test("confines direct session paths to the selected source and rejects symlinks", () => {
+    const root = temporaryRoot();
+    const source = join(root, ".pi", "agent", "sessions");
+    const outside = join(root, "outside.jsonl");
+    const linked = join(source, "linked.jsonl");
+    mkdirSync(source, { recursive: true });
+    writeFileSync(outside, `${JSON.stringify({
+      type: "session",
+      version: 3,
+      id: "outside",
+      timestamp: "2026-07-20T10:00:00.000Z",
+      cwd: "/work/demo",
+    })}\n`, "utf8");
+    symlinkSync(outside, linked);
+
+    for (const session of [outside, linked]) {
+      expect(() =>
+        exportCollectedSession({
+          runtime: "pi",
+          runtimeAttribution: "operator_declared",
+          sourceDir: source,
+          session,
+          exportPath: join(root, `${session === outside ? "outside" : "linked"}.atf.json`),
+        }),
+      ).toThrow(/invalid_session/);
+    }
   });
 });

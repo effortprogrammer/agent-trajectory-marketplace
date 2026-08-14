@@ -21,6 +21,7 @@ export type PiFamilyDetection = Readonly<{
   runtime: PiFamilyRuntime | undefined;
   strong: boolean;
   evidence: readonly string[];
+  strongRuntimes: readonly PiFamilyRuntime[];
   // Weak lineage remains visible even when a config-dir path supplies the
   // primary strong claim, so copied fork records cannot hide under `.pi`.
   weakRuntime: PiFamilyRuntime | undefined;
@@ -49,12 +50,14 @@ export const detectPiFamilyVariant = (
   file: PiSessionFile,
 ): PiFamilyDetection => {
   const strongEvidence: string[] = [];
+  const strongRuntimes: PiFamilyRuntime[] = [];
   const weakEvidence: string[] = [];
   let strongRuntime: PiFamilyRuntime | undefined;
   let weakRuntime: PiFamilyRuntime | undefined;
 
   const claimStrong = (runtime: PiFamilyRuntime, reason: string): void => {
     strongEvidence.push(reason);
+    if (!strongRuntimes.includes(runtime)) strongRuntimes.push(runtime);
     strongRuntime ??= runtime;
   };
   const claimWeak = (runtime: PiFamilyRuntime, reason: string): void => {
@@ -88,6 +91,7 @@ export const detectPiFamilyVariant = (
       runtime: strongRuntime,
       strong: true,
       evidence: strongEvidence,
+      strongRuntimes,
       weakRuntime,
       weakEvidence,
     };
@@ -96,6 +100,7 @@ export const detectPiFamilyVariant = (
     runtime: weakRuntime,
     strong: false,
     evidence: weakEvidence,
+    strongRuntimes,
     weakRuntime,
     weakEvidence,
   };
