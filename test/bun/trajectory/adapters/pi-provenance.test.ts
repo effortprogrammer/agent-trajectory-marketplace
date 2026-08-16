@@ -115,4 +115,17 @@ describe("upstream Pi provenance", () => {
       piAdapter.convertSession({ sessionPath, runtimeAttribution: "operator_declared" }),
     ).toThrow(/invalid_session/);
   });
+
+  test("tolerates a torn final physical line from a live writer", () => {
+    const sessionPath = writePiSession("--work-demo--", nativeRecords);
+    writeFileSync(
+      sessionPath,
+      `${JSON.stringify(nativeRecords[0])}\n${JSON.stringify(nativeRecords[1])}\n{"type":"mess`,
+      "utf8",
+    );
+
+    expect(
+      piAdapter.convertSession({ sessionPath, runtimeAttribution: "operator_declared" }),
+    ).toMatchObject({ runtime: "pi", runtimeAttribution: "operator_declared" });
+  });
 });
