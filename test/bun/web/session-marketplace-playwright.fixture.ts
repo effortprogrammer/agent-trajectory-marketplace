@@ -3,6 +3,7 @@ import {
   chromium,
   type Browser,
   type BrowserContext,
+  type BrowserContextOptions,
   type Page,
   type ViewportSize,
 } from "playwright"
@@ -13,7 +14,10 @@ let sharedBrowser: Browser | undefined
 export interface SessionUiHarness {
   readonly appUrl: string
   readonly registryRequests: string[]
-  readonly newPage: (viewport: ViewportSize) => Promise<Page>
+  readonly newPage: (
+    viewport: ViewportSize,
+    options?: Pick<BrowserContextOptions, "javaScriptEnabled">,
+  ) => Promise<Page>
   readonly close: () => Promise<void>
 }
 
@@ -106,8 +110,8 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
   return {
     appUrl: `http://127.0.0.1:${port}`,
     registryRequests: registry.requests,
-    newPage: async (viewport) => {
-      const context = await browser.newContext({ viewport })
+    newPage: async (viewport, options = {}) => {
+      const context = await browser.newContext({ ...options, viewport })
       await context.route("https://gateway.getatm.io/v1/marketplace/**", async (route) => {
         const requested = new URL(route.request().url())
         const response = await route.fetch({
