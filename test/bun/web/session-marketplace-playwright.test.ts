@@ -46,6 +46,7 @@ describe("Aggregate marketplace browser contract", () => {
       element.classList.contains("is-live")
     )).toBe(true)
     expect(await page.locator("[data-metric-skeleton]:visible").count()).toBe(0)
+    expect(await page.locator(".trust-rail").count()).toBe(0)
     expect(await page.locator(".catalog, .entry, a[href*='detail.html']").count()).toBe(0)
     expect(await page.getByText("Acquire", { exact: true }).count()).toBe(0)
     expect(harness.registryRequests).toEqual(["/v1/marketplace/stats"])
