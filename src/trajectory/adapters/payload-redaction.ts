@@ -1,14 +1,14 @@
 const credentialPatterns = [
   /\bBearer\s+[A-Za-z0-9._~+/-]+={0,2}/gi,
-  /\b(?:auth|authorization|api[_-]?key|bearer|cookie|credentials?|key|pass|password|passwd|pwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key|sk-proj)\b\s*[:=]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)[^\s]*/gi,
-  /\b(?:[A-Za-z0-9]+_)*(?:API_?KEY|ACCESS_?KEY|SECRET_?KEY|SESSION_?TOKEN|ACCESS_?TOKEN|REFRESH_?TOKEN|CLIENT_?SECRET|PRIVATE_?KEY|SECRET|TOKEN|PASSWORD|PASSWD|PWD|AUTH|CREDENTIALS?|KEY)(?:_[A-Za-z0-9]+)*\s*=\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)[^\s]*/gi,
+  /\b(?:auth|authorization|api[_-]?key|bearer|cookie|credentials?|key|pass|password|passwd|pwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key|sk-proj)\b\s*[:=]\s*(?!["']?(?:\[redacted\]|…\[truncated\])["']?(?:$|[\s,}\]]))(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)[^\s]*/gi,
+  /\b(?:[A-Za-z0-9]+_)*(?:API_?KEY|ACCESS_?KEY|SECRET_?KEY|SESSION_?TOKEN|ACCESS_?TOKEN|REFRESH_?TOKEN|CLIENT_?SECRET|PRIVATE_?KEY|SECRET|TOKEN|PASSWORD|PASSWD|PWD|AUTH|CREDENTIALS?|KEY)(?:_[A-Za-z0-9]+)*\s*=\s*(?!["']?(?:\[redacted\]|…\[truncated\])["']?(?:$|[\s,}\]]))(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)[^\s]*/gi,
   /\bsk-[A-Za-z0-9_-]{20,}/g, /\bgh[pousr]_[A-Za-z0-9]{20,}/g,
   /\bxox[baprs]-[A-Za-z0-9-]{10,}/g, /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, /\bAIza[A-Za-z0-9_-]{20,}/g,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g,
   /-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----/g,
 ] as const;
-const escapedQuotedCredentialPattern = /((?:[\\])(["'])(?:auth|authorization|api[_-]?key|bearer|cookie|credentials?|key|pass|password|passwd|pwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key|sk-proj)(?:[\\])\2\s*[:=]\s*)((?:[\\])(["']))(?:[\\][\\].|(?![\\]\4)[^\r\n])*[\\]\4/gi;
-const quotedCredentialPattern = /((["'])(?:auth|authorization|api[_-]?key|bearer|cookie|credentials?|key|pass|password|passwd|pwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key|sk-proj)\2\s*[:=]\s*)(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^\s,}\]]+)/gi;
+const escapedQuotedCredentialPattern = /((?:[\\])(["'])(?:auth|authorization|api[_-]?key|bearer|cookie|credentials?|key|pass|password|passwd|pwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key|sk-proj)(?:[\\])\2\s*[:=]\s*)(?![\\]["'](?:\[redacted\]|…\[truncated\])[\\]["'])((?:[\\])(["']))(?:[\\][\\].|(?![\\]\4)[^\r\n])*[\\]\4/gi;
+const quotedCredentialPattern = /((["'])(?:auth|authorization|api[_-]?key|bearer|cookie|credentials?|key|pass|password|passwd|pwd|secret|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key|sk-proj)\2\s*[:=]\s*)(?!["']?(?:\[redacted\]|…\[truncated\])["']?(?:$|[\s,}\]]))(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^\s,}\]]+)/gi;
 const sensitiveKeyMarkers = new Set([
   "password", "passwd", "pass", "pwd", "auth", "authorization", "token", "key", "secret",
   "credential", "credentials", "cookie",

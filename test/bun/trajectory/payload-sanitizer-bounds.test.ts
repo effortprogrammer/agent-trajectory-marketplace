@@ -1,11 +1,28 @@
 import { expect, test } from "bun:test";
 
-import { sanitizeHarnessPayload } from "../../../src/trajectory/adapters/contract";
+import {
+  harnessPayloadPolicy,
+  sanitizeHarnessPayload,
+} from "../../../src/trajectory/adapters/contract";
 import {
   boundedRedactedString,
   isPayloadStructureBounded,
   sanitizePayloadValue,
 } from "../../../src/trajectory/adapters/payload-sanitizer";
+
+test("is idempotent at bounded secret replacements", () => {
+  const output =
+    "x".repeat(harnessPayloadPolicy.maxStringBytes - 24)
+    + '{"token": "'
+    + "z".repeat(50)
+    + '"}abc';
+
+  const once = sanitizeHarnessPayload({ output });
+  expect(once).toBeDefined();
+  if (once === undefined) throw new Error("expected sanitized payload");
+
+  expect(sanitizeHarnessPayload(once)).toEqual(once);
+});
 
 const overBudgetObject = (): Readonly<Record<string, unknown>> => {
   const value: Record<string, unknown> = {};
