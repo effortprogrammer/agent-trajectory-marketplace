@@ -45,6 +45,8 @@ describe("Aggregate marketplace browser contract", () => {
     expect(await page.getByTestId("aggregate-status").evaluate((element) =>
       element.classList.contains("is-live")
     )).toBe(true)
+    expect(await page.locator("[data-metric-skeleton]:visible").count()).toBe(0)
+    expect(await page.locator(".trust-rail").count()).toBe(0)
     expect(await page.locator(".catalog, .entry, a[href*='detail.html']").count()).toBe(0)
     expect(await page.getByText("Acquire", { exact: true }).count()).toBe(0)
     expect(harness.registryRequests).toEqual(["/v1/marketplace/stats"])
@@ -90,5 +92,82 @@ describe("Aggregate marketplace browser contract", () => {
     expect(await page.locator("header").count()).toBe(1)
     expect(await page.locator("main").count()).toBe(1)
     expect(await page.locator("footer").count()).toBe(1)
+  })
+
+  test("shows a completed unavailable state when Registry stats fail", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    await page.route("https://gateway.getatm.io/v1/marketplace/stats", async (route) => {
+      await route.fulfill({
+        body: JSON.stringify({ error: "unavailable" }),
+        contentType: "application/json",
+        status: 503,
+      })
+    })
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    expect(await page.getByTestId("aggregate-status").innerText()).toBe("Registry unavailable")
+    expect(await page.locator("[data-supply-region]").getAttribute("aria-busy")).toBe("false")
+    expect(await page.getByTestId("aggregate-session-count").innerText()).toBe("—")
+    expect(await page.getByTestId("aggregate-token-count").innerText()).toBe("—")
+    expect(await page.getByTestId("aggregate-runtime-count").innerText()).toBe("—")
+  })
+
+  test("rejects malformed aggregate stats as unavailable", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    await page.route("https://gateway.getatm.io/v1/marketplace/stats", async (route) => {
+      await route.fulfill({
+        body: JSON.stringify({
+          activeRuntimes: 1,
+          totalSessions: null,
+          tradeableTokens: "many",
+        }),
+        contentType: "application/json",
+        status: 200,
+      })
+    })
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    expect(await page.getByTestId("aggregate-status").innerText()).toBe("Registry unavailable")
+    expect(await page.locator("[data-supply-region]").getAttribute("aria-busy")).toBe("false")
+    expect(await page.getByTestId("aggregate-session-count").innerText()).toBe("—")
+    expect(await page.getByTestId("aggregate-token-count").innerText()).toBe("—")
+    expect(await page.getByTestId("aggregate-runtime-count").innerText()).toBe("—")
+  })
+
+  test("copies the candidate publish command", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    await page.context().grantPermissions(
+      ["clipboard-read", "clipboard-write"],
+      { origin: harness.appUrl },
+    )
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    await page.getByRole("button", { name: "Copy" }).click()
+    await page.getByRole("button", { name: "Copied" }).waitFor()
+
+    expect(await page.getByRole("button", { name: "Copied" }).count()).toBe(1)
+    expect(await page.locator("[data-copy-status]").innerText()).toBe(
+      "Command copied to clipboard",
+    )
+  })
+
+  test("shows a static supply fallback without JavaScript", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(mobile, { javaScriptEnabled: false })
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    expect(await page.locator(".noscript-supply").isVisible()).toBe(true)
+    expect(await page.locator("[data-supply-region]").isVisible()).toBe(false)
+    expect(await page.locator("[data-registry-status]").isVisible()).toBe(false)
+    expect(await page.locator("[data-metric-skeleton]:visible").count()).toBe(0)
+    expect(await page.locator("[data-reveal]:not([data-supply-region]):visible").count()).toBe(
+      await page.locator("[data-reveal]:not([data-supply-region])").count(),
+    )
   })
 })
