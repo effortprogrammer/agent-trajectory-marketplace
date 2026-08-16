@@ -83,7 +83,7 @@ const resolveExportPath = (exportPath: string, outputRoot: string | undefined): 
 };
 
 const rejectExistingSymlink = (path: string): void => {
-  if (existsSync(path) && lstatSync(path).isSymbolicLink()) invalidExportPath(path);
+  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) invalidExportPath(path);
 };
 
 const resolveSourceDir = (runtime: string, sourceDir: string | undefined): Readonly<{

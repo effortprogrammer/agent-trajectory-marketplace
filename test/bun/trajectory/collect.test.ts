@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -227,6 +228,12 @@ describe("native collector facade", () => {
     // Then: the collector rejects the destination and preserves the external file.
     expect(exportAttempt).toThrow("invalid_export_path");
     expect(readFileSync(outsidePath, "utf8")).toBe("do-not-overwrite");
+
+    rmSync(exportPath);
+    rmSync(outsidePath);
+    symlinkSync(outsidePath, exportPath);
+    expect(exportAttempt).toThrow("invalid_export_path");
+    expect(existsSync(outsidePath)).toBe(false);
   });
 
   test("reports missing sessions and unknown runtimes", () => {
