@@ -18,7 +18,8 @@
     "contract/**/*.ts",
     "src/**/*.ts",
     "test/bun/**/*.ts",
-    "test/manual/**/*.ts"
+    "test/manual/**/*.ts",
+    "web/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }
