@@ -19,18 +19,52 @@
         <span class="brand-mark">ATM</span>
         <span class="brand-name">agent trajectory marketplace</span>
       </a>
-      <nav class="nav-links" aria-label="Marketplace navigation">
+      <nav class="nav-links" aria-label="Marketplace navigation" data-authenticated-nav hidden>
         <a href="#supply">Live supply</a>
         <a href="#provenance">How it grows</a>
       </nav>
-      <span class="live-badge is-connecting" role="status" data-registry-status data-testid="aggregate-status">
-        <span class="live-dot" aria-hidden="true"></span>
-        <span data-status-label>Connecting to Registry</span>
-      </span>
+      <div class="nav-account-actions">
+        <span class="live-badge is-auth-required" role="status" data-registry-status data-testid="aggregate-status">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span data-status-label>Sign in required</span>
+        </span>
+        <button class="nav-auth-button" type="button" data-auth-login data-testid="auth-login-button">Sign in</button>
+        <button class="nav-auth-button nav-logout-button" type="button" data-auth-logout data-testid="auth-logout-button" hidden>Log out</button>
+      </div>
     </div>
   </header>
 
   <main id="main-content" tabindex="-1" data-live-source>
+    <section class="auth-gate" data-auth-gate aria-labelledby="auth-title">
+      <div class="auth-gate-panel">
+        <p class="kicker">Marketplace access</p>
+        <h1 id="auth-title"><span>The aggregate is</span><em>for members.</em></h1>
+        <p class="auth-intro">Sign in or create an account to view the live aggregate supply.</p>
+        <div class="auth-mode-tabs" aria-label="Authentication mode">
+          <button class="auth-mode-tab is-selected" type="button" aria-pressed="true" data-auth-mode="login">Sign in</button>
+          <button class="auth-mode-tab" type="button" aria-pressed="false" data-auth-mode="signup">Create account</button>
+        </div>
+        <form class="auth-form" data-auth-request-form novalidate>
+          <label for="auth-email">Email address</label>
+          <input id="auth-email" name="email" type="email" autocomplete="email" inputmode="email" required data-auth-email />
+          <label class="auth-terms" data-auth-terms hidden>
+            <input type="checkbox" data-auth-accept-terms />
+            <span>I accept the Marketplace terms.</span>
+          </label>
+          <button class="signal-button" type="submit" data-auth-request-submit>Continue</button>
+        </form>
+        <form class="auth-form" data-auth-verify-form hidden novalidate>
+          <p class="auth-verify-note">Enter the six-digit code sent to <strong data-auth-challenge-email></strong>.</p>
+          <label for="auth-code">Verification code</label>
+          <input id="auth-code" name="code" type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required data-auth-code />
+          <button class="signal-button" type="submit" data-auth-verify-submit>Verify and enter</button>
+          <button class="text-button" type="button" data-auth-restart>Use a different email</button>
+        </form>
+        <p class="auth-feedback" role="status" aria-live="polite" data-auth-feedback></p>
+      </div>
+    </section>
+
+    <div data-authenticated-content hidden>
     <section id="top" class="hero-cinematic">
       <div class="terrain-stage" aria-hidden="true">
         <div class="terrain-grid"></div>
@@ -187,9 +221,10 @@
         </div>
       </div>
     </section>
+    </div>
   </main>
 
-  <footer class="marketplace-footer">
+  <footer class="marketplace-footer" data-authenticated-content hidden>
     <div class="wide-shell footer-shell">
       <a class="brand" href="#top">
         <span class="brand-mark">ATM</span>
