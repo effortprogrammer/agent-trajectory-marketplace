@@ -1,11 +1,13 @@
 // Local preview server for the static marketplace UI. Run: bun web/server.ts
 const root = new URL(".", import.meta.url).pathname;
 const port = Number(Bun.env.PORT ?? 4173);
+const canonicalOrigin = "https://getatm.io";
+const legacyMarketplaceHost = "marketplace.getatm.io";
 const securityHeaders = {
   "content-security-policy": [
     "default-src 'self'",
     "base-uri 'none'",
-    "connect-src https://gateway.getatm.io",
+    "connect-src 'self' https://gateway.getatm.io",
     "font-src 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
@@ -16,6 +18,7 @@ const securityHeaders = {
   ].join("; "),
   "permissions-policy": "camera=(), geolocation=(), microphone=()",
   "referrer-policy": "no-referrer",
+  "strict-transport-security": "max-age=31536000; includeSubDomains",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
 } as const;
@@ -25,6 +28,7 @@ const assets: Readonly<Record<string, Readonly<{ file: string; type: string }>>>
   "/index.html": { file: "index.html", type: "text/html; charset=utf-8" },
   "/marketplace.css": { file: "marketplace.css", type: "text/css; charset=utf-8" },
   "/marketplace.js": { file: "marketplace.js", type: "text/javascript; charset=utf-8" },
+  "/robots.txt": { file: "robots.txt", type: "text/plain; charset=utf-8" },
 };
 
 const compatibilityRedirect = (url: URL): Response | undefined => {
@@ -39,8 +43,20 @@ const compatibilityRedirect = (url: URL): Response | undefined => {
   if (!legacyView) return undefined;
 
   return new Response(null, {
-    headers: { ...securityHeaders, location: url.pathname },
+    headers: { ...securityHeaders, location: "/index.html" },
     status: 302,
+  });
+};
+
+const canonicalHostRedirect = (url: URL): Response | undefined => {
+  if (url.hostname !== legacyMarketplaceHost) return undefined;
+
+  const canonicalUrl = new URL(canonicalOrigin);
+  canonicalUrl.pathname = url.pathname;
+  canonicalUrl.search = url.search;
+  return new Response(null, {
+    headers: { ...securityHeaders, location: canonicalUrl.toString() },
+    status: 301,
   });
 };
 
@@ -49,6 +65,8 @@ Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     const { pathname } = url;
+    const canonicalRedirect = canonicalHostRedirect(url);
+    if (canonicalRedirect) return canonicalRedirect;
     if (pathname === "/favicon.ico") {
       return new Response(null, { headers: securityHeaders, status: 204 });
     }
