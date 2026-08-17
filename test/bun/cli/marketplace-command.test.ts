@@ -47,6 +47,56 @@ describe("trajectory marketplace seller CLI grammar", () => {
     expect(result).toEqual({ command: "sessions-inspect", json: false, root: "/tmp/traces", selector });
   });
 
+  test("parses an agent-readable sessions choose preview", () => {
+    const result = parseMarketplaceCommand([
+      "marketplace",
+      "seller",
+      "sessions",
+      "choose",
+      "--root",
+      "/tmp/traces",
+      "--json",
+    ]);
+
+    expect(result).toEqual({
+      command: "sessions-choose",
+      json: true,
+      mode: "preview",
+      root: "/tmp/traces",
+    });
+  });
+
+  test("parses hash-bound approvals for a sessions choose document", () => {
+    const secondSelector = "s-fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+    const firstHash = "a".repeat(64);
+    const secondHash = "b".repeat(64);
+    const result = parseMarketplaceCommand([
+      "marketplace",
+      "seller",
+      "sessions",
+      "choose",
+      "--root",
+      "/tmp/traces",
+      "--out",
+      "/tmp/selection.json",
+      "--approve",
+      `${selector}@${firstHash}`,
+      "--approve",
+      `${secondSelector}@${secondHash}`,
+    ]);
+
+    expect(result).toEqual({
+      command: "sessions-choose",
+      approvals: [
+        { selector, sha256: firstHash },
+        { selector: secondSelector, sha256: secondHash },
+      ],
+      mode: "write",
+      out: "/tmp/selection.json",
+      root: "/tmp/traces",
+    });
+  });
+
   test("parses interactive candidate bundle options with repeatable exclusions", () => {
     // Given: a local interactive bundle request with two pre-exclusions.
     const argumentsList = [

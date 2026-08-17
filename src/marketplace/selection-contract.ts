@@ -12,7 +12,7 @@ import type { FrozenTrace, SessionSummary } from "./session-contract"
 import { buildSessionListItem } from "./session-report"
 import { boundedRedactedString, harnessTraceDocumentSchema } from "../trajectory/adapters/contract"
 
-const maximumSelectionBytes = 1024 * 1024
+export const selectionDocumentMaximumBytes = 1024 * 1024
 
 const selectionTraceSchema = z
   .object({
@@ -115,11 +115,13 @@ export const selectionDocumentFromTraces = (root: string, traces: readonly Froze
 export const encodeSelectionDocument = (input: unknown): Buffer => {
   const parsed = selectionDocumentSchema.safeParse(input)
   if (!parsed.success) return invalid()
-  return Buffer.from(`${JSON.stringify({ ...parsed.data, traces: sortedTraces(parsed.data.traces) }, null, 2)}\n`, "utf8")
+  const encoded = Buffer.from(`${JSON.stringify({ ...parsed.data, traces: sortedTraces(parsed.data.traces) }, null, 2)}\n`, "utf8")
+  if (encoded.byteLength > selectionDocumentMaximumBytes) return invalid()
+  return encoded
 }
 
 export const parseSelectionDocument = (bytes: Buffer): SelectionDocument => {
-  if (bytes.byteLength <= 0 || bytes.byteLength > maximumSelectionBytes) return invalid()
+  if (bytes.byteLength <= 0 || bytes.byteLength > selectionDocumentMaximumBytes) return invalid()
   const input = parseAdmissionJson(bytes)
   if (input === undefined) return invalid()
   const parsed = selectionDocumentSchema.safeParse(input)
@@ -129,7 +131,7 @@ export const parseSelectionDocument = (bytes: Buffer): SelectionDocument => {
 
 export const readSelectionDocument = (path: string): SelectionDocument => {
   try {
-    return parseSelectionDocument(readFixtureFile(path, maximumSelectionBytes))
+    return parseSelectionDocument(readFixtureFile(path, selectionDocumentMaximumBytes))
   } catch (error) {
     if (error instanceof SelectionContractError || error instanceof FixtureReadError) {
       throw new MarketplaceError("invalid_bundle_request")

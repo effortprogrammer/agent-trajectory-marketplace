@@ -2,6 +2,7 @@ import { z } from "zod"
 
 export const datasetArchivePolicy = {
   maxTraces: 100,
+  maxTraceEvents: 65_536,
   maxTraceBytes: 64 * 1024 * 1024,
   maxArchiveBytes: 1024 * 1024 * 1024,
   maxTotalUncompressedBytes: 2048 * 1024 * 1024,

@@ -70,6 +70,42 @@ export const sanitizedArtifactDigest = (sourceBytes: Uint8Array): Readonly<{ byt
   return Object.freeze({ byteCount: bytes.byteLength, sha256: digest(bytes) });
 };
 
+export type ArtifactAdmission =
+  | Readonly<{ readonly status: "ready" }>
+  | Readonly<{
+    readonly status: "blocked";
+    readonly reason: "archive_policy" | "residual_secret" | "sanitization_failed";
+  }>;
+
+export const inspectTraceAdmission = (
+  trace: Pick<FrozenTrace, "bytes" | "eventCount">,
+): ArtifactAdmission => {
+  if (trace.eventCount > datasetArchivePolicy.maxTraceEvents) {
+    return Object.freeze({ reason: "archive_policy", status: "blocked" });
+  }
+  let bytes: Buffer;
+  try {
+    bytes = sanitizedTraceBytes(trace.bytes);
+  } catch (error) {
+    if (error instanceof MarketplaceError) {
+      return Object.freeze({ reason: "sanitization_failed", status: "blocked" });
+    }
+    throw error;
+  }
+  if (bytes.length === 0 || bytes.length > datasetArchivePolicy.maxTraceBytes) {
+    return Object.freeze({ reason: "archive_policy", status: "blocked" });
+  }
+  try {
+    assertNoResidualSecrets(bytes);
+  } catch (error) {
+    if (error instanceof ResidualSecretScanError) {
+      return Object.freeze({ reason: "residual_secret", status: "blocked" });
+    }
+    throw error;
+  }
+  return Object.freeze({ status: "ready" });
+};
+
 export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
   if (selected.length === 0) throw new MarketplaceError("empty_selection");
   if (selected.length > datasetArchivePolicy.maxTraces) {
@@ -92,6 +128,9 @@ export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
     const sourceHash = digest(sourceBytes);
     if (sourceBytes.length !== trace.byteCount || sourceHash !== trace.hash) {
       throw new MarketplaceError("trace_drift");
+    }
+    if (trace.eventCount > datasetArchivePolicy.maxTraceEvents) {
+      throw new MarketplaceError("invalid_bundle_request");
     }
     const bytes = sanitizedTraceBytes(sourceBytes);
     try {

@@ -29,7 +29,6 @@ const centralHeader = 0x02014b50
 const endHeader = 0x06054b50
 const endBytes = 22
 const maxEntryCount = datasetArchivePolicy.maxTraces + 1
-const maxTraceEvents = 65_536
 
 export { PublishBundleError } from "./publish-bundle-file"
 export type { PublishBundleReadOptions } from "./publish-bundle-file"
@@ -171,7 +170,7 @@ const assertTraceAdmission = (data: Buffer): void => {
   const input = parseAdmissionJson(data)
   if (input === undefined) return invalid()
   const parsed = harnessTraceDocumentSchema.safeParse(input)
-  if (!parsed.success || parsed.data.events.length > maxTraceEvents) return invalid()
+  if (!parsed.success || parsed.data.events.length > datasetArchivePolicy.maxTraceEvents) return invalid()
   const runtime = boundedRedactedString(parsed.data.runtime)
   if (runtime.truncated || runtime.text !== parsed.data.runtime) return invalid()
   for (const event of parsed.data.events) {
