@@ -21,6 +21,9 @@ const rootHelp = `Usage: trajectory <command>
 Commands:
   collect runtimes|sessions|export|watch|service|telemetry
   auth signup|login|verify|status|logout
+  marketplace seller sessions list
+  marketplace seller sessions inspect
+  marketplace seller sessions choose
   marketplace seller candidate bundle
   marketplace seller candidate publish
   marketplace seller candidate status

@@ -17,6 +17,7 @@ import {
   SelectionContractError,
   encodeSelectionDocument,
   readSelectionDocument,
+  selectionDocumentMaximumBytes,
   selectionDocumentFromTraces,
 } from "./selection-contract"
 import type { SelectionDocument } from "./selection-contract"
@@ -26,8 +27,6 @@ import { estimateZipBytes } from "./stored-zip"
 import { boundedRedactedString } from "../trajectory/adapters/contract"
 import type { CandidateBundleResult } from "./bundle-service"
 import { writeCandidateBundle } from "./bundle-service"
-
-const maximumSelectionBytes = 1024 * 1024
 
 const invalidSelection = (): never => {
   throw new SelectionContractError("invalid_selection")
@@ -72,7 +71,7 @@ export const selectionPreviewJson = (root: string, denyPolicyPath?: string): str
   const filtered = selectionDocumentFromTraces(snapshot.root, filteredTraces)
   assertSelectionBuildable(filtered)
   const encoded = encodeSelectionDocument(filtered)
-  if (encoded.byteLength > maximumSelectionBytes) return invalidSelection()
+  if (encoded.byteLength > selectionDocumentMaximumBytes) return invalidSelection()
   return encoded.toString("utf8")
 }
 
