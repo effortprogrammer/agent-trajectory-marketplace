@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ATM — Agent Trajectory Marketplace</title>
-  <meta name="description" content="Explore the live aggregate supply of credential-redacted coding-agent sessions and training tokens." />
+  <meta name="description" content="Turn credential-redacted coding-agent sessions into sellable data supply and revenue with ATM." />
   <meta name="theme-color" content="#030608" />
-  <link rel="canonical" href="https://marketplace.getatm.io/" />
+  <link rel="canonical" href="https://getatm.io/" />
   <link rel="preconnect" href="https://gateway.getatm.io" />
   <link rel="stylesheet" href="marketplace.css" />
 </head>
@@ -19,52 +19,63 @@
         <span class="brand-mark">ATM</span>
         <span class="brand-name">agent trajectory marketplace</span>
       </a>
-      <nav class="nav-links" aria-label="Marketplace navigation" data-authenticated-nav hidden>
+      <nav class="nav-links" aria-label="Marketplace navigation">
         <a href="#supply">Live supply</a>
         <a href="#provenance">How it grows</a>
       </nav>
       <div class="nav-account-actions">
-        <span class="live-badge is-auth-required" role="status" data-registry-status data-testid="aggregate-status">
+        <span class="live-badge" role="status" data-registry-status data-testid="aggregate-status" hidden>
           <span class="live-dot" aria-hidden="true"></span>
-          <span data-status-label>Sign in required</span>
+          <span data-status-label></span>
         </span>
-        <button class="nav-auth-button" type="button" data-auth-login data-testid="auth-login-button">Sign in</button>
+        <button class="nav-auth-button" type="button" data-auth-login data-auth-open data-testid="auth-login-button">Sign in</button>
         <button class="nav-auth-button nav-logout-button" type="button" data-auth-logout data-testid="auth-logout-button" hidden>Log out</button>
       </div>
     </div>
   </header>
 
   <main id="main-content" tabindex="-1" data-live-source>
-    <section class="auth-gate" data-auth-gate aria-labelledby="auth-title">
+    <dialog class="auth-gate" data-auth-gate aria-labelledby="auth-title" aria-describedby="auth-description">
       <div class="auth-gate-panel">
-        <p class="kicker">Marketplace access</p>
-        <h1 id="auth-title"><span>The aggregate is</span><em>for members.</em></h1>
-        <p class="auth-intro">Sign in or create an account to view the live aggregate supply.</p>
-        <div class="auth-mode-tabs" aria-label="Authentication mode">
-          <button class="auth-mode-tab is-selected" type="button" aria-pressed="true" data-auth-mode="login">Sign in</button>
-          <button class="auth-mode-tab" type="button" aria-pressed="false" data-auth-mode="signup">Create account</button>
+        <header class="auth-console-bar">
+          <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="auth-console-path">ATM / member-access</span>
+          <button class="auth-close-button" type="button" data-auth-close data-testid="auth-close-button" aria-label="Close sign-in dialog">
+            <span aria-hidden="true">×</span>
+          </button>
+        </header>
+        <div class="auth-panel-body">
+          <p class="kicker">Passwordless access</p>
+          <h1 id="auth-title"><span data-auth-title-prefix>Sign in to</span><em data-auth-title-accent>live supply.</em></h1>
+          <p class="auth-intro" id="auth-description" data-auth-description>We will email a six-digit code. No password and no browser-stored session.</p>
+          <div class="auth-mode-tabs" aria-label="Authentication mode" data-auth-mode-tabs>
+            <button class="auth-mode-tab is-selected" type="button" aria-pressed="true" data-auth-mode="login">Sign in</button>
+            <button class="auth-mode-tab" type="button" aria-pressed="false" data-auth-mode="signup">Create account</button>
+          </div>
+          <form class="auth-form" data-auth-request-form novalidate>
+            <label for="auth-email">Email address</label>
+            <input id="auth-email" name="email" type="email" autocomplete="email" inputmode="email" required data-auth-email />
+            <label class="auth-terms" data-auth-terms hidden>
+              <input type="checkbox" data-auth-accept-terms />
+              <span>I accept the Marketplace terms.</span>
+            </label>
+            <button class="signal-button" type="submit" data-auth-request-submit>
+              <span data-auth-request-label>Send one-time code</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+          <form class="auth-form" data-auth-verify-form hidden novalidate>
+            <p class="auth-verify-note"><span class="live-dot" aria-hidden="true"></span>Code sent to <strong data-auth-challenge-email></strong></p>
+            <label for="auth-code">Verification code</label>
+            <input id="auth-code" name="code" type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required data-auth-code />
+            <button class="signal-button" type="submit" data-auth-verify-submit>Verify and enter</button>
+            <button class="text-button" type="button" data-auth-restart>Use a different email</button>
+          </form>
+          <p class="auth-feedback" role="status" aria-live="polite" data-auth-feedback></p>
         </div>
-        <form class="auth-form" data-auth-request-form novalidate>
-          <label for="auth-email">Email address</label>
-          <input id="auth-email" name="email" type="email" autocomplete="email" inputmode="email" required data-auth-email />
-          <label class="auth-terms" data-auth-terms hidden>
-            <input type="checkbox" data-auth-accept-terms />
-            <span>I accept the Marketplace terms.</span>
-          </label>
-          <button class="signal-button" type="submit" data-auth-request-submit>Continue</button>
-        </form>
-        <form class="auth-form" data-auth-verify-form hidden novalidate>
-          <p class="auth-verify-note">Enter the six-digit code sent to <strong data-auth-challenge-email></strong>.</p>
-          <label for="auth-code">Verification code</label>
-          <input id="auth-code" name="code" type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required data-auth-code />
-          <button class="signal-button" type="submit" data-auth-verify-submit>Verify and enter</button>
-          <button class="text-button" type="button" data-auth-restart>Use a different email</button>
-        </form>
-        <p class="auth-feedback" role="status" aria-live="polite" data-auth-feedback></p>
       </div>
-    </section>
+    </dialog>
 
-    <div data-authenticated-content hidden>
     <section id="top" class="hero-cinematic">
       <div class="terrain-stage" aria-hidden="true">
         <div class="terrain-grid"></div>
@@ -78,40 +89,24 @@
       </div>
 
       <div class="content-shell hero-copy">
-        <p class="kicker">A living corpus for better agents</p>
-        <h1><span>Training data compounds.</span><em>Session by session.</em></h1>
-        <p class="hero-lead">Every accepted coding-agent session adds real requests, decisions, tool use, and recoveries to one credential-redacted training corpus.</p>
+        <p class="kicker">Monetize real agent work</p>
+        <h1><span>Turn agent sessions</span><em>into revenue.</em></h1>
+        <p class="hero-lead">Publish credential-redacted coding-agent sessions as sellable data supply. Every accepted session preserves real requests, decisions, tool use, and recoveries without exposing credentials.</p>
         <div class="hero-actions">
-          <a class="signal-button" href="#supply">
-            <span>View live supply</span>
+          <a class="signal-button" href="#install-command">
+            <span>Start selling sessions</span>
             <span aria-hidden="true">↓</span>
           </a>
-          <a class="text-action" href="#publish">Publish from the CLI <span aria-hidden="true">→</span></a>
+          <a class="text-action" href="#supply">View live supply <span aria-hidden="true">→</span></a>
         </div>
-      </div>
-
-      <div class="content-shell hero-console-wrap">
-        <article class="corpus-console js-tilt" data-tilt aria-label="Anatomy of an accepted trajectory session">
-          <div class="console-glare" aria-hidden="true"></div>
-          <div class="console-bar">
-            <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-            <span>ATM / accepted-session</span>
-            <span class="live-badge is-live">
-              <span class="live-dot" aria-hidden="true"></span>
-              Redacted
-            </span>
+        <div class="hero-install">
+          <div class="command-block">
+            <span aria-hidden="true">$</span>
+            <code id="install-command">curl -fsSL https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/latest/download/install-agent.sh | bash -s -- --dir atm</code>
+            <button class="copy-button" type="button" data-copy-target="install-command">Copy</button>
+            <span class="sr-only" aria-live="polite" data-copy-status></span>
           </div>
-          <div class="console-body">
-            <p><time>01</time><span>request</span><strong>intent preserved</strong><em>verbatim</em></p>
-            <p><time>02</time><span>decision</span><strong>reasoning linked</strong><em>ordered</em></p>
-            <p><time>03</time><span>tool use</span><strong>actions retained</strong><em>typed</em></p>
-            <p><time>04</time><span>recovery</span><strong>failure path indexed</strong><em>trainable</em></p>
-          </div>
-          <div class="console-footer">
-            <span>candidate admission</span>
-            <strong>0 credential residuals</strong>
-          </div>
-        </article>
+        </div>
       </div>
     </section>
 
@@ -127,7 +122,19 @@
           <p>The collection, privacy, and publishing information below remains available.</p>
         </div>
 
-        <div class="supply-layout reveal" data-reveal aria-busy="true" data-supply-region>
+        <div class="supply-locked reveal" data-supply-locked data-reveal>
+          <div>
+            <p class="kicker">Protected aggregate</p>
+            <h3>Live supply stays private until you sign in.</h3>
+            <p>The public Marketplace explains how the corpus works. Membership unlocks the current aggregate totals without exposing individual sessions.</p>
+          </div>
+          <button class="signal-button" type="button" data-auth-open data-testid="supply-sign-in-button">
+            <span>View member supply</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+
+        <div class="supply-layout reveal" data-authenticated-content data-reveal aria-busy="true" data-supply-region hidden>
           <article class="metric-card token-metric is-primary is-loading">
             <p class="metric-label">Tradeable training tokens</p>
             <span class="metric-skeleton" aria-hidden="true" data-metric-skeleton></span>
@@ -208,23 +215,9 @@
       </div>
     </section>
 
-    <section id="publish" class="publish-chapter" aria-labelledby="publish-title">
-      <div class="content-shell publish-stage reveal" data-reveal>
-        <p class="kicker">Add real behavior</p>
-        <h2 id="publish-title">Bring the sessions.<br /><em>Grow the corpus.</em></h2>
-        <p>Publish credential-redacted candidates with the Marketplace CLI. Every accepted session updates the live supply above.</p>
-        <div class="command-block">
-          <span aria-hidden="true">$</span>
-          <code id="publish-command">trajectory marketplace seller candidate publish</code>
-          <button class="copy-button" type="button" data-copy-target="publish-command">Copy</button>
-          <span class="sr-only" aria-live="polite" data-copy-status></span>
-        </div>
-      </div>
-    </section>
-    </div>
   </main>
 
-  <footer class="marketplace-footer" data-authenticated-content hidden>
+  <footer class="marketplace-footer">
     <div class="wide-shell footer-shell">
       <a class="brand" href="#top">
         <span class="brand-mark">ATM</span>
