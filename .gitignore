@@ -5,6 +5,7 @@ node_modules/
 .next/
 build/
 dist/
+.wrangler/
 
 # Environment
 .env

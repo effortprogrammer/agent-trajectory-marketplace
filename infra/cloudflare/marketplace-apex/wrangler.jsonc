@@ -1,0 +1,15 @@
+{
+  "name": "atm-marketplace-apex",
+  "main": "index.js",
+  "compatibility_date": "2026-07-15",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "getatm.io/*",
+      "zone_name": "getatm.io"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
