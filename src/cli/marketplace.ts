@@ -4,14 +4,23 @@ import { officialRegistryOrigin } from "../auth/official-origin";
 import { MarketplaceCliError, resolveMarketplaceCredential } from "./marketplace-credentials";
 import { printMarketplaceHelp } from "./marketplace-help";
 import { parseMarketplaceCommand } from "./marketplace-command";
+import {
+  renderFrozenSessionReport,
+  runMarketplaceSessionCommand,
+} from "./marketplace-session-command";
 import { datasetArchivePolicy } from "../marketplace/archive-contract";
-import { writeCandidateBundle } from "../marketplace/bundle-service";
+import {
+  writeCandidateBundle,
+  writeCandidateBundleWithPrivateReview,
+} from "../marketplace/bundle-service";
 import { MarketplaceError } from "../marketplace/error";
 import { readPublishBundle } from "../marketplace/publish-bundle";
 import { createPublishClient, validPublishCredential } from "../marketplace/publish-client";
 import { createStatusClient } from "../marketplace/status-client";
 import {
+  allowedCandidateTraces,
   approvedMembership,
+  candidateSearchJson,
   selectionPreviewJson,
   writeBundleFromSelection,
 } from "../marketplace/selection-upload";
@@ -19,78 +28,10 @@ import { createWalletBalanceClient } from "../marketplace/wallet-balance-client"
 import { runFrozenReview } from "../marketplace/review-loop";
 import type { ReviewIO } from "../marketplace/review-loop";
 import {
-  buildSessionListItem,
-  buildSessionReport,
-  renderSessionList,
-  renderSessionReport,
-} from "../marketplace/session-report";
-import { readExplicitTraces, resolveTraceSelector, scanSessionSnapshot } from "../marketplace/session-snapshot";
-import type { FrozenTrace, SessionReport, SessionWorkItem, ValidatedTrace } from "../marketplace/session-contract";
-import { harnessTraceDocumentSchema } from "../trajectory/adapters/contract";
-
-type CompactSessionReport = Readonly<{
-  readonly selector: SessionReport["selector"];
-  readonly runtime: string;
-  readonly requests: readonly SessionWorkItem[];
-  readonly actions: readonly SessionWorkItem[];
-  readonly results: readonly SessionWorkItem[];
-  readonly errors: readonly SessionWorkItem[];
-  readonly omittedItemCount: number;
-  readonly markers: SessionReport["markers"];
-}>;
-
-const parseFrozenTrace = (frozenTrace: FrozenTrace): ValidatedTrace => {
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(frozenTrace.bytes);
-  } catch (error) {
-    if (error instanceof TypeError) throw new MarketplaceError("invalid_trace");
-    throw error;
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch (error) {
-    if (error instanceof SyntaxError) throw new MarketplaceError("invalid_trace");
-    throw error;
-  }
-  const document = harnessTraceDocumentSchema.safeParse(value);
-  if (!document.success) throw new MarketplaceError("invalid_trace");
-  return { frozenTrace, document: document.data };
-};
-
-const compactReport = (report: SessionReport): CompactSessionReport => {
-  const requests: SessionWorkItem[] = [];
-  const actions: SessionWorkItem[] = [];
-  const results: SessionWorkItem[] = [];
-  const errors: SessionWorkItem[] = [];
-  for (const item of report.items) {
-    switch (item.kind) {
-      case "request":
-        requests.push(item);
-        break;
-      case "action":
-        actions.push(item);
-        break;
-      case "result":
-        results.push(item);
-        break;
-      case "error":
-        errors.push(item);
-        break;
-    }
-  }
-  return {
-    selector: report.selector,
-    runtime: report.runtime,
-    requests,
-    actions,
-    results,
-    errors,
-    omittedItemCount: report.omittedItemCount,
-    markers: report.markers,
-  };
-};
+  readExplicitTraces,
+  resolveTraceSelector,
+  scanSessionSnapshot,
+} from "../marketplace/session-snapshot";
 
 export const isMarketplaceInvocation = (argumentsList: readonly string[]): boolean => {
   const offset = argumentsList[0] === "trajectory" ? 1 : 0;
@@ -106,37 +47,35 @@ export const runMarketplaceCli = async (
   if (printMarketplaceHelp(marketplaceArguments)) return;
   const command = parseMarketplaceCommand(argumentsList);
   switch (command.command) {
-    case "sessions-list": {
-      const snapshot = scanSessionSnapshot(command.root);
-      const items = snapshot.traces.map((trace) => buildSessionListItem(parseFrozenTrace(trace)));
-      console.log(command.json ? JSON.stringify(items) : renderSessionList(items));
-      return;
-    }
-    case "sessions-inspect": {
-      const snapshot = scanSessionSnapshot(command.root);
-      const trace = resolveTraceSelector(snapshot, command.selector);
-      const report = buildSessionReport(parseFrozenTrace(trace));
-      console.log(command.json ? JSON.stringify(compactReport(report)) : renderSessionReport(report));
+    case "sessions-list":
+    case "sessions-inspect":
+    case "sessions-choose": {
+      runMarketplaceSessionCommand(command);
       return;
     }
     case "candidate-bundle": {
       if (command.mode === "preview") {
-        process.stdout.write(selectionPreviewJson(command.root));
+        process.stdout.write(selectionPreviewJson(command.root, command.denyPolicy));
         return;
       }
       if (command.mode === "selection") {
-        console.log(JSON.stringify(writeBundleFromSelection(command.root, command.selection, command.out)));
+        console.log(JSON.stringify(writeBundleFromSelection(command.root, command.selection, command.out, command.denyPolicy)));
         return;
       }
       if (command.mode === "explicit") {
         const snapshot = readExplicitTraces(command.root, command.traces);
-        console.log(JSON.stringify(writeCandidateBundle(snapshot, snapshot.traces, command.out)));
+        const selected = allowedCandidateTraces(snapshot.root, snapshot.traces, command.denyPolicy);
+        const result = command.review === undefined
+          ? writeCandidateBundle(snapshot, selected, command.out)
+          : writeCandidateBundleWithPrivateReview(snapshot, selected, command.out, command.review);
+        console.log(JSON.stringify(result));
         return;
       }
       if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
         throw new MarketplaceError("invalid_bundle_request");
       }
-      const snapshot = scanSessionSnapshot(command.root);
+      const scanned = scanSessionSnapshot(command.root);
+      const snapshot = { ...scanned, traces: allowedCandidateTraces(scanned.root, scanned.traces, command.denyPolicy) };
       for (const selector of command.excludes) resolveTraceSelector(snapshot, selector);
       const lineReader = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
       const lines = lineReader[Symbol.asyncIterator]();
@@ -172,7 +111,7 @@ export const runMarketplaceCli = async (
           traces: snapshot.traces,
           maximumIncludedByteCount: datasetArchivePolicy.maxTotalUncompressedBytes,
           io,
-          renderInspect: (trace) => renderSessionReport(buildSessionReport(parseFrozenTrace(trace))),
+          renderInspect: renderFrozenSessionReport,
           cancellation: {
             get aborted(): boolean {
               return aborted;
@@ -180,7 +119,10 @@ export const runMarketplaceCli = async (
           },
         });
         if (outcome.kind === "approved") {
-          console.log(JSON.stringify(writeCandidateBundle(snapshot, outcome.traces, command.out)));
+          const result = command.review === undefined
+            ? writeCandidateBundle(snapshot, outcome.traces, command.out)
+            : writeCandidateBundleWithPrivateReview(snapshot, outcome.traces, command.out, command.review);
+          console.log(JSON.stringify(result));
           return;
         }
         console.log(JSON.stringify({ status: outcome.kind }));
@@ -189,6 +131,10 @@ export const runMarketplaceCli = async (
         signal.removeEventListener("abort", cancel);
         lineReader.close();
       }
+    }
+    case "candidate-search": {
+      console.log(candidateSearchJson(command.root, command.query, command.denyPolicy));
+      return;
     }
     case "candidate-publish": {
       const server = officialRegistryOrigin;

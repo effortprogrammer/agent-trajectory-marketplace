@@ -47,6 +47,56 @@ describe("trajectory marketplace seller CLI grammar", () => {
     expect(result).toEqual({ command: "sessions-inspect", json: false, root: "/tmp/traces", selector });
   });
 
+  test("parses an agent-readable sessions choose preview", () => {
+    const result = parseMarketplaceCommand([
+      "marketplace",
+      "seller",
+      "sessions",
+      "choose",
+      "--root",
+      "/tmp/traces",
+      "--json",
+    ]);
+
+    expect(result).toEqual({
+      command: "sessions-choose",
+      json: true,
+      mode: "preview",
+      root: "/tmp/traces",
+    });
+  });
+
+  test("parses hash-bound approvals for a sessions choose document", () => {
+    const secondSelector = "s-fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+    const firstHash = "a".repeat(64);
+    const secondHash = "b".repeat(64);
+    const result = parseMarketplaceCommand([
+      "marketplace",
+      "seller",
+      "sessions",
+      "choose",
+      "--root",
+      "/tmp/traces",
+      "--out",
+      "/tmp/selection.json",
+      "--approve",
+      `${selector}@${firstHash}`,
+      "--approve",
+      `${secondSelector}@${secondHash}`,
+    ]);
+
+    expect(result).toEqual({
+      command: "sessions-choose",
+      approvals: [
+        { selector, sha256: firstHash },
+        { selector: secondSelector, sha256: secondHash },
+      ],
+      mode: "write",
+      out: "/tmp/selection.json",
+      root: "/tmp/traces",
+    });
+  });
+
   test("parses interactive candidate bundle options with repeatable exclusions", () => {
     // Given: a local interactive bundle request with two pre-exclusions.
     const argumentsList = [
@@ -110,6 +160,47 @@ describe("trajectory marketplace seller CLI grammar", () => {
     });
   });
 
+  test("parses candidate search with an optional bounded-policy file", () => {
+    // Given: a search query over a canonical absolute session root and policy file.
+    const argumentsList = [
+      "marketplace", "seller", "candidate", "search",
+      "--root", "/tmp/traces", "--query", "safe text", "--deny-policy", "/tmp/deny-policy.json",
+    ];
+
+    // When: the arguments cross the marketplace parser boundary.
+    const result = parseMarketplaceCommand(argumentsList);
+
+    // Then: dispatch receives a typed search request without accepting ambiguous flag forms.
+    expect(result).toEqual({
+      command: "candidate-search",
+      denyPolicy: "/tmp/deny-policy.json",
+      query: "safe text",
+      root: "/tmp/traces",
+    });
+  });
+
+  test("parses a paired private review cache and bounded policy only for candidate bundle review", () => {
+    // Given: an explicit bundle request with a private cache location and resolved policy revision.
+    const argumentsList = [
+      "marketplace", "seller", "candidate", "bundle",
+      "--root", "/tmp/traces", "--out", "/tmp/candidate.zip", "--trace", "one.atf.json",
+      "--review-cache", "/tmp/private-review-cache", "--review-policy", "policy-v1",
+    ];
+
+    // When: the options cross the CLI grammar boundary.
+    const result = parseMarketplaceCommand(argumentsList);
+
+    // Then: dispatch receives a complete, private review-cache configuration.
+    expect(result).toEqual({
+      command: "candidate-bundle",
+      mode: "explicit",
+      out: "/tmp/candidate.zip",
+      review: { cacheRoot: "/tmp/private-review-cache", policy: "policy-v1" },
+      root: "/tmp/traces",
+      traces: ["one.atf.json"],
+    });
+  });
+
   test("parses the only candidate publication spelling", () => {
     // Given: an explicit publish request with each supported option exactly once.
     const argumentsList = [
@@ -131,6 +222,9 @@ describe("trajectory marketplace seller CLI grammar", () => {
   test("returns invalid command for unsupported marketplace spellings and session syntax", () => {
     // Given: unknown flags, duplicate publication options, and malformed inspect requests.
     const invalidArguments = [
+      ["marketplace", "seller", "candidate", "search", "--root", "/tmp/traces"],
+      ["marketplace", "seller", "candidate", "search", "--root", "relative", "--query", "text"],
+      ["marketplace", "seller", "candidate", "search", "--root", "/tmp/traces", "--query", "text", "--query", "again"],
       ["marketplace", "seller", "candidate", "publish"],
       ["marketplace", "seller", "candidate", "publish", "--bundle", "relative.zip"],
       ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--server", "https://registry.example.test"],
@@ -159,6 +253,9 @@ describe("trajectory marketplace seller CLI grammar", () => {
       ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--trace", "one.atf.json", "--exclude", selector],
       ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--trace", "one.atf.json", "two.atf.json"],
       ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--exclude", "not-a-selector"],
+      ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--trace", "one.atf.json", "--review-cache", "/tmp/private-review-cache"],
+      ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--trace", "one.atf.json", "--review-policy", "policy-v1"],
+      ["marketplace", "seller", "candidate", "bundle", "--root", "/tmp/traces", "--out", "/tmp/a.zip", "--trace", "one.atf.json", "--review-cache", "/tmp/private-review-cache", "--review-policy", " policy-v1"],
     ];
 
     // When: each request crosses the marketplace parser boundary.

@@ -73,7 +73,18 @@ describe("marketplace sessions process boundary", () => {
     expect(result.exitCode).toBe(0);
     expect(decoder.decode(result.stderr)).toBe("");
     expect(decoder.decode(result.stdout)).toContain("Usage: trajectory <command>");
+    expect(decoder.decode(result.stdout)).toContain("marketplace seller sessions choose");
     expect(decoder.decode(result.stdout)).toContain("marketplace seller candidate status");
+  });
+
+  test("discovers every local session command from the sessions namespace help", () => {
+    const result = runCli(["marketplace", "seller", "sessions", "--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(decoder.decode(result.stderr)).toBe("");
+    for (const command of ["sessions list", "sessions inspect", "sessions choose"]) {
+      expect(decoder.decode(result.stdout)).toContain(command);
+    }
   });
 
   test("rejects excessively deep payloads as invalid_trace", () => {

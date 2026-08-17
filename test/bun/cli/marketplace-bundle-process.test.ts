@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -77,7 +77,7 @@ type PtyCommand = Readonly<{
 }>;
 
 const fixtureRoot = (): string => {
-  const root = mkdtempSync(join(tmpdir(), "trajectory-bundle-cli-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "trajectory-bundle-cli-")));
   roots.push(root);
   return root;
 };
@@ -348,6 +348,62 @@ describe("marketplace candidate bundle process boundary", () => {
     expect(decoder.decode(result.stdout)).toContain('{"status":"cancelled"}');
     expect(existsSync(output)).toBe(false);
     expect(Array.from(new Bun.Glob("*.trajectory-tmp-*").scanSync({ cwd: root }))).toEqual([]);
+  });
+
+  test("Given an explicit private review cache, When candidate bundle runs repeatedly across artifact and policy changes, Then the real CLI reports content-addressed hits and misses without archiving sidecars", () => {
+    // Given: a candidate workspace, a private sibling cache, and one explicit trace.
+    const parent = fixtureRoot();
+    const root = join(parent, "candidate-workspace");
+    const cacheRoot = join(parent, "private-review-cache");
+    mkdirSync(root);
+    const tracePath = join(root, "candidate.atf.json");
+    writeFileSync(tracePath, traceBytes("codex", "first"));
+    const runReviewedBundle = (outputName: string, policy: string) => runCli([
+      "marketplace", "seller", "candidate", "bundle",
+      "--root", root, "--out", join(root, outputName), "--trace", "candidate.atf.json",
+      "--review-cache", cacheRoot, "--review-policy", policy,
+    ]);
+
+    // When: the CLI reviews the same input twice, then sees an artifact and policy revision.
+    const first = runReviewedBundle("first.zip", "policy-v1");
+    const second = runReviewedBundle("second.zip", "policy-v1");
+    const firstAddress = (JSON.parse(decoder.decode(first.stdout)) as {
+      reviewSidecars: readonly { address: string; source: string }[];
+    }).reviewSidecars[0]?.address;
+    if (firstAddress === undefined) throw new Error("expected initial review sidecar address");
+    writeFileSync(join(cacheRoot, `${firstAddress}.json`), "{malformed");
+    const repaired = runReviewedBundle("repaired.zip", "policy-v1");
+    writeFileSync(tracePath, traceBytes("codex", "changed"));
+    const changedArtifact = runReviewedBundle("changed-artifact.zip", "policy-v1");
+    const changedPolicy = runReviewedBundle("changed-policy.zip", "policy-v2");
+
+    // Then: cache status is observable through the production command and each miss gets a new address.
+    expect([first, second, repaired, changedArtifact, changedPolicy].map((result) => result.exitCode)).toEqual([0, 0, 0, 0, 0]);
+    const outputs = [first, second, repaired, changedArtifact, changedPolicy].map((result) =>
+      JSON.parse(decoder.decode(result.stdout)) as { reviewSidecars: readonly { address: string; source: string }[] },
+    );
+    const firstSidecar = outputs[0]?.reviewSidecars[0];
+    const secondSidecar = outputs[1]?.reviewSidecars[0];
+    const repairedSidecar = outputs[2]?.reviewSidecars[0];
+    const artifactSidecar = outputs[3]?.reviewSidecars[0];
+    const policySidecar = outputs[4]?.reviewSidecars[0];
+    expect(firstSidecar).toMatchObject({ source: "reviewed" });
+    expect(secondSidecar).toEqual({ address: firstSidecar?.address, source: "cache" });
+    expect(repairedSidecar).toEqual({ address: firstSidecar?.address, source: "reviewed" });
+    expect(artifactSidecar).toMatchObject({ source: "reviewed" });
+    expect(policySidecar).toMatchObject({ source: "reviewed" });
+    expect(artifactSidecar?.address).not.toBe(firstSidecar?.address);
+    expect(policySidecar?.address).not.toBe(artifactSidecar?.address);
+    expect(Array.from(new Bun.Glob("*.json").scanSync({ cwd: cacheRoot }))).toHaveLength(3);
+
+    // And: the candidate archive contains only the manifest and trace, never private sidecars.
+    const archive = join(root, "changed-policy.zip");
+    const entries = Bun.spawnSync(["unzip", "-Z1", archive], { stdout: "pipe" });
+    expect(entries.exitCode).toBe(0);
+    expect(decoder.decode(entries.stdout).trim().split("\n")).toEqual([
+      "dataset-manifest.json",
+      `traces/${selectorFor("candidate.atf.json")}.atf.json`,
+    ].toSorted());
   });
 
   test("Given an unresponsive child, When the PTY deadline expires, Then it is killed and reaped", () => {

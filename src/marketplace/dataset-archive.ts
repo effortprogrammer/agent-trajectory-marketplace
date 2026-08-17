@@ -7,6 +7,7 @@ import {
   encodeDatasetManifest,
 } from "./archive-contract";
 import { MarketplaceError } from "./error";
+import { ResidualSecretScanError, assertNoResidualSecrets } from "./residual-secret-scan";
 import type { FrozenTrace } from "./session-contract";
 import { StoredZipError, writeDatasetZip } from "./stored-zip";
 import type { StoredZipEntry } from "./stored-zip";
@@ -19,7 +20,7 @@ import {
 const digest = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 
-const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
+export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
   let value: unknown;
   try {
     const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -52,6 +53,9 @@ const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
   });
   const sanitized = harnessTraceDocumentSchema.safeParse({
     runtime: boundedRedactedString(parsed.data.runtime).text,
+    ...(parsed.data.runtimeAttribution === undefined
+      ? {}
+      : { runtimeAttribution: parsed.data.runtimeAttribution }),
     status: parsed.data.status,
     ...(parsed.data.formatVersion === undefined ? {} : { formatVersion: parsed.data.formatVersion }),
     eventCount: parsed.data.eventCount,
@@ -62,8 +66,44 @@ const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
 };
 
 export const sanitizedArtifactDigest = (sourceBytes: Uint8Array): Readonly<{ byteCount: number; sha256: string }> => {
-  const bytes = sanitizedTraceBytes(Buffer.from(sourceBytes));
+  const bytes = sanitizedTraceBytes(sourceBytes);
   return Object.freeze({ byteCount: bytes.byteLength, sha256: digest(bytes) });
+};
+
+export type ArtifactAdmission =
+  | Readonly<{ readonly status: "ready" }>
+  | Readonly<{
+    readonly status: "blocked";
+    readonly reason: "archive_policy" | "residual_secret" | "sanitization_failed";
+  }>;
+
+export const inspectTraceAdmission = (
+  trace: Pick<FrozenTrace, "bytes" | "eventCount">,
+): ArtifactAdmission => {
+  if (trace.eventCount > datasetArchivePolicy.maxTraceEvents) {
+    return Object.freeze({ reason: "archive_policy", status: "blocked" });
+  }
+  let bytes: Buffer;
+  try {
+    bytes = sanitizedTraceBytes(trace.bytes);
+  } catch (error) {
+    if (error instanceof MarketplaceError) {
+      return Object.freeze({ reason: "sanitization_failed", status: "blocked" });
+    }
+    throw error;
+  }
+  if (bytes.length === 0 || bytes.length > datasetArchivePolicy.maxTraceBytes) {
+    return Object.freeze({ reason: "archive_policy", status: "blocked" });
+  }
+  try {
+    assertNoResidualSecrets(bytes);
+  } catch (error) {
+    if (error instanceof ResidualSecretScanError) {
+      return Object.freeze({ reason: "residual_secret", status: "blocked" });
+    }
+    throw error;
+  }
+  return Object.freeze({ status: "ready" });
 };
 
 export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
@@ -89,7 +129,18 @@ export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
     if (sourceBytes.length !== trace.byteCount || sourceHash !== trace.hash) {
       throw new MarketplaceError("trace_drift");
     }
+    if (trace.eventCount > datasetArchivePolicy.maxTraceEvents) {
+      throw new MarketplaceError("invalid_bundle_request");
+    }
     const bytes = sanitizedTraceBytes(sourceBytes);
+    try {
+      assertNoResidualSecrets(bytes);
+    } catch (error) {
+      if (error instanceof ResidualSecretScanError) {
+        throw new MarketplaceError("invalid_bundle_request");
+      }
+      throw error;
+    }
     const sha256 = digest(bytes);
     if (bytes.length === 0 || bytes.length > datasetArchivePolicy.maxTraceBytes) {
       throw new MarketplaceError("invalid_bundle_request");

@@ -1,6 +1,24 @@
 // Local preview server for the static marketplace UI. Run: bun web/server.ts
 const root = new URL(".", import.meta.url).pathname;
 const port = Number(Bun.env.PORT ?? 4173);
+const securityHeaders = {
+  "content-security-policy": [
+    "default-src 'self'",
+    "base-uri 'none'",
+    "connect-src https://gateway.getatm.io",
+    "font-src 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "img-src 'self'",
+    "object-src 'none'",
+    "script-src 'self'",
+    "style-src 'self'",
+  ].join("; "),
+  "permissions-policy": "camera=(), geolocation=(), microphone=()",
+  "referrer-policy": "no-referrer",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+} as const;
 
 const assets: Readonly<Record<string, Readonly<{ file: string; type: string }>>> = {
   "/": { file: "index.html", type: "text/html; charset=utf-8" },
@@ -11,13 +29,19 @@ const assets: Readonly<Record<string, Readonly<{ file: string; type: string }>>>
 
 const compatibilityRedirect = (url: URL): Response | undefined => {
   if (url.pathname === "/detail.html") {
-    return new Response(null, { headers: { location: "/index.html" }, status: 302 });
+    return new Response(null, {
+      headers: { ...securityHeaders, location: "/index.html" },
+      status: 302,
+    });
   }
 
   const legacyView = url.searchParams.get("view") === "world";
   if (!legacyView) return undefined;
 
-  return new Response(null, { headers: { location: url.pathname }, status: 302 });
+  return new Response(null, {
+    headers: { ...securityHeaders, location: url.pathname },
+    status: 302,
+  });
 };
 
 Bun.serve({
@@ -25,15 +49,27 @@ Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     const { pathname } = url;
-    if (pathname === "/favicon.ico") return new Response(null, { status: 204 });
+    if (pathname === "/favicon.ico") {
+      return new Response(null, { headers: securityHeaders, status: 204 });
+    }
     const redirect = compatibilityRedirect(url);
     if (redirect) return redirect;
 
     const asset = assets[pathname];
-    if (asset === undefined) return new Response("not found", { status: 404 });
+    if (asset === undefined) {
+      return new Response("not found", { headers: securityHeaders, status: 404 });
+    }
     const file = Bun.file(`${root}${asset.file}`);
-    if (!(await file.exists())) return new Response("not found", { status: 404 });
-    return new Response(file, { headers: { "content-type": asset.type } });
+    if (!(await file.exists())) {
+      return new Response("not found", { headers: securityHeaders, status: 404 });
+    }
+    return new Response(file, {
+      headers: {
+        ...securityHeaders,
+        "cache-control": asset.file === "index.html" ? "no-store" : "public, max-age=300",
+        "content-type": asset.type,
+      },
+    });
   },
 });
 

@@ -13,6 +13,8 @@ export const marketplaceErrorCodes = [
   "invalid_review_command",
   "output_exists",
   "invalid_bundle_request",
+  "invalid_deny_policy",
+  "denied_selection",
   "snapshot_too_large",
   "unsupported_platform",
 ] as const;

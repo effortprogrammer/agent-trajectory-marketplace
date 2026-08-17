@@ -63,6 +63,12 @@ test("serves session-only public pages without World UI artifacts", async () => 
     const missing = await fetch(`${baseUrl}/not-found`)
 
     expect(root.status).toBe(200)
+    expect(root.headers.get("cache-control")).toBe("no-store")
+    expect(root.headers.get("content-security-policy")).toContain("default-src 'self'")
+    expect(root.headers.get("content-security-policy")).toContain("frame-ancestors 'none'")
+    expect(root.headers.get("x-content-type-options")).toBe("nosniff")
+    expect(root.headers.get("x-frame-options")).toBe("DENY")
+    expect(root.headers.get("referrer-policy")).toBe("no-referrer")
     expect(detail.status).toBe(302)
     expect(detail.headers.get("location")).toBe("/index.html")
     expect(root.headers.get("content-type")).toBe("text/html; charset=utf-8")

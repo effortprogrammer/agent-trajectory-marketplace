@@ -73,11 +73,18 @@ const writeAllRuntimeFixtures = (home: string, xdgDataHome: string): void => {
   opencode.close();
 
   for (const [configDir, sessionId] of [
+    [".pi", "pi-native"],
     [".omp", "oh-my-pi-native"],
     [".senpi", "senpi-native"],
     [".gjc", "gajae-code-native"],
   ] as const) {
-    const scopeDir = join(home, configDir, "agent", "sessions", "-repo");
+    const scopeDir = join(
+      home,
+      configDir,
+      "agent",
+      "sessions",
+      configDir === ".pi" ? "--repo--" : "-repo",
+    );
     mkdirSync(scopeDir, { recursive: true });
     const path = join(scopeDir, `${sessionId}.jsonl`);
     writeFileSync(path, [
@@ -98,7 +105,7 @@ describe("native multi-runtime collect watch", () => {
 
     // When: one sweep resolves the empty runtime list to every registered adapter.
     const summary = runCollectSweep(
-      { outDir, runtimes: [], settleSeconds: 0 },
+      { declareRuntime: "pi", outDir, runtimes: [], settleSeconds: 0 },
       new Date("2026-07-02T00:00:00.000Z"),
       {
         "claude-code": join(home, ".claude", "projects"),
@@ -108,17 +115,18 @@ describe("native multi-runtime collect watch", () => {
         "oh-my-pi": join(home, ".omp", "agent", "sessions"),
         openclaw: join(home, ".openclaw"),
         opencode: join(xdgDataHome, "opencode"),
+        pi: join(home, ".pi", "agent", "sessions"),
         senpi: join(home, ".senpi", "agent", "sessions"),
       },
     );
 
     // Then: each runtime exports its native session with valid Bun collector metadata.
     expect(resolveCollectWatchRuntimes([])).toEqual([
-      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "senpi",
+      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "pi", "senpi",
     ]);
-    expect(summary).toMatchObject({ exported: 8, failed: 0, missingSources: [] });
+    expect(summary).toMatchObject({ exported: 9, failed: 0, missingSources: [] });
     expect(summary.exportedSessions.map(({ runtime }) => runtime).sort()).toEqual([
-      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "senpi",
+      "claude-code", "codex", "gajae-code", "hermes", "oh-my-pi", "openclaw", "opencode", "pi", "senpi",
     ]);
     for (const exported of summary.exportedSessions) {
       const trace = JSON.parse(readFileSync(exported.exportPath, "utf8"));
@@ -166,11 +174,11 @@ describe("native multi-runtime collect watch", () => {
     const first = runCollectSweep(config, new Date("2026-07-02T00:00:00.000Z"));
     const second = runCollectSweep(config, new Date("2026-07-02T00:00:01.000Z"));
 
-    // Then: valid work survives, failures are typed, and unchanged failed fingerprints are not retried.
+    // Then: valid work survives, failures are typed, and failed fingerprints remain retryable.
     expect(first).toMatchObject({ exported: 1, failed: 1 });
     expect(first.failedSessions[0]).toMatchObject({ runtime: "claude-code", sessionId: "broken", errorCode: "invalid_session" });
     expect(first.missingSources).toEqual([]);
-    expect(second).toMatchObject({ exported: 0, failed: 0, unchanged: 2 });
+    expect(second).toMatchObject({ exported: 0, failed: 1, unchanged: 1 });
     expect(() => JSON.parse(readFileSync(join(outDir, collectWatchStateFileName), "utf8"))).not.toThrow();
   });
 

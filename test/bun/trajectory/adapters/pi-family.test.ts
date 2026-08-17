@@ -7,6 +7,7 @@ import { TrajectoryAdapterError } from "../../../../src/trajectory/adapters/cont
 import {
   gajaeCodeAdapter,
   ohMyPiAdapter,
+  piAdapter,
   piFamilySessionsDir,
   piFamilyVariants,
   senpiAdapter,
@@ -93,16 +94,33 @@ const baseRecords = [
 ];
 
 describe("pi-family adapters", () => {
-  test("registers three distinct runtimes with rebranded source dirs", () => {
+  test("registers upstream Pi and three fork runtimes with native source dirs", () => {
+    expect(piAdapter.runtime).toBe("pi");
     expect(ohMyPiAdapter.runtime).toBe("oh-my-pi");
     expect(senpiAdapter.runtime).toBe("senpi");
     expect(gajaeCodeAdapter.runtime).toBe("gajae-code");
     const dirs = piFamilyVariants.map((variant) => piFamilySessionsDir(variant, "/home/seller"));
     expect(dirs).toEqual([
+      "/home/seller/.pi/agent/sessions",
       "/home/seller/.omp/agent/sessions",
       "/home/seller/.senpi/agent/sessions",
       "/home/seller/.gjc/agent/sessions",
     ]);
+  });
+
+  test("converts an upstream Pi session under the pi runtime namespace", () => {
+    const root = createRoot();
+    const sessionPath = writeSessionFile(
+      join(root, ".pi", "agent", "sessions", "--work-demo--"),
+      "2026-07-20_sess0001.jsonl",
+      baseRecords,
+    );
+    const trace = piAdapter.convertSession({ sessionPath, runtimeAttribution: "operator_declared" });
+
+    expect(trace.runtime).toBe("pi");
+    expect(trace.events[0]?.sourceEventId).toBe("pi:session:sess0001");
+    expect(trace.events[1]?.sourceEventId).toBe("pi:entry:e1");
+    expect(trace.events[3]?.sourceEventId).toBe("pi:tool:call-1");
   });
 
   test("converts an oh-my-pi session with turn, llm_call, tool linkage, and usage", () => {

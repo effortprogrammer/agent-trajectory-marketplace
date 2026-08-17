@@ -34,13 +34,17 @@ export const parsePiSessionFile = (sessionPath: string): PiSessionFile => {
   const rawRecordTypes = new Set<string>();
   let patchRecordCount = 0;
 
-  for (const rawLine of readFileSync(sessionPath, "utf8").split("\n")) {
+  const physicalLines = readFileSync(sessionPath, "utf8").split("\n");
+  for (const [lineIndex, rawLine] of physicalLines.entries()) {
     if (rawLine.trim().length === 0) continue;
     let value: unknown;
     try {
       value = JSON.parse(rawLine);
     } catch {
-      // Tolerate torn tail lines from live sessions; everything else must parse.
+      // Live writers can leave only the final physical record torn.
+      if (lineIndex !== physicalLines.length - 1) {
+        throw new TrajectoryAdapterError("invalid_session", `invalid_session: ${sessionPath}`);
+      }
       continue;
     }
     if (value === null || typeof value !== "object") continue;

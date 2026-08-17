@@ -1,12 +1,21 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { officialGatewayProcessArguments, officialGatewayProcessEnvironment } from "../fixtures/gateway-process";
 
 const roots: string[] = [];
 const decoder = new TextDecoder();
+const residualSecret = `github_pat_${"a".repeat(82)}`;
 
 const fixtureRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "trajectory-selection-cli-"));
@@ -22,10 +31,32 @@ const traceBytes = (runtime: string, request: string): Uint8Array => new TextEnc
   events: [{ kind: "function_enter", name: "turn", payload: { role: "user", content: request } }],
 }));
 
+const residualSecretTraceBytes = (): Uint8Array => new TextEncoder().encode(JSON.stringify({
+  runtime: "senpi",
+  status: "collected",
+  formatVersion: 2,
+  eventCount: 1,
+  events: [{
+    kind: "function_enter",
+    name: "turn",
+    payload: { content: residualSecret, role: "user" },
+  }],
+}));
+
+const overEventCapTraceBytes = (): Uint8Array => new TextEncoder().encode(JSON.stringify({
+  runtime: "codex",
+  status: "collected",
+  formatVersion: 2,
+  eventCount: 65_537,
+  events: Array.from({ length: 65_537 }, () => ({ kind: "message", name: "assistant" })),
+}));
+
 const selectorFor = (relativePath: string): string =>
   `s-${createHash("sha256").update(relativePath).digest("hex")}`;
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+const approvalFor = (relativePath: string, bytes: Uint8Array): string =>
+  `${selectorFor(relativePath)}@${sha256(bytes)}`;
 
 const runCli = (argumentsList: readonly string[], environment?: Record<string, string | undefined>) => {
   const serverIndex = argumentsList.indexOf("--server");
@@ -109,6 +140,377 @@ describe("marketplace selection process boundary", () => {
       expect(actual.earliestTimestamp).toBe("unknown");
     }
     expect(existsSync(join(root, "candidate.zip"))).toBe(false);
+  });
+
+  test("Given collected sessions, When choose previews, Then topics and safe admission status are agent-readable", () => {
+    const root = fixtureRoot();
+    writeSessions(root);
+    writeFileSync(join(root, "blocked.atf.json"), residualSecretTraceBytes());
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--json",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(decoder.decode(result.stderr)).toBe("");
+    const preview = JSON.parse(decoder.decode(result.stdout));
+    expect(preview.root).toBe(realpathSync(root));
+    expect(preview.schemaVersion).toBe(1);
+    expect(preview.sessions).toHaveLength(3);
+    expect(preview.sessions.find((item: { topic: string }) => item.topic === "first")?.admission).toEqual({
+      status: "ready",
+    });
+    expect(preview.sessions.find((item: { topic: string }) => item.topic === "first")?.approval).toBe(
+      approvalFor("a.atf.json", traceBytes("codex", "first")),
+    );
+    expect(preview.sessions.find((item: { topic: string }) => item.topic === "second")?.admission).toEqual({
+      status: "ready",
+    });
+    const blocked = preview.sessions.find(
+      (item: { admission: { status: string } }) => item.admission.status === "blocked",
+    );
+    expect(blocked?.topic).toBe("Content withheld: residual_secret");
+    expect(blocked?.admission).toEqual({
+      reason: "residual_secret",
+      status: "blocked",
+    });
+    expect(blocked?.summary.requests).toEqual([]);
+    expect(blocked?.summary.touched).toEqual([]);
+    expect(blocked?.summary.errors).toEqual([]);
+    expect(decoder.decode(result.stdout)).not.toContain(residualSecret);
+  });
+
+  test("Given a residual secret in metadata, When choose previews, Then all source text is withheld", () => {
+    const root = fixtureRoot();
+    writeFileSync(
+      join(root, "blocked-runtime.atf.json"),
+      traceBytes(residualSecret, "otherwise safe request"),
+    );
+
+    const json = runCli([
+      "marketplace", "seller", "sessions", "choose", "--root", root, "--json",
+    ]);
+    const session = JSON.parse(decoder.decode(json.stdout)).sessions[0];
+    expect(json.exitCode).toBe(0);
+    expect(session.admission).toEqual({ reason: "residual_secret", status: "blocked" });
+    expect(session.runtime).toBe("withheld");
+    expect(session.earliestTimestamp).toBe("withheld");
+    expect(decoder.decode(json.stdout)).not.toContain(residualSecret);
+
+    const human = runCli([
+      "marketplace", "seller", "sessions", "choose", "--root", root,
+    ]);
+    expect(human.exitCode).toBe(0);
+    expect(decoder.decode(human.stdout)).not.toContain(residualSecret);
+  });
+
+  test("Given approved selectors, When choose writes, Then only those sessions enter the bound selection", () => {
+    const root = fixtureRoot();
+    writeSessions(root);
+    const selectionPath = join(root, "selection.json");
+    const bundlePath = join(root, "candidate.zip");
+    const { second } = writeSessions(root);
+    const selected = selectorFor("b.atf.json");
+
+    const chosen = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      "--approve", approvalFor("b.atf.json", second),
+    ]);
+    expect(chosen.exitCode).toBe(0);
+    expect(decoder.decode(chosen.stderr)).toBe("");
+    expect(JSON.parse(readFileSync(selectionPath, "utf8")).traces.map(
+      (trace: { selector: string }) => trace.selector,
+    )).toEqual([selected]);
+
+    const bundled = runCli([
+      "marketplace", "seller", "candidate", "bundle",
+      "--root", root, "--selection", selectionPath, "--out", bundlePath,
+    ]);
+    expect(bundled.exitCode).toBe(0);
+    expect(JSON.parse(decoder.decode(bundled.stdout))).toMatchObject({ traceCount: 1 });
+    expect(existsSync(bundlePath)).toBe(true);
+  });
+
+  test("Given a blocked selector, When choose writes, Then no selection document is created", () => {
+    const root = fixtureRoot();
+    const blockedBytes = residualSecretTraceBytes();
+    writeFileSync(join(root, "blocked.atf.json"), blockedBytes);
+    const selectionPath = join(root, "selection.json");
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      "--approve", approvalFor("blocked.atf.json", blockedBytes),
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toContain("denied_selection");
+    expect(existsSync(selectionPath)).toBe(false);
+  });
+
+  test("Given ready and blocked sessions, When choose renders for a human, Then both states are visible", () => {
+    const root = fixtureRoot();
+    const { first } = writeSessions(root);
+    writeFileSync(join(root, "blocked.atf.json"), residualSecretTraceBytes());
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose", "--root", root,
+    ]);
+
+    const output = decoder.decode(result.stdout);
+    expect(result.exitCode).toBe(0);
+    expect(decoder.decode(result.stderr)).toBe("");
+    expect(output).toContain(`[ready] ${selectorFor("a.atf.json")}`);
+    expect(output).toContain(`[blocked:residual_secret] ${selectorFor("blocked.atf.json")}`);
+    expect(output).toContain("first");
+    expect(output).not.toContain(residualSecret);
+  });
+
+  test("Given terminal control characters, When choose renders for a human, Then metadata is escaped", () => {
+    const root = fixtureRoot();
+    writeFileSync(join(root, "control.atf.json"), traceBytes("codex\u001b[31m", "safe request"));
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose", "--root", root,
+    ]);
+
+    const output = decoder.decode(result.stdout);
+    expect(result.exitCode).toBe(0);
+    expect(output).not.toContain("\u001b");
+    expect(output).toContain("[control:U+001B]");
+  });
+
+  test("Given duplicate selectors, When choose writes, Then it fails before creating output", () => {
+    const root = fixtureRoot();
+    const { first } = writeSessions(root);
+    const selectionPath = join(root, "selection.json");
+    const selected = selectorFor("a.atf.json");
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      "--approve", approvalFor("a.atf.json", first),
+      "--approve", approvalFor("a.atf.json", first),
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toContain("duplicate_trace");
+    expect(existsSync(selectionPath)).toBe(false);
+  });
+
+  test("Given duplicate source content, When choose writes, Then it fails before downstream bundle admission", () => {
+    const root = fixtureRoot();
+    const bytes = traceBytes("codex", "same content");
+    writeFileSync(join(root, "a.atf.json"), bytes);
+    writeFileSync(join(root, "b.atf.json"), bytes);
+    const selectionPath = join(root, "selection.json");
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      "--approve", approvalFor("a.atf.json", bytes),
+      "--approve", approvalFor("b.atf.json", bytes),
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toContain("duplicate_trace");
+    expect(existsSync(selectionPath)).toBe(false);
+  });
+
+  test("Given distinct sources with duplicate sanitized artifacts, When choose writes, Then it fails locally", () => {
+    const root = fixtureRoot();
+    const compact = traceBytes("codex", "same semantic content");
+    const formatted = new TextEncoder().encode(
+      JSON.stringify(JSON.parse(decoder.decode(compact)), null, 2),
+    );
+    expect(sha256(compact)).not.toBe(sha256(formatted));
+    writeFileSync(join(root, "compact.atf.json"), compact);
+    writeFileSync(join(root, "formatted.atf.json"), formatted);
+    const selectionPath = join(root, "selection.json");
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      "--approve", approvalFor("compact.atf.json", compact),
+      "--approve", approvalFor("formatted.atf.json", formatted),
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toContain("duplicate_trace");
+    expect(existsSync(selectionPath)).toBe(false);
+  });
+
+  test("Given content changed after preview, When choose writes, Then the stale approval fails", () => {
+    const root = fixtureRoot();
+    const original = traceBytes("codex", "original");
+    const changed = traceBytes("codex", "changed");
+    writeFileSync(join(root, "session.atf.json"), original);
+    const approval = approvalFor("session.atf.json", original);
+    writeFileSync(join(root, "session.atf.json"), changed);
+    const selectionPath = join(root, "selection.json");
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath, "--approve", approval,
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toContain("trace_drift");
+    expect(existsSync(selectionPath)).toBe(false);
+  });
+
+  test("Given a trace above publish event limits, When choose previews and writes, Then it is blocked locally", () => {
+    const root = fixtureRoot();
+    const bytes = overEventCapTraceBytes();
+    writeFileSync(join(root, "too-many-events.atf.json"), bytes);
+    const preview = runCli([
+      "marketplace", "seller", "sessions", "choose", "--root", root, "--json",
+    ]);
+
+    expect(preview.exitCode).toBe(0);
+    expect(JSON.parse(decoder.decode(preview.stdout)).sessions[0].admission).toEqual({
+      reason: "archive_policy",
+      status: "blocked",
+    });
+    const selectionPath = join(root, "selection.json");
+    const write = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      "--approve", approvalFor("too-many-events.atf.json", bytes),
+    ]);
+    expect(write.exitCode).toBe(1);
+    expect(decoder.decode(write.stderr)).toContain("denied_selection");
+    expect(existsSync(selectionPath)).toBe(false);
+  });
+
+  test("Given a missing selector, When choose writes, Then it fails before creating output", () => {
+    const root = fixtureRoot();
+    writeSessions(root);
+    const selectionPath = join(root, "selection.json");
+    const missingBytes = traceBytes("codex", "missing");
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      "--approve", approvalFor("missing.atf.json", missingBytes),
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toContain("missing_selector");
+    expect(existsSync(selectionPath)).toBe(false);
+  });
+
+  test("Given an existing output, When choose writes, Then it preserves the file without temp residue", () => {
+    const root = fixtureRoot();
+    const { first } = writeSessions(root);
+    const selectionPath = join(root, "selection.json");
+    writeFileSync(selectionPath, "original");
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      "--approve", approvalFor("a.atf.json", first),
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toContain("output_exists");
+    expect(readFileSync(selectionPath, "utf8")).toBe("original");
+    expect(readdirSync(root).filter((name) => name.includes(".trajectory-tmp-"))).toEqual([]);
+  });
+
+  test("Given too many approved selectors, When choose writes, Then it fails with a stable local error", () => {
+    const root = fixtureRoot();
+    const approvals: string[] = [];
+    for (let index = 0; index < 101; index += 1) {
+      const relativePath = `session-${index}.atf.json`;
+      const bytes = traceBytes("codex", `request-${index}`);
+      writeFileSync(join(root, relativePath), bytes);
+      approvals.push(approvalFor(relativePath, bytes));
+    }
+    const selectionPath = join(root, "selection.json");
+    const argumentsList = [
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      ...approvals.flatMap((approval) => ["--approve", approval]),
+    ];
+
+    const result = runCli(argumentsList);
+
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toContain("invalid_bundle_request");
+    expect(existsSync(selectionPath)).toBe(false);
+  });
+
+  test("Given more sessions than one selection allows, When choose previews, Then it fails locally", () => {
+    const root = fixtureRoot();
+    for (let index = 0; index < 101; index += 1) {
+      writeFileSync(
+        join(root, `session-${index}.atf.json`),
+        traceBytes("codex", `request-${index}`),
+      );
+    }
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose", "--root", root, "--json",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toContain("invalid_bundle_request");
+  });
+
+  test("Given a preview above the document byte cap, When choose previews, Then it fails locally", () => {
+    const root = fixtureRoot();
+    const longRuntime = "runtime-".repeat(2_048);
+    for (let index = 0; index < 100; index += 1) {
+      writeFileSync(
+        join(root, `session-${index}.atf.json`),
+        traceBytes(longRuntime, `request-${index}`),
+      );
+    }
+
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose", "--root", root, "--json",
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toContain("invalid_bundle_request");
+    const selectionPath = join(root, "selection.json");
+    const approvals = Array.from({ length: 100 }, (_, index) => {
+      const relativePath = `session-${index}.atf.json`;
+      return approvalFor(relativePath, traceBytes(longRuntime, `request-${index}`));
+    });
+    const write = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      ...approvals.flatMap((approval) => ["--approve", approval]),
+    ]);
+    expect(write.exitCode).toBe(1);
+    expect(decoder.decode(write.stderr)).toContain("invalid_bundle_request");
+    expect(existsSync(selectionPath)).toBe(false);
+  });
+
+  test("Given a seller asks for choose help, Then the local approval workflow is discoverable", () => {
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose", "--help",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(decoder.decode(result.stderr)).toBe("");
+    expect(decoder.decode(result.stdout)).toContain("sessions choose");
+    expect(decoder.decode(result.stdout)).toStartWith(
+      "Usage: trajectory marketplace seller sessions choose",
+    );
+    expect(decoder.decode(result.stdout)).toContain("--approve");
+    for (const action of ["list", "inspect"]) {
+      const related = runCli([
+        "marketplace", "seller", "sessions", action, "--help",
+      ]);
+      expect(related.exitCode).toBe(0);
+      expect(decoder.decode(related.stderr)).toBe("");
+      expect(decoder.decode(related.stdout)).toContain(`sessions ${action}`);
+    }
   });
 
   test("Given an inventory above the archive trace cap, When print-selection runs, Then it fails explicitly", () => {

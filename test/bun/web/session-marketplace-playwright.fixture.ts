@@ -3,17 +3,34 @@ import {
   chromium,
   type Browser,
   type BrowserContext,
+  type BrowserContextOptions,
   type Page,
   type ViewportSize,
 } from "playwright"
 
 const publicRoot = resolve(import.meta.dir, "../../..")
+const accessToken = "marketplace-browser-session-token"
+const accountId = "acct-0123456789abcdef"
+const challengeId = "chal-0123456789abcdef"
+const expiresAt = "2030-01-01T00:00:00.000Z"
 let sharedBrowser: Browser | undefined
+
+export type RegistryRequest = Readonly<{
+  authorization: string | null
+  body: unknown
+  method: string
+  path: string
+}>
 
 export interface SessionUiHarness {
   readonly appUrl: string
-  readonly registryRequests: string[]
-  readonly newPage: (viewport: ViewportSize) => Promise<Page>
+  readonly holdVerify: () => () => void
+  readonly registryRequests: RegistryRequest[]
+  readonly setLogoutStatus: (status: number) => void
+  readonly newPage: (
+    viewport: ViewportSize,
+    options?: Pick<BrowserContextOptions, "javaScriptEnabled">,
+  ) => Promise<Page>
   readonly close: () => Promise<void>
 }
 
@@ -48,34 +65,85 @@ const waitForReadyOutput = async (
   }
 }
 
-const publicJson = (body: unknown, status = 200): Response => Response.json(body, {
+const json = (body: unknown, status = 200): Response => Response.json(body, {
   headers: {
+    "access-control-allow-headers": "authorization, content-type",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
     "access-control-allow-origin": "*",
     "cache-control": "no-store",
   },
   status,
 })
 
+const parseBody = async (request: Request): Promise<unknown> => {
+  if (request.method === "GET") return undefined
+  return request.json()
+}
+
 const startRegistry = () => {
-  const requests: string[] = []
+  const requests: RegistryRequest[] = []
+  let logoutStatus = 200
+  let verifyGate: Promise<void> | undefined
+  let verifyRelease: (() => void) | undefined
   const server = Bun.serve({
-    fetch(request) {
+    async fetch(request) {
       const url = new URL(request.url)
-      requests.push(`${url.pathname}${url.search}`)
+      const body = await parseBody(request)
+      requests.push({
+        authorization: request.headers.get("authorization"),
+        body,
+        method: request.method,
+        path: `${url.pathname}${url.search}`,
+      })
+      if (request.method === "OPTIONS") return json({}, 204)
+      if (url.pathname === "/v1/auth/signup" || url.pathname === "/v1/auth/login") {
+        return json({ challengeId, expiresAt, ok: true })
+      }
+      if (url.pathname === "/v1/auth/verify") {
+        if (verifyGate !== undefined) await verifyGate
+        return json({ accessToken, accountId, expiresAt, ok: true, tokenType: "Bearer" })
+      }
+      if (url.pathname === "/v1/auth/logout") {
+        return logoutStatus === 200
+          ? json({ ok: true, revoked: true })
+          : json({ error: { code: "unavailable" }, ok: false }, logoutStatus)
+      }
       if (url.pathname === "/v1/marketplace/stats") {
-        return publicJson({
+        if (request.headers.get("authorization") !== `Bearer ${accessToken}`) {
+          return json({ error: { code: "unauthorized" }, ok: false }, 401)
+        }
+        return json({
           activeRuntimes: 1,
           paidOutCredits: null,
           totalSessions: 2,
           tradeableTokens: 940_635,
         })
       }
-      return publicJson({ error: "not_found" }, 404)
+      return json({ error: "not_found" }, 404)
     },
     hostname: "127.0.0.1",
     port: 0,
   })
-  return { requests, server, url: `http://127.0.0.1:${server.port}` }
+  return {
+    requests,
+    holdVerify: () => {
+      if (verifyGate !== undefined) throw new Error("verify request is already held")
+      verifyGate = new Promise((resolve) => {
+        verifyRelease = resolve
+      })
+      return () => {
+        const release = verifyRelease
+        verifyGate = undefined
+        verifyRelease = undefined
+        release?.()
+      }
+    },
+    server,
+    setLogoutStatus: (status: number) => {
+      logoutStatus = status
+    },
+    url: `http://127.0.0.1:${server.port}`,
+  }
 }
 
 export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
@@ -105,10 +173,12 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
   if (browser === undefined) throw new Error("Playwright Chromium did not launch")
   return {
     appUrl: `http://127.0.0.1:${port}`,
+    holdVerify: registry.holdVerify,
     registryRequests: registry.requests,
-    newPage: async (viewport) => {
-      const context = await browser.newContext({ viewport })
-      await context.route("https://gateway.getatm.io/v1/marketplace/**", async (route) => {
+    setLogoutStatus: registry.setLogoutStatus,
+    newPage: async (viewport, options = {}) => {
+      const context = await browser.newContext({ ...options, viewport })
+      await context.route("https://gateway.getatm.io/**", async (route) => {
         const requested = new URL(route.request().url())
         const response = await route.fetch({
           url: `${registry.url}${requested.pathname}${requested.search}`,
@@ -119,7 +189,10 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
       return context.newPage()
     },
     close: async () => {
-      for (const context of contexts) await context.close()
+      for (const context of contexts) {
+        await context.unrouteAll({ behavior: "wait" })
+        await context.close()
+      }
       web.kill()
       await web.exited
       registry.server.stop(true)

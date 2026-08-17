@@ -1,109 +1,240 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ATM — Agent Trajectory Marketplace</title>
-<meta name="description" content="Live aggregate supply for credential-redacted agent trajectory sessions and training tokens." />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="marketplace.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ATM — Agent Trajectory Marketplace</title>
+  <meta name="description" content="Explore the live aggregate supply of credential-redacted coding-agent sessions and training tokens." />
+  <meta name="theme-color" content="#030608" />
+  <link rel="canonical" href="https://marketplace.getatm.io/" />
+  <link rel="preconnect" href="https://gateway.getatm.io" />
+  <link rel="stylesheet" href="marketplace.css" />
 </head>
-<body>
+<body class="marketplace-page no-js">
+  <a class="skip-link" href="#main-content" data-testid="session-skip-link">Skip to live corpus</a>
 
-<a class="skip" data-testid="session-skip-link" href="#main-legacy">Skip to marketplace supply</a>
-
-<header class="nav">
-  <div class="limiter nav-inner">
-    <a class="wordmark" href="index.html">ATM<small>AGENT TRAJECTORY MARKETPLACE</small></a>
-    <span class="nav-tag">LIVE CORPUS</span>
-  </div>
-</header>
-
-<main id="main-legacy" aria-label="Marketplace aggregate supply" tabindex="-1">
-  <section class="hero">
-    <div class="limiter">
-      <p class="eyebrow">PUBLIC SUPPLY · CREDENTIAL-REDACTED</p>
-      <h1>Training data compounds.<br /><em>Session by session.</em></h1>
-      <p class="lead">Every accepted upload joins one growing corpus. Measure the marketplace by the depth of its real coding sessions and the tokens they contribute—not by individual listings.</p>
-    </div>
-  </section>
-
-  <section class="supply" aria-labelledby="supply-heading">
-    <div class="limiter">
-      <div class="sec-head">
-        <span class="secnum">01</span>
-        <h2 id="supply-heading">Live supply</h2>
-        <span class="live-state" data-testid="aggregate-status">Connecting to registry</span>
-      </div>
-
-      <div class="aggregate-grid" aria-live="polite">
-        <article class="aggregate-metric">
-          <p class="metric-label">Uploaded sessions</p>
-          <strong class="metric-value" data-testid="aggregate-session-count">—</strong>
-          <p class="metric-unit">credential-redacted sessions</p>
-          <p class="metric-copy">Each session preserves the requests, decisions, tool use, and recoveries that make agent behavior trainable.</p>
-        </article>
-        <article class="aggregate-metric aggregate-metric-primary">
-          <p class="metric-label">Training tokens</p>
-          <strong class="metric-value" data-testid="aggregate-token-count">—</strong>
-          <p class="metric-unit">tradeable trajectory tokens</p>
-          <p class="metric-copy">The corpus gets more useful as its token volume grows across longer, richer, real-world coding sessions.</p>
-        </article>
-      </div>
-
-      <div class="supply-strip">
-        <p><strong data-testid="aggregate-runtime-count">—</strong><span>active runtimes</span></p>
-        <p><strong>Local-first</strong><span>collection and redaction</span></p>
-        <p><strong>Aggregate</strong><span>public supply view</span></p>
+  <header class="marketplace-nav" data-marketplace-nav>
+    <div class="wide-shell nav-shell">
+      <a class="brand" href="#top" aria-label="ATM Marketplace home">
+        <span class="brand-mark">ATM</span>
+        <span class="brand-name">agent trajectory marketplace</span>
+      </a>
+      <nav class="nav-links" aria-label="Marketplace navigation" data-authenticated-nav hidden>
+        <a href="#supply">Live supply</a>
+        <a href="#provenance">How it grows</a>
+      </nav>
+      <div class="nav-account-actions">
+        <span class="live-badge is-auth-required" role="status" data-registry-status data-testid="aggregate-status">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span data-status-label>Sign in required</span>
+        </span>
+        <button class="nav-auth-button" type="button" data-auth-login data-testid="auth-login-button">Sign in</button>
+        <button class="nav-auth-button nav-logout-button" type="button" data-auth-logout data-testid="auth-logout-button" hidden>Log out</button>
       </div>
     </div>
-  </section>
+  </header>
 
-  <section class="thesis" aria-labelledby="thesis-heading">
-    <div class="limiter">
-      <div class="sec-head">
-        <span class="secnum">02</span>
-        <h2 id="thesis-heading">One growing corpus</h2>
-        <span class="section-note">VOLUME OVER SKUS</span>
+  <main id="main-content" tabindex="-1" data-live-source>
+    <section class="auth-gate" data-auth-gate aria-labelledby="auth-title">
+      <div class="auth-gate-panel">
+        <p class="kicker">Marketplace access</p>
+        <h1 id="auth-title"><span>The aggregate is</span><em>for members.</em></h1>
+        <p class="auth-intro">Sign in or create an account to view the live aggregate supply.</p>
+        <div class="auth-mode-tabs" aria-label="Authentication mode">
+          <button class="auth-mode-tab is-selected" type="button" aria-pressed="true" data-auth-mode="login">Sign in</button>
+          <button class="auth-mode-tab" type="button" aria-pressed="false" data-auth-mode="signup">Create account</button>
+        </div>
+        <form class="auth-form" data-auth-request-form novalidate>
+          <label for="auth-email">Email address</label>
+          <input id="auth-email" name="email" type="email" autocomplete="email" inputmode="email" required data-auth-email />
+          <label class="auth-terms" data-auth-terms hidden>
+            <input type="checkbox" data-auth-accept-terms />
+            <span>I accept the Marketplace terms.</span>
+          </label>
+          <button class="signal-button" type="submit" data-auth-request-submit>Continue</button>
+        </form>
+        <form class="auth-form" data-auth-verify-form hidden novalidate>
+          <p class="auth-verify-note">Enter the six-digit code sent to <strong data-auth-challenge-email></strong>.</p>
+          <label for="auth-code">Verification code</label>
+          <input id="auth-code" name="code" type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required data-auth-code />
+          <button class="signal-button" type="submit" data-auth-verify-submit>Verify and enter</button>
+          <button class="text-button" type="button" data-auth-restart>Use a different email</button>
+        </form>
+        <p class="auth-feedback" role="status" aria-live="polite" data-auth-feedback></p>
       </div>
-      <div class="thesis-grid">
-        <h3>No item-by-item storefront.<br />Just verifiable scale.</h3>
-        <div class="thesis-copy">
-          <p>Sessions are not presented as separate products. The marketplace reports the aggregate supply available for downstream training, analysis, and evaluation.</p>
-          <p>More uploads mean broader behavior coverage, more recovery examples, and a stronger training corpus.</p>
+    </section>
+
+    <div data-authenticated-content hidden>
+    <section id="top" class="hero-cinematic">
+      <div class="terrain-stage" aria-hidden="true">
+        <div class="terrain-grid"></div>
+        <i class="terrain-ridge ridge-far"></i>
+        <i class="terrain-ridge ridge-mid"></i>
+        <i class="terrain-ridge ridge-near"></i>
+        <span class="signal-node node-a"></span>
+        <span class="signal-node node-b"></span>
+        <span class="signal-node node-c"></span>
+        <span class="signal-node node-d"></span>
+      </div>
+
+      <div class="content-shell hero-copy">
+        <p class="kicker">A living corpus for better agents</p>
+        <h1><span>Training data compounds.</span><em>Session by session.</em></h1>
+        <p class="hero-lead">Every accepted coding-agent session adds real requests, decisions, tool use, and recoveries to one credential-redacted training corpus.</p>
+        <div class="hero-actions">
+          <a class="signal-button" href="#supply">
+            <span>View live supply</span>
+            <span aria-hidden="true">↓</span>
+          </a>
+          <a class="text-action" href="#publish">Publish from the CLI <span aria-hidden="true">→</span></a>
         </div>
       </div>
-      <ol class="flow" aria-label="How the corpus grows">
-        <li><span>01</span><strong>Collect</strong><p>Discover native coding-agent sessions on the contributor machine.</p></li>
-        <li><span>02</span><strong>Redact</strong><p>Remove credentials before any candidate bytes leave the machine.</p></li>
-        <li><span>03</span><strong>Publish</strong><p>Upload accepted sessions into the aggregate Registry corpus.</p></li>
-      </ol>
-    </div>
-  </section>
 
-  <section class="publish" aria-labelledby="publish-heading">
-    <div class="limiter publish-grid">
-      <div>
-        <p class="eyebrow">ADD SUPPLY</p>
-        <h2 id="publish-heading">Bring the sessions.<br />Grow the corpus.</h2>
+      <div class="content-shell hero-console-wrap">
+        <article class="corpus-console js-tilt" data-tilt aria-label="Anatomy of an accepted trajectory session">
+          <div class="console-glare" aria-hidden="true"></div>
+          <div class="console-bar">
+            <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span>ATM / accepted-session</span>
+            <span class="live-badge is-live">
+              <span class="live-dot" aria-hidden="true"></span>
+              Redacted
+            </span>
+          </div>
+          <div class="console-body">
+            <p><time>01</time><span>request</span><strong>intent preserved</strong><em>verbatim</em></p>
+            <p><time>02</time><span>decision</span><strong>reasoning linked</strong><em>ordered</em></p>
+            <p><time>03</time><span>tool use</span><strong>actions retained</strong><em>typed</em></p>
+            <p><time>04</time><span>recovery</span><strong>failure path indexed</strong><em>trainable</em></p>
+          </div>
+          <div class="console-footer">
+            <span>candidate admission</span>
+            <strong>0 credential residuals</strong>
+          </div>
+        </article>
       </div>
-      <div class="publish-action">
-        <p>Publish credential-redacted candidates with the Marketplace CLI. Every accepted session updates the live totals above.</p>
-        <code>trajectory marketplace seller candidate publish</code>
+    </section>
+
+    <section id="supply" class="supply-chapter" aria-labelledby="supply-title">
+      <div class="content-shell">
+        <div class="chapter-heading reveal" data-reveal>
+          <p class="kicker">Live aggregate supply</p>
+          <h2 id="supply-title">A corpus with<br /><em>compounding depth.</em></h2>
+        </div>
+
+        <div class="noscript-supply" role="status">
+          <strong>Live supply needs JavaScript.</strong>
+          <p>The collection, privacy, and publishing information below remains available.</p>
+        </div>
+
+        <div class="supply-layout reveal" data-reveal aria-busy="true" data-supply-region>
+          <article class="metric-card token-metric is-primary is-loading">
+            <p class="metric-label">Tradeable training tokens</p>
+            <span class="metric-skeleton" aria-hidden="true" data-metric-skeleton></span>
+            <strong class="metric-value" data-token-count data-animate-number data-value="0" data-format="compact" data-testid="aggregate-token-count" hidden>—</strong>
+            <p class="metric-note">Token volume grows across longer, richer, real-world coding sessions.</p>
+          </article>
+          <div class="supporting-metrics">
+            <article class="metric-card is-loading">
+              <p class="metric-label">Uploaded sessions</p>
+              <span class="metric-skeleton" aria-hidden="true" data-metric-skeleton></span>
+              <strong class="metric-value" data-session-count data-animate-number data-value="0" data-testid="aggregate-session-count" hidden>—</strong>
+              <p class="metric-note">Credential-redacted sessions</p>
+            </article>
+            <article class="metric-card is-loading">
+              <p class="metric-label">Active runtimes</p>
+              <span class="metric-skeleton" aria-hidden="true" data-metric-skeleton></span>
+              <strong class="metric-value" data-runtime-count data-animate-number data-value="0" data-testid="aggregate-runtime-count" hidden>—</strong>
+              <p class="metric-note">Native coding-agent sources</p>
+            </article>
+          </div>
+        </div>
+        <p class="sr-only" aria-live="polite" data-supply-announcement></p>
+
       </div>
+    </section>
+
+    <section class="corpus-thesis" aria-labelledby="thesis-title">
+      <div class="wide-shell thesis-stage reveal" data-reveal>
+        <div class="orbit-lines" aria-hidden="true"><i></i><i></i><i></i></div>
+        <p class="kicker">Useful data is behavioral</p>
+        <h2 id="thesis-title">“The request matters.<br />The recovery teaches.”</h2>
+        <p>Volume is only valuable when every token preserves what the agent tried, why it changed course, and how it reached a working result.</p>
+        <div class="thesis-signal" aria-label="Trajectory layers">
+          <span>request</span>
+          <i aria-hidden="true"></i>
+          <span>decision</span>
+          <i aria-hidden="true"></i>
+          <span>tool use</span>
+          <i aria-hidden="true"></i>
+          <span>recovery</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="provenance" class="process-chapter" aria-labelledby="process-title">
+      <div class="content-shell process-layout">
+        <div class="process-intro reveal" data-reveal>
+          <p class="kicker">From local session to corpus</p>
+          <h2 id="process-title">Three steps.<br /><em>One trusted path.</em></h2>
+          <p>The public number is simple because the collection boundary is not.</p>
+        </div>
+        <ol class="process-stack">
+          <li class="process-card reveal" data-reveal>
+            <span>01</span>
+            <div>
+              <h3>Collect natively</h3>
+              <p>Discover real coding-agent sessions through runtime-specific adapters on the contributor machine.</p>
+            </div>
+            <strong>local</strong>
+          </li>
+          <li class="process-card reveal" data-reveal>
+            <span>02</span>
+            <div>
+              <h3>Redact before upload</h3>
+              <p>Remove credentials and reject residual secrets before any candidate bytes cross the network boundary.</p>
+            </div>
+            <strong>private</strong>
+          </li>
+          <li class="process-card reveal" data-reveal>
+            <span>03</span>
+            <div>
+              <h3>Publish into the aggregate</h3>
+              <p>Accepted sessions join one corpus and update the live totals without becoming public listings.</p>
+            </div>
+            <strong>aggregate</strong>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="publish" class="publish-chapter" aria-labelledby="publish-title">
+      <div class="content-shell publish-stage reveal" data-reveal>
+        <p class="kicker">Add real behavior</p>
+        <h2 id="publish-title">Bring the sessions.<br /><em>Grow the corpus.</em></h2>
+        <p>Publish credential-redacted candidates with the Marketplace CLI. Every accepted session updates the live supply above.</p>
+        <div class="command-block">
+          <span aria-hidden="true">$</span>
+          <code id="publish-command">trajectory marketplace seller candidate publish</code>
+          <button class="copy-button" type="button" data-copy-target="publish-command">Copy</button>
+          <span class="sr-only" aria-live="polite" data-copy-status></span>
+        </div>
+      </div>
+    </section>
     </div>
-  </section>
-</main>
+  </main>
 
-<footer>
-  <div class="limiter foot">
-    <span class="fm">ATM</span>
-    <span>Apache-2.0</span>
-    <span>Aggregate trajectory supply</span>
-  </div>
-</footer>
+  <footer class="marketplace-footer" data-authenticated-content hidden>
+    <div class="wide-shell footer-shell">
+      <a class="brand" href="#top">
+        <span class="brand-mark">ATM</span>
+        <span class="brand-name">agent trajectory marketplace</span>
+      </a>
+      <p>Aggregate trajectory supply</p>
+      <p>Apache-2.0</p>
+    </div>
+  </footer>
 
-<script type="module" src="marketplace.js"></script>
+  <script type="module" src="marketplace.js"></script>
 </body>
 </html>
