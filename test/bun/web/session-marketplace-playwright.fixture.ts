@@ -29,7 +29,7 @@ export interface SessionUiHarness {
   readonly setLogoutStatus: (status: number) => void
   readonly newPage: (
     viewport: ViewportSize,
-    options?: Pick<BrowserContextOptions, "javaScriptEnabled">,
+    options?: Pick<BrowserContextOptions, "javaScriptEnabled" | "permissions">,
   ) => Promise<Page>
   readonly close: () => Promise<void>
 }
