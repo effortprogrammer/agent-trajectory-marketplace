@@ -32,7 +32,7 @@ Commands:
   marketplace seller wallet balance
   world --help|list|detail|run|status|download
   doctor
-  update [status]
+  update
 
 Run a command with --help for command-specific usage.`;
 
@@ -41,11 +41,9 @@ const doctorHelp = `Usage: trajectory doctor
 Checks the installed CLI, Bun runtime, and latest stable release.
 Returns machine-readable JSON.`;
 
-const updateHelp = `Usage: trajectory update [status]
+const updateHelp = `Usage: trajectory update
 
-Commands:
-  update         Install the latest verified stable release.
-  update status  Check whether a newer stable release is available.`;
+Install the latest verified stable release.`;
 
 const isCommandHelp = (
   argumentsList: readonly string[],

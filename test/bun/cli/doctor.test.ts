@@ -204,7 +204,8 @@ describe("doctor CLI", () => {
     expect(root.exitCode).toBe(0);
     expect(decoder.decode(root.stderr)).toBe("");
     expect(decoder.decode(root.stdout)).toContain("doctor");
-    expect(decoder.decode(root.stdout)).toContain("update [status]");
+    expect(decoder.decode(root.stdout)).toContain("\n  update\n");
+    expect(decoder.decode(root.stdout)).not.toContain("update [status]");
 
     expect(doctor.exitCode).toBe(0);
     expect(decoder.decode(doctor.stderr)).toBe("");
@@ -212,6 +213,7 @@ describe("doctor CLI", () => {
 
     expect(update.exitCode).toBe(0);
     expect(decoder.decode(update.stderr)).toBe("");
-    expect(decoder.decode(update.stdout)).toContain("Usage: trajectory update [status]");
+    expect(decoder.decode(update.stdout)).toContain("Usage: trajectory update");
+    expect(decoder.decode(update.stdout)).not.toContain("update status");
   });
 });

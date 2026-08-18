@@ -6,25 +6,23 @@ import {
 } from "../../../src/cli/collector";
 
 describe("update CLI grammar", () => {
-	test("accepts only canonical update, canonical status, and the flat collector alias", () => {
+	test("accepts only canonical and flat update commands", () => {
 		// Given / When
 		const canonical = parseUpdateCommand(["trajectory", "update"]);
-		const status = parseUpdateCommand(["trajectory", "update", "status"]);
 		const flat = parseUpdateCommand(["update"]);
-		const flatStatus = parseUpdateCommand(["update", "status"]);
 
 		// Then
-		expect(canonical).toEqual({ command: "update", verb: "apply" });
-		expect(status).toEqual({ command: "update", verb: "status" });
-		expect(flat).toEqual({ command: "update", verb: "apply" });
-		expect(flatStatus).toEqual({ command: "update", verb: "status" });
+		expect(canonical).toEqual({ command: "update" });
+		expect(flat).toEqual({ command: "update" });
 	});
 
 	test("rejects malformed update spellings and options", () => {
 		// Given
 		const malformed = [
 			["trajectory", "update", "apply"],
+			["trajectory", "update", "status"],
 			["trajectory", "update", "status", "extra"],
+			["update", "status"],
 			["update", "--tag", "v1.2.3"],
 		];
 
