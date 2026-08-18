@@ -1,6 +1,5 @@
 const registry = "https://gateway.getatm.io";
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-const hoverCapable = window.matchMedia("(hover: hover) and (pointer: fine)");
 
 const numeric = (candidate) => {
   const value = Number(candidate);
@@ -68,26 +67,6 @@ const updateNavigation = () => nav?.classList.toggle("is-compact", window.scroll
 updateNavigation();
 window.addEventListener("scroll", updateNavigation, { passive: true });
 
-if (hoverCapable.matches && !reduceMotion.matches) {
-  for (const surface of document.querySelectorAll("[data-tilt]")) {
-    surface.addEventListener("pointermove", (event) => {
-      const bounds = surface.getBoundingClientRect();
-      const x = (event.clientX - bounds.left) / bounds.width;
-      const y = (event.clientY - bounds.top) / bounds.height;
-      const rotateX = (0.5 - y) * 10;
-      const rotateY = (x - 0.5) * 10;
-      surface.style.setProperty("--glare-x", `${x * 100}%`);
-      surface.style.setProperty("--glare-y", `${y * 100}%`);
-      surface.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
-    });
-    surface.addEventListener("pointerleave", () => {
-      surface.style.removeProperty("transform");
-      surface.style.setProperty("--glare-x", "50%");
-      surface.style.setProperty("--glare-y", "50%");
-    });
-  }
-}
-
 for (const button of document.querySelectorAll("[data-copy-target]")) {
   button.addEventListener("click", async () => {
     const target = document.getElementById(button.dataset.copyTarget);
@@ -110,6 +89,7 @@ for (const button of document.querySelectorAll("[data-copy-target]")) {
 
 const authGate = document.querySelector("[data-auth-gate]");
 const authenticatedContent = document.querySelectorAll("[data-authenticated-content]");
+const supplyLocked = document.querySelector("[data-supply-locked]");
 const authRequestForm = document.querySelector("[data-auth-request-form]");
 const authVerifyForm = document.querySelector("[data-auth-verify-form]");
 const authEmail = document.querySelector("[data-auth-email]");
@@ -118,9 +98,15 @@ const authTerms = document.querySelector("[data-auth-terms]");
 const authAcceptTerms = document.querySelector("[data-auth-accept-terms]");
 const authFeedback = document.querySelector("[data-auth-feedback]");
 const authChallengeEmail = document.querySelector("[data-auth-challenge-email]");
+const authModeTabs = document.querySelector("[data-auth-mode-tabs]");
+const authTitlePrefix = document.querySelector("[data-auth-title-prefix]");
+const authTitleAccent = document.querySelector("[data-auth-title-accent]");
+const authDescription = document.querySelector("[data-auth-description]");
+const authRequestLabel = document.querySelector("[data-auth-request-label]");
 const authLoginButton = document.querySelector("[data-auth-login]");
+const authOpenButtons = document.querySelectorAll("[data-auth-open]");
+const authCloseButton = document.querySelector("[data-auth-close]");
 const authLogoutButton = document.querySelector("[data-auth-logout]");
-const authenticatedNavigation = document.querySelector("[data-authenticated-nav]");
 const status = document.querySelector("[data-registry-status]");
 
 let authMode = "login";
@@ -130,6 +116,8 @@ let dataRequest;
 let dataRequestVersion = 0;
 let authRequestVersion = 0;
 let activeSession;
+let authTrigger;
+let restoreAuthTrigger = false;
 
 const setFeedback = (message) => {
   if (authFeedback) authFeedback.textContent = message;
@@ -149,7 +137,7 @@ const validSession = (value) => value !== null
 
 const setStatus = (state, label) => {
   if (!status) return;
-  status.classList.remove("is-connecting", "is-live", "is-unavailable", "is-auth-required");
+  status.classList.remove("is-connecting", "is-live", "is-unavailable");
   status.classList.add(state);
   const labelElement = status.querySelector("[data-status-label]");
   if (labelElement) labelElement.textContent = label;
@@ -177,7 +165,26 @@ const resetSupply = () => {
   document.querySelector("[data-supply-region]")?.setAttribute("aria-busy", "true");
 };
 
-const showLogin = (message = "") => {
+const openAuthDialog = (trigger) => {
+  if (trigger) authTrigger = trigger;
+  restoreAuthTrigger = true;
+  if (!authGate.open) authGate.showModal();
+  document.body.classList.add("is-auth-open");
+  const target = authVerifyForm.hidden ? authEmail : authCode;
+  target.focus({ preventScroll: true });
+};
+
+const closeAuthDialog = (restoreFocus = true) => {
+  restoreAuthTrigger = restoreFocus;
+  if (authGate.open) {
+    authGate.close();
+    return;
+  }
+  document.body.classList.remove("is-auth-open");
+  if (!restoreFocus) authTrigger = undefined;
+};
+
+const showLogin = (message = "", revealGate = false) => {
   authRequestVersion += 1;
   stopDataRequest();
   if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
@@ -185,15 +192,18 @@ const showLogin = (message = "") => {
   activeSession = undefined;
   challenge = undefined;
   document.body.dataset.authState = "login";
-  authGate.hidden = false;
   for (const section of authenticatedContent) section.hidden = true;
+  supplyLocked.hidden = false;
   authRequestForm.hidden = false;
   authVerifyForm.hidden = true;
+  authModeTabs.hidden = false;
   authLogoutButton.hidden = true;
   authLoginButton.hidden = false;
-  authenticatedNavigation.hidden = true;
-  setStatus("is-auth-required", "Sign in required");
+  status.hidden = true;
   resetSupply();
+  setAuthMode("login");
+  if (revealGate) openAuthDialog();
+  else closeAuthDialog(false);
   setFeedback(message);
 };
 
@@ -201,12 +211,12 @@ const scheduleExpiry = (session) => {
   if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
   const expiresIn = Date.parse(session.expiresAt) - Date.now();
   if (expiresIn <= 0) {
-    showLogin("Your session has expired. Sign in again.");
+    showLogin("Your session has expired. Sign in again.", true);
     return;
   }
   expiryTimer = window.setTimeout(() => {
     if (activeSession === undefined || Date.parse(activeSession.expiresAt) <= Date.now()) {
-      showLogin("Your session has expired. Sign in again.");
+      showLogin("Your session has expired. Sign in again.", true);
       return;
     }
     scheduleExpiry(activeSession);
@@ -216,11 +226,12 @@ const scheduleExpiry = (session) => {
 const renderAuthenticated = (session) => {
   activeSession = session;
   document.body.dataset.authState = "authenticated";
-  authGate.hidden = true;
+  closeAuthDialog(false);
   for (const section of authenticatedContent) section.hidden = false;
+  supplyLocked.hidden = true;
   authLoginButton.hidden = true;
   authLogoutButton.hidden = false;
-  authenticatedNavigation.hidden = false;
+  status.hidden = false;
   setFeedback("");
   setStatus("is-connecting", "Connecting to Registry");
   resetSupply();
@@ -229,8 +240,12 @@ const renderAuthenticated = (session) => {
 
 const showVerification = () => {
   document.body.dataset.authState = "verify";
+  authModeTabs.hidden = true;
   authRequestForm.hidden = true;
   authVerifyForm.hidden = false;
+  authTitlePrefix.textContent = "Check your";
+  authTitleAccent.textContent = "email.";
+  authDescription.textContent = "Enter the six-digit code to open the live aggregate.";
   if (authChallengeEmail) authChallengeEmail.textContent = challenge.email;
   authCode.value = "";
   setFeedback("");
@@ -243,6 +258,7 @@ const setAuthMode = (mode) => {
     challenge = undefined;
   }
   authMode = mode;
+  authModeTabs.hidden = false;
   for (const button of document.querySelectorAll("[data-auth-mode]")) {
     const selected = button.dataset.authMode === mode;
     button.classList.toggle("is-selected", selected);
@@ -250,6 +266,12 @@ const setAuthMode = (mode) => {
   }
   authTerms.hidden = mode !== "signup";
   authAcceptTerms.required = mode === "signup";
+  authTitlePrefix.textContent = mode === "signup" ? "Create your" : "Sign in to";
+  authTitleAccent.textContent = mode === "signup" ? "Marketplace account." : "live supply.";
+  authDescription.textContent = mode === "signup"
+    ? "Verify your email once to access the member aggregate."
+    : "We will email a six-digit code. No password and no browser-stored session.";
+  authRequestLabel.textContent = mode === "signup" ? "Create account" : "Send one-time code";
   setFeedback("");
 };
 
@@ -378,7 +400,7 @@ const loadLiveSupply = async (session) => {
     });
     if (requestVersion !== dataRequestVersion) return;
     if (response.status === 401) {
-      showLogin("Your session is no longer valid. Sign in again.");
+      showLogin("Your session is no longer valid. Sign in again.", true);
       return;
     }
     if (!response.ok) throw new Error("Registry stats unavailable");
@@ -450,8 +472,7 @@ const logout = async () => {
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok && response.status !== 401) throw new Error("Registry logout failed");
-    showLogin("You have been signed out.");
-    authEmail.focus();
+    showLogin("You have been signed out.", true);
   } catch {
     setFeedback("Unable to log out. Try again.");
     setStatus("is-unavailable", "Logout failed");
@@ -468,14 +489,31 @@ authVerifyForm.addEventListener("submit", verifyChallenge);
 document.querySelector("[data-auth-restart]").addEventListener("click", () => {
   authRequestVersion += 1;
   challenge = undefined;
+  authModeTabs.hidden = false;
   authRequestForm.hidden = false;
   authVerifyForm.hidden = true;
+  setAuthMode(authMode);
   setFeedback("");
   authEmail.focus();
 });
-authLoginButton.addEventListener("click", () => {
-  authGate.scrollIntoView({ behavior: reduceMotion.matches ? "auto" : "smooth" });
-  authEmail.focus();
+for (const button of authOpenButtons) {
+  button.addEventListener("click", () => openAuthDialog(button));
+}
+authCloseButton.addEventListener("click", () => closeAuthDialog());
+authGate.addEventListener("click", (event) => {
+  if (event.target === authGate) closeAuthDialog();
+});
+authGate.addEventListener("cancel", () => {
+  restoreAuthTrigger = true;
+});
+authGate.addEventListener("close", () => {
+  document.body.classList.remove("is-auth-open");
+  const trigger = authTrigger;
+  authTrigger = undefined;
+  if (restoreAuthTrigger && trigger?.isConnected && !trigger.hidden) {
+    trigger.focus({ preventScroll: true });
+  }
+  restoreAuthTrigger = false;
 });
 authLogoutButton.addEventListener("click", () => void logout());
 
