@@ -15,6 +15,13 @@ export const parseUpdateCommand = (
 	if (argumentsList.length === 1 && argumentsList[0] === "update") {
 		return { command: "update", verb: "apply" };
 	}
+	if (
+		argumentsList.length === 2 &&
+		argumentsList[0] === "update" &&
+		argumentsList[1] === "status"
+	) {
+		return { command: "update", verb: "status" };
+	}
 	if (argumentsList[0] !== "trajectory" || argumentsList[1] !== "update")
 		invalid();
 	if (argumentsList.length === 2) return { command: "update", verb: "apply" };

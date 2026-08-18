@@ -22,7 +22,7 @@ describe("World CLI dispatch routing", () => {
     }).toEqual({ exitCode: 0, stderr: "" });
   });
 
-  test("preserves established auth marketplace update and collector routes", () => {
+  test("preserves auth marketplace update and collector routes", () => {
     // Given: representative invocations owned by existing top-level routes.
     const results = [
       runCli(["auth"]),
@@ -39,11 +39,15 @@ describe("World CLI dispatch routing", () => {
     }));
 
     // Then: their existing router-specific outcomes remain unchanged.
-    expect(observed.slice(0, 3)).toEqual([
+    expect(observed.slice(0, 2)).toEqual([
       { exitCode: 1, stderr: '{"error":"invalid_auth_command"}\n', stdout: "" },
       { exitCode: 1, stderr: '{"error":"invalid_command"}\n', stdout: "" },
-      { exitCode: 1, stderr: '{"error":"invalid_collector_request"}\n', stdout: "" },
     ]);
+    expect(observed[2]).toEqual({
+      exitCode: 0,
+      stderr: "",
+      stdout: '{"status":"update_failed","currentVersion":"unknown","rolledBack":false}\n',
+    });
     expect(observed[3].exitCode).toBe(0);
     expect(observed[3].stderr).toBe("");
     const runtimes: unknown = JSON.parse(observed[3].stdout);
