@@ -120,6 +120,9 @@ export function compareStableVersions(left: StableVersion, right: StableVersion)
       return difference > 0n ? 1 : -1
     }
   }
+  if (leftParts.length !== rightParts.length) {
+    return leftParts.length > rightParts.length ? 1 : -1
+  }
   return 0
 }
 
