@@ -1,4 +1,4 @@
-import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { z } from "zod";
@@ -27,30 +27,8 @@ const resultSchema = z.discriminatedUnion("status", [
 	}).strict(),
 ]);
 
-export class UpdateLastResultError extends Error {
-	readonly name = "UpdateLastResultError";
-}
-
 const resultPath = (stateRoot: string): string =>
 	join(stateRoot, "last-update-result.json");
-
-export const readLastUpdateResult = (
-	stateRoot: string,
-): UpdateResult | undefined => {
-	const path = resultPath(stateRoot);
-	try {
-		return resultSchema.parse(JSON.parse(readFileSync(path, "utf8")));
-	} catch (caught: unknown) {
-		if (
-			caught instanceof Error &&
-			"code" in caught &&
-			caught.code === "ENOENT"
-		) return undefined;
-		throw new UpdateLastResultError(`invalid update result: ${path}`, {
-			cause: caught,
-		});
-	}
-};
 
 export const writeLastUpdateResult = (
 	stateRoot: string,

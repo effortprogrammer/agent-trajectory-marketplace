@@ -1,16 +1,12 @@
 import { existsSync, realpathSync } from "node:fs";
-import { basename, dirname, parse, resolve } from "node:path";
+import { dirname, parse, resolve } from "node:path";
 
-import { parseUpdateCommand, type UpdateCommand } from "../cli/update-command";
+import { parseUpdateCommand } from "../cli/update-command";
 import {
 	deriveInstallPaths,
 	readInstallState,
 } from "./install-state";
-import {
-	readLastUpdateResult,
-	writeLastUpdateResult,
-} from "./update-last-result";
-import { readCurrentVersion, readPointerTarget } from "./update-pointers";
+import { writeLastUpdateResult } from "./update-last-result";
 import {
 	createBunUpdateBuilder,
 	createGitHubUpdateSource,
@@ -29,16 +25,6 @@ export type UpdateCliDependencies = Readonly<{
 	source: UpdateReleaseSource;
 	builder: UpdateBuilder;
 	service: UpdateServiceHandover;
-}>;
-
-export type UpdateStatusResult = Readonly<{
-	status: "up_to_date" | "update_available" | "update_check_failed";
-	checked: boolean;
-	currentVersion: string;
-	latestVersion?: string;
-	errorCode?: "release_check_failed";
-	lastResult?: UpdateResult;
-	previousVersion?: string;
 }>;
 
 type UpdateStateRootEnvironment = Readonly<{
@@ -87,67 +73,14 @@ export const defaultUpdateCliDependencies = (): UpdateCliDependencies => ({
 	service: createPlatformUpdateServiceHandover(),
 });
 
-const readUpdateStatus = async (
-	stateRoot: string,
-	source: UpdateReleaseSource,
-): Promise<UpdateStatusResult> => {
-	const currentVersion = readCurrentVersion(stateRoot);
-	const paths = deriveInstallPaths(stateRoot, currentVersion);
-	const previousTarget = readPointerTarget(paths.previousPointer);
-	const lastResult = readLastUpdateResult(stateRoot);
-	const localState = {
-		currentVersion,
-		...(lastResult === undefined ? {} : { lastResult }),
-		...(previousTarget === undefined
-			? {}
-			: { previousVersion: basename(previousTarget) }),
-	};
-	try {
-		const resolution = await source.resolve({
-			currentVersion,
-			timeoutMs: 60_000,
-			signal: AbortSignal.timeout(60_000),
-		});
-		return {
-			...localState,
-			status: resolution.kind === "available" ? "update_available" : "up_to_date",
-			checked: true,
-			latestVersion: resolution.version,
-		};
-	} catch (caught: unknown) {
-		if (!(caught instanceof Error)) throw caught;
-		return {
-			...localState,
-			status: "update_check_failed",
-			checked: false,
-			errorCode: "release_check_failed",
-		};
-	}
-};
-
 export const runUpdateCli = async (
 	argumentsList: readonly string[],
 	dependencies: UpdateCliDependencies = defaultUpdateCliDependencies(),
-): Promise<UpdateResult | UpdateStatusResult> => {
-	const command: UpdateCommand = parseUpdateCommand(argumentsList);
-	switch (command.verb) {
-		case "apply": {
-			const result = await runUpdateTransaction(dependencies);
-			if (result.status !== "update_already_running") {
-				writeLastUpdateResult(dependencies.stateRoot, result);
-			}
-			return result;
-		}
-		case "status":
-			try {
-				return await readUpdateStatus(dependencies.stateRoot, dependencies.source);
-			} catch (caught: unknown) {
-				if (!(caught instanceof Error)) throw caught;
-				return {
-					status: "update_failed",
-					currentVersion: "unknown",
-					rolledBack: false,
-				};
-			}
+): Promise<UpdateResult> => {
+	parseUpdateCommand(argumentsList);
+	const result = await runUpdateTransaction(dependencies);
+	if (result.status !== "update_already_running") {
+		writeLastUpdateResult(dependencies.stateRoot, result);
 	}
+	return result;
 };

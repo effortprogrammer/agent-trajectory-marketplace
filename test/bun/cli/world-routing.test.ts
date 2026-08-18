@@ -22,7 +22,7 @@ describe("World CLI dispatch routing", () => {
     }).toEqual({ exitCode: 0, stderr: "" });
   });
 
-  test("preserves established auth marketplace update and collector routes", () => {
+  test("preserves auth marketplace update and collector routes", () => {
     // Given: representative invocations owned by existing top-level routes.
     const results = [
       runCli(["auth"]),
