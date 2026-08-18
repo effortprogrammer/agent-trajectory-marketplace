@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
+  compareStableVersions,
   parseGitHubRelease,
+  parseStableVersion,
   parseUpdateReleaseManifest,
   ReleaseContractError,
   releaseApiUrl,
@@ -9,6 +11,47 @@ import {
 } from "../../../src/trajectory/update-release-contract"
 
 describe("parseUpdateReleaseManifest", () => {
+  test("binds a CalVer upgrade over an installed SemVer release", () => {
+    const version = "2026.08.18.2"
+    const manifest = validManifest(version)
+
+    const parsed = parseUpdateReleaseManifest(manifest, {
+      currentVersion: "1.0.11",
+      releaseTag: `v${version}`,
+      archiveAsset: {
+        name: `atm-v${version}.tar.gz`,
+        size: 4096,
+        digest: `sha256:${"a".repeat(64)}`,
+      },
+    })
+
+    expect(String(parsed.version)).toBe(version)
+    expect(releaseApiUrl(`v${version}`)).toEndWith(
+      "/releases/tags/v2026.08.18.2",
+    )
+    expect(releaseAssetUrl(
+      `v${version}`,
+      `atm-v${version}.tar.gz`,
+    )).toEndWith(
+      "/releases/download/v2026.08.18.2/atm-v2026.08.18.2.tar.gz",
+    )
+  })
+
+  test.each([
+    ["2026.08.18.2", "2026.08.18.1", 1],
+    ["2026.08.19.0", "2026.08.18.99", 1],
+    ["2026.08.18.2", "1.0.11", 1],
+    ["1.0.11", "1.0.11", 0],
+  ] as const)(
+    "compares stable versions %s and %s",
+    (left, right, expected) => {
+      expect(compareStableVersions(
+        parseStableVersion(left),
+        parseStableVersion(right),
+      )).toBe(expected)
+    },
+  )
+
   test("binds a stable upgrade to its tag, package, archive, size, and checksum", () => {
     // Given
     const manifest = {
@@ -64,6 +107,10 @@ describe("parseUpdateReleaseManifest", () => {
     "v1.2.3",
     "01.2.3",
     "1.2",
+    "2026.8.18.2",
+    "2026.13.18.2",
+    "2026.02.30.1",
+    "2026.08.18.02",
   ])("rejects malformed stable version %s", (version) => {
     // Given
     const manifest = validManifest(version)

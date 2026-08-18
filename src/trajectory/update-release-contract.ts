@@ -11,10 +11,26 @@ export const UPDATE_RELEASE = {
   repository: "effortprogrammer/agent-trajectory-marketplace",
 } as const
 
-const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+const semanticVersionPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+const calendarVersionPattern =
+  /^([1-9]\d{3})\.(0[1-9]|1[0-2])\.(0[1-9]|[12]\d|3[01])\.(0|[1-9]\d*)$/
 const checksumPattern = /^[a-f0-9]{64}$/
 
-const stableVersionSchema = z.string().regex(versionPattern).brand<"StableVersion">()
+export const isStableVersion = (input: string): boolean => {
+  if (semanticVersionPattern.test(input)) return true
+  const matched = calendarVersionPattern.exec(input)
+  if (matched === null) return false
+  const year = Number(matched[1])
+  const month = Number(matched[2])
+  const day = Number(matched[3])
+  return new Date(Date.UTC(year, month, 0)).getUTCDate() >= day
+}
+
+const stableVersionSchema = z
+  .string()
+  .refine(isStableVersion)
+  .brand<"StableVersion">()
 const manifestSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -84,7 +100,10 @@ export class ReleaseContractError extends Error {
 export function parseStableVersion(input: string): StableVersion {
   const parsed = stableVersionSchema.safeParse(input)
   if (!parsed.success) {
-    throw new ReleaseContractError("invalid-manifest", "version must be stable X.Y.Z")
+    throw new ReleaseContractError(
+      "invalid-manifest",
+      "version must be stable X.Y.Z or YYYY.MM.DD.N",
+    )
   }
   return parsed.data
 }
@@ -92,12 +111,10 @@ export function parseStableVersion(input: string): StableVersion {
 export function compareStableVersions(left: StableVersion, right: StableVersion): number {
   const leftParts = left.split(".")
   const rightParts = right.split(".")
-  for (let index = 0; index < 3; index += 1) {
-    const leftPart = leftParts[index]
-    const rightPart = rightParts[index]
-    if (leftPart === undefined || rightPart === undefined) {
-      throw new ReleaseContractError("invalid-manifest", "version component missing")
-    }
+  const componentCount = Math.max(leftParts.length, rightParts.length)
+  for (let index = 0; index < componentCount; index += 1) {
+    const leftPart = leftParts[index] ?? "0"
+    const rightPart = rightParts[index] ?? "0"
     const difference = BigInt(leftPart) - BigInt(rightPart)
     if (difference !== 0n) {
       return difference > 0n ? 1 : -1
@@ -167,7 +184,10 @@ export function parseUpdateReleaseManifest(
 
 function parseTag(input: string): StableVersion {
   if (!input.startsWith("v")) {
-    throw new ReleaseContractError("invalid-release", "release tag must be stable vX.Y.Z")
+    throw new ReleaseContractError(
+      "invalid-release",
+      "release tag must be stable vX.Y.Z or vYYYY.MM.DD.N",
+    )
   }
   return parseStableVersion(input.slice(1))
 }

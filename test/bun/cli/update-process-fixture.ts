@@ -17,7 +17,7 @@ import {
 import { collectServiceLabel } from "../../../src/trajectory/collect-service";
 
 const encoder = new TextEncoder();
-const version = "1.1.0";
+const version = "2026.08.18.2";
 const tag = `v${version}`;
 const repository = "effortprogrammer/agent-trajectory-marketplace";
 

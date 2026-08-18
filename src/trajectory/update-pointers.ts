@@ -10,8 +10,8 @@ import {
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 import { deriveInstallPaths } from "./install-state";
+import { isStableVersion } from "./update-release-contract";
 
-const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 const POINTER_CREATE_ATTEMPTS = 8;
 
 export class UpdatePointerError extends Error {
@@ -52,7 +52,7 @@ export const readCurrentVersion = (stateRoot: string): string => {
 	if (
 		target === undefined ||
 		dirname(target) !== paths.releasesDir ||
-		!VERSION_PATTERN.test(basename(target)) ||
+		!isStableVersion(basename(target)) ||
 		!existsSync(target)
 	) {
 		throw new UpdatePointerError(paths.currentPointer);

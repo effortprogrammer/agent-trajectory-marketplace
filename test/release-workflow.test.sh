@@ -13,6 +13,16 @@ fail() {
   exit 1
 }
 
+source "$ROOT/scripts/version-contract.sh"
+atm_is_stable_tag "v1.0.11" || fail "SemVer tag is no longer accepted"
+atm_is_stable_tag "v2026.08.18.2" || fail "CalVer tag is not accepted"
+if atm_is_stable_tag "v2026.02.30.1"; then
+  fail "impossible CalVer date was accepted"
+fi
+if atm_is_stable_tag "v2026.08.18.02"; then
+  fail "zero-padded CalVer revision was accepted"
+fi
+
 [[ -f "$WORKFLOW" ]] || fail "release workflow is missing"
 [[ -f "$ROOT/.github/workflows/promotion-policy.yml" ]] || fail "promotion policy workflow is missing"
 [[ -f "$RAILWAY_CONTRACT" ]] || fail "Railway deployment contract is missing"
@@ -135,7 +145,7 @@ grep -Fq 'startCommand = "bun web/server.ts"' "$ROOT/railway.toml" || fail "Rail
 fixture="$TEMP_ROOT/repository"
 output="$TEMP_ROOT/output"
 mkdir -p "$fixture/scripts" "$output"
-printf '%s\n' '{"name":"agent-trajectory-marketplace","version":"1.2.3"}' >"$fixture/package.json"
+printf '%s\n' '{"name":"agent-trajectory-marketplace","version":"2026.08.18.2"}' >"$fixture/package.json"
 cp "$ROOT/scripts/install.sh" "$fixture/scripts/install.sh"
 cp "$ROOT/scripts/install-agent.sh" "$fixture/scripts/install-agent.sh"
 cp "$ROOT/scripts/install-core.sh" "$fixture/scripts/install-core.sh"
@@ -147,7 +157,7 @@ git -C "$fixture" add .
 git -C "$fixture" -c user.name=ATM -c user.email=atm@example.invalid commit -qm fixture
 commit="$(git -C "$fixture" rev-parse HEAD)"
 ATM_RELEASE_REPOSITORY="$fixture" ATM_RELEASE_POSTHOG_API_KEY="phc_test_release_key" \
-  bash "$ROOT/scripts/build-release-assets.sh" v1.2.3 "$commit" "$output"
+  bash "$ROOT/scripts/build-release-assets.sh" v2026.08.18.2 "$commit" "$output"
 grep -Fq 'export ATM_POSTHOG_API_KEY="phc_test_release_key"' "$output/install-core.sh" || fail "release installer core does not receive the configured telemetry key"
 bun -e '
   import {parseUpdateReleaseManifest} from "./src/trajectory/update-release-contract";
@@ -157,15 +167,15 @@ bun -e '
   const manifest=parseUpdateReleaseManifest(input,{currentVersion:"1.2.2",releaseTag:input.tag,archiveAsset:{name:input.archive.name,size:input.archive.size,digest:`sha256:${input.archive.sha256}`}});
   const archive=new Uint8Array(await Bun.file(archivePath).arrayBuffer());
   const verified=await verifyUpdateReleaseArchive(archive,manifest);
-  if(verified.version!=="1.2.3")process.exit(1);
-' "$output/atm-release-manifest.json" "$output/atm-v1.2.3.tar.gz" || fail "generated release does not pass the production archive verifier"
+  if(verified.version!=="2026.08.18.2")process.exit(1);
+' "$output/atm-release-manifest.json" "$output/atm-v2026.08.18.2.tar.gz" || fail "generated release does not pass the production archive verifier"
 if [ -n "${ATM_TEST_ARTIFACT_DIR:-}" ]; then
   mkdir -p "$ATM_TEST_ARTIFACT_DIR"
   cp "$output/atm-release-manifest.json" "$ATM_TEST_ARTIFACT_DIR/generated-release-manifest.json"
-  cp "$output/atm-v1.2.3.tar.gz" "$ATM_TEST_ARTIFACT_DIR/generated-release.tar.gz"
-  printf '%s\n' '{"status":"verified","version":"1.2.3"}' >"$ATM_TEST_ARTIFACT_DIR/generated-release-verification.json"
+  cp "$output/atm-v2026.08.18.2.tar.gz" "$ATM_TEST_ARTIFACT_DIR/generated-release.tar.gz"
+  printf '%s\n' '{"status":"verified","version":"2026.08.18.2"}' >"$ATM_TEST_ARTIFACT_DIR/generated-release-verification.json"
 fi
-printf '%s\n' corrupt >>"$output/atm-v1.2.3.tar.gz"
+printf '%s\n' corrupt >>"$output/atm-v2026.08.18.2.tar.gz"
 if bun -e '
   import {parseUpdateReleaseManifest} from "./src/trajectory/update-release-contract";
   import {verifyUpdateReleaseArchive} from "./src/trajectory/update-release-archive";
@@ -173,7 +183,7 @@ if bun -e '
   const input=await Bun.file(manifestPath).json();
   const manifest=parseUpdateReleaseManifest(input,{currentVersion:"1.2.2",releaseTag:input.tag,archiveAsset:{name:input.archive.name,size:input.archive.size,digest:`sha256:${input.archive.sha256}`}});
   await verifyUpdateReleaseArchive(new Uint8Array(await Bun.file(archivePath).arrayBuffer()),manifest);
-' "$output/atm-release-manifest.json" "$output/atm-v1.2.3.tar.gz" >/dev/null 2>&1; then
+' "$output/atm-release-manifest.json" "$output/atm-v2026.08.18.2.tar.gz" >/dev/null 2>&1; then
   fail "production verifier accepted a corrupt generated archive"
 fi
 
