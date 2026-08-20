@@ -689,6 +689,31 @@ button {
   line-height: 1.65;
 }
 
+.auth-waitlist-success {
+  margin-top: var(--space-8);
+  border: 1px solid var(--accent-ring);
+  border-radius: var(--radius-surface);
+  background: var(--accent-glass);
+  padding: var(--space-6);
+}
+
+.auth-waitlist-success .kicker {
+  margin-bottom: var(--space-3);
+}
+
+.auth-waitlist-success h2 {
+  font-family: var(--font-display);
+  font-size: var(--type-h3);
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+
+.auth-waitlist-success p:last-child {
+  margin-top: var(--space-3);
+  color: var(--text-secondary);
+}
+
 .auth-verify-note .live-dot {
   background: var(--accent-bright);
 }
@@ -798,6 +823,7 @@ button {
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .auth-verify-note .live-dot {
@@ -806,8 +832,10 @@ button {
 }
 
 .auth-verify-note strong {
+  min-width: 0;
   color: var(--text-primary);
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .hero-cinematic {
