@@ -61,10 +61,6 @@ export default {
       });
     }
 
-    if (incomingUrl.pathname === WORKER_ATTESTATION_PATH) {
-      return revisionAttestation(environment);
-    }
-
     if (incomingUrl.pathname === WAITLIST_PATH) {
       return handleWaitlist(request, environment);
     }
@@ -78,6 +74,10 @@ export default {
         },
         status: 405,
       });
+    }
+
+    if (incomingUrl.pathname === WORKER_ATTESTATION_PATH) {
+      return revisionAttestation(environment);
     }
 
     const upstreamUrl = new URL(RAILWAY_ORIGIN);

@@ -78,6 +78,49 @@ test("cancels a stalled inbound request body and returns a bounded timeout", asy
   expect(fetchCalled).toBe(false);
 });
 
+test("returns an oversized-body response without awaiting stream cancellation", async () => {
+  const cancelStarted = deferred();
+  const releaseCancel = deferred();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(4_097));
+    },
+    cancel() {
+      cancelStarted.resolve();
+      return releaseCancel.promise;
+    },
+  });
+  const oversizedRequest = new Request("https://getatm.io/api/waitlist", {
+    body: stream,
+    headers: {
+      "cf-connecting-ip": "203.0.113.9",
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+
+  const responsePromise = handleWaitlist(
+    oversizedRequest,
+    { REGISTRY_WAITLIST_EDGE_SECRET: edgeSecret },
+    dependencies(async () => new Response("unexpected")),
+  );
+
+  await cancelStarted.promise;
+  try {
+    const outcome = await Promise.race([
+      responsePromise.then((response) => ({ kind: "response", response })),
+      new Promise((resolve) => setImmediate(() => resolve({ kind: "pending" }))),
+    ]);
+
+    expect(outcome.kind).toBe("response");
+    if (outcome.kind === "response") {
+      expect(outcome.response.status).toBe(413);
+    }
+  } finally {
+    releaseCancel.resolve();
+  }
+});
+
 test("contains Registry response-stream failures as bad gateway responses", async () => {
   const stream = new ReadableStream({
     start(controller) {

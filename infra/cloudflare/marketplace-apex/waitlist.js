@@ -51,7 +51,7 @@ const readBoundedBody = async (message, maximumBytes, deadline) => {
       if (done) break;
       length += value.byteLength;
       if (length > maximumBytes) {
-        await reader.cancel();
+        void reader.cancel().catch(() => {});
         return null;
       }
       chunks.push(value);

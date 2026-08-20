@@ -220,6 +220,30 @@ test.serial("fails closed when the Worker revision is not an immutable commit SH
   });
 });
 
+test.serial("rejects non-read Worker revision requests without contacting the origin", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalled = false;
+  globalThis.fetch = async () => {
+    fetchCalled = true;
+    return new Response("unexpected");
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request("https://getatm.io/.well-known/atm-worker-revision", {
+        method: "POST",
+      }),
+      { WORKER_REVISION: "a".repeat(40) },
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("GET, HEAD");
+    expect(fetchCalled).toBe(false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test.serial("keeps double-slash paths on the fixed Railway origin and strips credentials", async () => {
   const originalFetch = globalThis.fetch;
   let upstreamRequest;
