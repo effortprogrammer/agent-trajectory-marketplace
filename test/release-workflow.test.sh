@@ -28,10 +28,17 @@ grep -Fq '.immutable == true' "$WORKFLOW" || fail "release workflow does not ver
 grep -Fq '.digest == ("sha256:" + $manifest[0].archive.sha256)' "$WORKFLOW" || fail "release asset digest is not rebound to the manifest"
 grep -Fq 'b5d1a8278cb967c6caacde863d764abae5eaae053870084b0ac1659a7fd71674' "$WORKFLOW" || fail "release does not pin the waitlist contract revision"
 grep -Fq 'sha256sum --check web/assets.sha256' "$WORKFLOW" || fail "release does not verify the Marketplace web asset revision"
+(cd "$ROOT" && sha256sum --check web/assets.sha256 >/dev/null) || fail "Marketplace web asset manifest is stale"
 grep -Fq 'https://getatm.io/marketplace.js' "$WORKFLOW" || fail "release does not fetch deployed Marketplace assets"
 grep -Fq 'cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js"' "$WORKFLOW" || fail "release does not attest deployed Marketplace bytes"
 grep -Fq 'CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}' "$WORKFLOW" || fail "release does not keep the Cloudflare token external"
-grep -Fq 'bunx wrangler@4.58.0 deploy --config "$WORKER_CONFIG" --var "WORKER_REVISION:$WORKER_REVISION"' "$WORKFLOW" || fail "release does not deploy the repository-controlled Worker revision"
+grep -Fq '"wrangler": "4.58.0"' "$ROOT/package.json" || fail "Wrangler is not pinned in the package manifest"
+grep -Fq '"wrangler": ["wrangler@4.58.0"' "$ROOT/bun.lock" || fail "Wrangler is not integrity-pinned in the Bun lockfile"
+grep -Fq 'bun install --frozen-lockfile --ignore-scripts' "$WORKFLOW" || fail "release does not install locked tooling before exposing deploy credentials"
+grep -Fq 'bun run wrangler deploy --config "$WORKER_CONFIG" --var "WORKER_REVISION:$WORKER_REVISION"' "$WORKFLOW" || fail "release does not deploy the repository-controlled Worker revision"
+if grep -Fq 'bunx wrangler' "$WORKFLOW"; then
+  fail "release resolves Wrangler dynamically while deploy credentials are present"
+fi
 grep -Fq 'https://getatm.io/.well-known/atm-worker-revision' "$WORKFLOW" || fail "release does not request the deployed Worker attestation"
 grep -Fq 'x-atm-worker-revision: $WORKER_REVISION' "$WORKFLOW" || fail "release does not bind the deployed Worker header to the release revision"
 grep -Fq '.revision == $revision' "$WORKFLOW" || fail "release does not bind the deployed Worker body to the release revision"
