@@ -5,6 +5,8 @@ const CANONICAL_ORIGIN = "https://getatm.io";
 const HSTS = "max-age=31536000; includeSubDomains";
 const READ_METHODS = new Set(["GET", "HEAD"]);
 const WAITLIST_PATH = "/api/waitlist";
+const WORKER_ATTESTATION_PATH = "/.well-known/atm-worker-revision";
+const COMMIT_SHA = /^[a-f0-9]{40}$/;
 const FORWARDED_HEADERS = [
   "accept",
   "accept-language",
@@ -14,6 +16,33 @@ const FORWARDED_HEADERS = [
   "range",
   "user-agent",
 ];
+
+const revisionAttestation = (environment) => {
+  const revision = environment?.WORKER_REVISION;
+  if (typeof revision !== "string" || !COMMIT_SHA.test(revision)) {
+    return Response.json({
+      error: {
+        code: "service_unavailable",
+        message: "worker revision is unavailable",
+      },
+    }, {
+      headers: {
+        "cache-control": "no-store",
+        "content-type": "application/json",
+        "strict-transport-security": HSTS,
+      },
+      status: 503,
+    });
+  }
+  return Response.json({ revision }, {
+    headers: {
+      "cache-control": "no-store",
+      "content-type": "application/json",
+      "strict-transport-security": HSTS,
+      "x-atm-worker-revision": revision,
+    },
+  });
+};
 
 export default {
   async fetch(request, environment) {
@@ -30,6 +59,10 @@ export default {
         },
         status: 308,
       });
+    }
+
+    if (incomingUrl.pathname === WORKER_ATTESTATION_PATH) {
+      return revisionAttestation(environment);
     }
 
     if (incomingUrl.pathname === WAITLIST_PATH) {

@@ -179,6 +179,47 @@ test.serial("rejects oversized waitlist bodies before contacting Registry", asyn
   }
 });
 
+test.serial("attests the deployed Worker revision without contacting the origin", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalled = false;
+  globalThis.fetch = async () => {
+    fetchCalled = true;
+    return new Response("unexpected");
+  };
+  const revision = "a".repeat(40);
+
+  try {
+    const response = await worker.fetch(
+      new Request("https://getatm.io/.well-known/atm-worker-revision"),
+      { WORKER_REVISION: revision },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-atm-worker-revision")).toBe(revision);
+    expect(await response.json()).toEqual({ revision });
+    expect(fetchCalled).toBe(false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test.serial("fails closed when the Worker revision is not an immutable commit SHA", async () => {
+  const response = await worker.fetch(
+    new Request("https://getatm.io/.well-known/atm-worker-revision"),
+    { WORKER_REVISION: "unversioned" },
+  );
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("x-atm-worker-revision")).toBeNull();
+  expect(await response.json()).toEqual({
+    error: {
+      code: "service_unavailable",
+      message: "worker revision is unavailable",
+    },
+  });
+});
+
 test.serial("keeps double-slash paths on the fixed Railway origin and strips credentials", async () => {
   const originalFetch = globalThis.fetch;
   let upstreamRequest;
