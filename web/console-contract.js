@@ -3,7 +3,8 @@ const stages = new Set(["not_listed", "listed", "sold", "cleared", "paid", "with
 const exceptions = new Set([null, "clearance_failed", "refunded", "charged_back"]);
 const eventTypes = new Set(["sale", "clearance", "payout", "withdrawal", "relisting", "clearance_failed", "refund", "chargeback"]);
 const intervals = new Set(["day", "week", "month"]);
-const utcTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+const utcTimestamp = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z$/;
+const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export class SellerSalesContractError extends TypeError {}
 
@@ -20,12 +21,25 @@ const keys = (value, expected, label) => {
 const text = (value, label) => {
   if (typeof value !== "string" || value.length === 0) fail(`Invalid ${label}`);
 };
+const validUtcComponents = (year, month, day, hour = 0, minute = 0, second = 0) => {
+  const parsed = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  return Number.isFinite(parsed.getTime())
+    && parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day
+    && parsed.getUTCHours() === hour
+    && parsed.getUTCMinutes() === minute
+    && parsed.getUTCSeconds() === second;
+};
 const timestamp = (value, label) => {
   text(value, label);
-  if (!utcTimestamp.test(value) || !Number.isFinite(Date.parse(value))) fail(`Invalid ${label}`);
+  const components = utcTimestamp.exec(value);
+  if (components === null || !Number.isFinite(Date.parse(value)) || !validUtcComponents(...components.slice(1).map(Number))) fail(`Invalid ${label}`);
 };
 const date = (value, label) => {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(`${value}T00:00:00Z`))) fail(`Invalid ${label}`);
+  if (typeof value !== "string") fail(`Invalid ${label}`);
+  const components = isoDate.exec(value);
+  if (components === null || !Number.isFinite(Date.parse(`${value}T00:00:00Z`)) || !validUtcComponents(...components.slice(1).map(Number))) fail(`Invalid ${label}`);
 };
 const identifier = (value, label) => {
   if (typeof value !== "string" || !uuid.test(value)) fail(`Invalid ${label}`);
