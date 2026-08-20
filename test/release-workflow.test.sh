@@ -26,6 +26,16 @@ grep -Fq 'gh release create' "$WORKFLOW" || fail "workflow does not create a Git
 grep -Fq -- '--verify-tag' "$WORKFLOW" || fail "release creation does not require the triggering tag"
 grep -Fq '.immutable == true' "$WORKFLOW" || fail "release workflow does not verify immutable release metadata"
 grep -Fq '.digest == ("sha256:" + $manifest[0].archive.sha256)' "$WORKFLOW" || fail "release asset digest is not rebound to the manifest"
+grep -Fq 'b5d1a8278cb967c6caacde863d764abae5eaae053870084b0ac1659a7fd71674' "$WORKFLOW" || fail "release does not pin the waitlist contract revision"
+grep -Fq 'sha256sum --check web/assets.sha256' "$WORKFLOW" || fail "release does not verify the Marketplace web asset revision"
+grep -Fq 'https://getatm.io/marketplace.js' "$WORKFLOW" || fail "release does not fetch deployed Marketplace assets"
+grep -Fq 'cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js"' "$WORKFLOW" || fail "release does not attest deployed Marketplace bytes"
+
+CI_WORKFLOW="$ROOT/.github/workflows/ci.yml"
+grep -Fq -- "-name '*.test.js'" "$CI_WORKFLOW" || fail "CI does not discover JavaScript Worker tests"
+grep -Fq 'b5d1a8278cb967c6caacde863d764abae5eaae053870084b0ac1659a7fd71674' "$CI_WORKFLOW" || fail "CI does not pin the waitlist contract revision"
+grep -Fq 'sha256sum --check web/assets.sha256' "$CI_WORKFLOW" || fail "CI does not verify the Marketplace web asset revision"
+grep -Fq 'startCommand = "bun web/server.ts"' "$ROOT/railway.toml" || fail "Railway deployment does not run the source-tracked Marketplace server"
 
 fixture="$TEMP_ROOT/repository"
 output="$TEMP_ROOT/output"

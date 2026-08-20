@@ -18,6 +18,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify immutable waitlist edge contract revision
+        run: >-
+          echo
+          "b5d1a8278cb967c6caacde863d764abae5eaae053870084b0ac1659a7fd71674  contract/waitlist-edge/v1/fixture.json"
+          | sha256sum --check
+
+      - name: Verify Marketplace web asset revision
+        run: sha256sum --check web/assets.sha256
+
+      - name: Attest deployed Marketplace web bytes
+        run: |
+          curl --fail --silent --show-error https://getatm.io/ --output "$RUNNER_TEMP/index.html"
+          curl --fail --silent --show-error https://getatm.io/marketplace.css --output "$RUNNER_TEMP/marketplace.css"
+          curl --fail --silent --show-error https://getatm.io/marketplace.js --output "$RUNNER_TEMP/marketplace.js"
+          cmp web/index.html "$RUNNER_TEMP/index.html"
+          cmp web/marketplace.css "$RUNNER_TEMP/marketplace.css"
+          cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js"
+
       - name: Validate stable protected tag
         env:
           REF_PROTECTED: ${{ github.ref_protected }}

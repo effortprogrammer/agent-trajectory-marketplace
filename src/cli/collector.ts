@@ -34,7 +34,7 @@ type CollectorCliResult =
   | CollectServiceStatusResult
   | CollectServiceUninstallResult;
 
-export { parseUpdateCommand, type UpdateCommand } from "./update-command";
+export { parseUpdateCommand } from "./update-command";
 
 type CollectWatchRequest = Readonly<{ readonly command: "watch"; readonly declareRuntime?: "pi"; readonly intervalSeconds: number; readonly once: boolean; readonly outDir?: string; readonly outputRoot?: string; readonly runtimes: readonly string[]; readonly settleSeconds: number; readonly sourceDir?: string }>;
 

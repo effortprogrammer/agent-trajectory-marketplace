@@ -12,8 +12,10 @@ import { runUpdateCli } from "@/trajectory/update-cli";
 import { installUpdateServiceSchedule } from "@/trajectory/update-service-schedule";
 
 import { parseCollectorCommand, runCollectorCli, runCollectorResidentCli, type CollectorCommand } from "./collector";
+import { runDefaultDoctorCli } from "./doctor";
 import { isAuthInvocation, runAuthCli } from "./auth";
 import { isMarketplaceInvocation, runMarketplaceCli } from "./marketplace";
+import { maybePrintCliUpdateNotice } from "./update-notice";
 import { isWorldInvocation, runWorldCli } from "./world";
 
 const rootHelp = `Usage: trajectory <command>
@@ -29,9 +31,42 @@ Commands:
   marketplace seller candidate status
   marketplace seller wallet balance
   world --help|list|detail|run|status|download
+  doctor
   update
 
 Run a command with --help for command-specific usage.`;
+
+const doctorHelp = `Usage: trajectory doctor
+
+Checks the installed CLI, Bun runtime, and latest stable release.
+Returns machine-readable JSON.`;
+
+const updateHelp = `Usage: trajectory update
+
+Install the latest verified stable release.`;
+
+const isCommandHelp = (
+  argumentsList: readonly string[],
+  command: "doctor" | "update",
+): boolean =>
+  (
+    argumentsList.length === 2 &&
+    argumentsList[0] === command &&
+    (argumentsList[1] === "--help" || argumentsList[1] === "-h")
+  ) ||
+  (
+    argumentsList.length === 3 &&
+    argumentsList[0] === "trajectory" &&
+    argumentsList[1] === command &&
+    (argumentsList[2] === "--help" || argumentsList[2] === "-h")
+  );
+
+const isNamedInvocation = (
+  argumentsList: readonly string[],
+  command: "doctor" | "update",
+): boolean =>
+  argumentsList[0] === command ||
+  (argumentsList[0] === "trajectory" && argumentsList[1] === command);
 
 const collectorErrorCode = (error: unknown): string => {
   if (error instanceof Error && "code" in error && typeof error.code === "string") return error.code;
@@ -111,6 +146,14 @@ const main = async (): Promise<void> => {
       console.log(rootHelp);
       return;
     }
+    if (isCommandHelp(argumentsList, "doctor")) {
+      console.log(doctorHelp);
+      return;
+    }
+    if (isCommandHelp(argumentsList, "update")) {
+      console.log(updateHelp);
+      return;
+    }
     if (
       argumentsList.length === 6 &&
       argumentsList[0] === "trajectory" &&
@@ -124,10 +167,20 @@ const main = async (): Promise<void> => {
       if (!schedule.installed) process.exitCode = 1;
       return;
     }
-    const updateInvocation = argumentsList[0] === "update" ||
-      (argumentsList[0] === "trajectory" && argumentsList[1] === "update");
+    const updateInvocation = isNamedInvocation(argumentsList, "update");
     if (updateInvocation) {
       console.log(JSON.stringify(await runUpdateCli(argumentsList)));
+      return;
+    }
+    const doctorInvocation = isNamedInvocation(argumentsList, "doctor");
+    if (doctorInvocation) {
+      const result = await runDefaultDoctorCli(
+        argumentsList,
+        commandAbortController.signal,
+      );
+      if (!commandAbortController.signal.aborted) {
+        console.log(JSON.stringify(result));
+      }
       return;
     }
     if (isAuthInvocation(argumentsList)) {
@@ -170,6 +223,11 @@ const main = async (): Promise<void> => {
     console.error(JSON.stringify({ error: errorCode }));
     process.exitCode = 1;
   } finally {
+    await maybePrintCliUpdateNotice(
+      argumentsList,
+      commandAbortController.signal,
+      process.exitCode,
+    );
     process.removeListener("SIGINT", stop);
     process.removeListener("SIGTERM", stop);
   }

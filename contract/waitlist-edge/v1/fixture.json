@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "registryPath": "/v1/marketplace/waitlist",
+  "timestamp": "1787054400",
+  "nonce": "00000000-0000-0000-0000-000000000001",
+  "source": "203.0.113.9",
+  "body": "{\"email\":\"person@example.test\",\"acceptContact\":true}",
+  "bodySha256": "89e1d051f740a56f1e4c911d57cae4e89c9d52402d3ac689faa46446b5af60fa",
+  "hmacSha256": "189650612fa2cb675aa852d4b76bd1d2dbdc7538b5165ede75b2e6eacd839bf0",
+  "testSecret": "waitlist-route-test-edge-secret-0001"
+}
