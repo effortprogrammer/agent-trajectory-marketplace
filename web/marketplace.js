@@ -101,6 +101,8 @@ const authWaitlistSuccess = document.querySelector("[data-auth-waitlist-success]
 const authFeedback = document.querySelector("[data-auth-feedback]");
 const authChallengeEmail = document.querySelector("[data-auth-challenge-email]");
 const authModeTabs = document.querySelector("[data-auth-mode-tabs]");
+const authConsolePath = document.querySelector("[data-auth-console-path]");
+const authKicker = document.querySelector("[data-auth-kicker]");
 const authTitlePrefix = document.querySelector("[data-auth-title-prefix]");
 const authTitleAccent = document.querySelector("[data-auth-title-accent]");
 const authDescription = document.querySelector("[data-auth-description]");
@@ -301,12 +303,14 @@ const setAuthMode = (mode) => {
   const isWaitlist = mode === "waitlist";
   authContactConsent.hidden = !isWaitlist;
   authAcceptContact.required = isWaitlist;
+  authConsolePath.textContent = isWaitlist ? "ATM / buyer-access" : "ATM / member-sign-in";
+  authKicker.textContent = isWaitlist ? "Buyer access" : "Existing member";
   authTitlePrefix.textContent = isWaitlist ? "Request" : "Member sign in to";
-  authTitleAccent.textContent = isWaitlist ? "access." : "live supply.";
+  authTitleAccent.textContent = isWaitlist ? "buyer access." : "live supply.";
   authDescription.textContent = isWaitlist
-    ? "Join the waitlist for Marketplace access. We will only contact you about your request."
+    ? "For teams looking to license agent-session datasets. We will only contact you about this buyer access request."
     : "We will email a six-digit code. No password and no browser-stored session.";
-  authRequestLabel.textContent = isWaitlist ? "Request access" : "Send one-time code";
+  authRequestLabel.textContent = isWaitlist ? "Request buyer access" : "Send one-time code";
   authRequestForm.querySelector("button[type=submit]").disabled = false;
   if (isWaitlist && hasWaitlistAcknowledgment()) {
     authRequestForm.hidden = true;
@@ -376,7 +380,7 @@ const requestWaitlist = async (event) => {
     return;
   }
   if (!authAcceptContact.checked) {
-    setFeedback("Consent is required to request access.");
+    setFeedback("Consent is required to request buyer access.");
     authAcceptContact.focus();
     return;
   }
@@ -412,7 +416,7 @@ const requestWaitlist = async (event) => {
     authWaitlistSuccess.focus({ preventScroll: true });
   } catch {
     if (requestVersion === authRequestVersion) {
-      setFeedback("We couldn’t request access. Check your connection and try again.");
+      setFeedback("We couldn’t request buyer access. Check your connection and try again.");
     }
   } finally {
     if (requestVersion === authRequestVersion) submit.disabled = false;

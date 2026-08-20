@@ -3,6 +3,7 @@ const REGISTRY_ORIGIN = "https://gateway.getatm.io";
 const REGISTRY_PATH = "/v1/marketplace/waitlist";
 const MAX_REQUEST_BYTES = 4_096;
 const MAX_RESPONSE_BYTES = 4_096;
+const INBOUND_REQUEST_BODY_TIMEOUT_MS = 5_000;
 const UPSTREAM_TIMEOUT_MS = 10_000;
 const EXPECTED_REGISTRY_STATUSES = new Set([202, 400, 413, 415, 429]);
 const encoder = new TextEncoder();
@@ -23,7 +24,19 @@ const errorResponse = (status, code, message, allow) => {
     { headers, status },
   );
 };
-const readBoundedBody = async (message, maximumBytes) => {
+class RequestBodyTimeoutError extends Error {}
+
+const readWithDeadline = (reader, deadline) => {
+  if (deadline === undefined) return reader.read();
+  if (deadline.aborted) return Promise.reject(new RequestBodyTimeoutError());
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new RequestBodyTimeoutError());
+    deadline.addEventListener("abort", abort, { once: true });
+    reader.read().then(resolve, reject).finally(() => deadline.removeEventListener("abort", abort));
+  });
+};
+
+const readBoundedBody = async (message, maximumBytes, deadline) => {
   const contentLength = message.headers.get("content-length");
   if (contentLength !== null && Number(contentLength) > maximumBytes) {
     return null;
@@ -34,15 +47,21 @@ const readBoundedBody = async (message, maximumBytes) => {
   let length = 0;
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithDeadline(reader, deadline);
       if (done) break;
       length += value.byteLength;
       if (length > maximumBytes) {
-        await reader.cancel();
+        void reader.cancel().catch(() => {});
         return null;
       }
       chunks.push(value);
     }
+  } catch (error) {
+    if (error instanceof RequestBodyTimeoutError) {
+      // Do not await an untrusted stalled source while returning the bounded timeout.
+      void reader.cancel().catch(() => {});
+    }
+    throw error;
   } finally {
     reader.releaseLock();
   }
@@ -78,6 +97,7 @@ const defaultDependencies = {
   fetcher: (request) => fetch(request),
   nonce: () => crypto.randomUUID(),
   now: () => Date.now(),
+  requestBodyTimeoutSignal: () => AbortSignal.timeout(INBOUND_REQUEST_BODY_TIMEOUT_MS),
   timeoutSignal: () => AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
 };
 
@@ -101,7 +121,19 @@ export const handleWaitlist = async (
   if (!validSecret(secret)) {
     return errorResponse(503, "service_unavailable", "waitlist is unavailable");
   }
-  const body = await readBoundedBody(request, MAX_REQUEST_BYTES);
+  let body;
+  try {
+    body = await readBoundedBody(
+      request,
+      MAX_REQUEST_BYTES,
+      (dependencies.requestBodyTimeoutSignal ?? defaultDependencies.requestBodyTimeoutSignal)(),
+    );
+  } catch (error) {
+    if (error instanceof RequestBodyTimeoutError) {
+      return errorResponse(408, "request_timeout", "request timed out");
+    }
+    throw error;
+  }
   if (body === null) {
     return errorResponse(413, "payload_too_large", "request body is too large");
   }

@@ -14,9 +14,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout protected tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install pinned release tooling
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Verify immutable waitlist edge contract revision
         run: >-
@@ -47,6 +55,26 @@ jobs:
           git rev-parse --verify "refs/tags/$TAG^{commit}"
           test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$GITHUB_SHA"
           test "$(jq -r '.version' package.json)" = "${TAG#v}"
+
+      - name: Deploy and attest Marketplace apex Worker revision
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          WORKER_CONFIG: infra/cloudflare/marketplace-apex/wrangler.jsonc
+          WORKER_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          bun run wrangler deploy --config "$WORKER_CONFIG" --var "WORKER_REVISION:$WORKER_REVISION"
+          curl --fail --silent --show-error --header 'cache-control: no-cache' \
+            --dump-header "$RUNNER_TEMP/worker-attestation.headers" \
+            https://getatm.io/.well-known/atm-worker-revision \
+            --output "$RUNNER_TEMP/worker-attestation.json"
+          tr -d '\r' <"$RUNNER_TEMP/worker-attestation.headers" \
+            | grep --ignore-case --fixed-strings --line-regexp "x-atm-worker-revision: $WORKER_REVISION"
+          jq -e --arg revision "$WORKER_REVISION" '.revision == $revision' \
+            "$RUNNER_TEMP/worker-attestation.json"
 
       - name: Build source archive and bound manifest
         env:

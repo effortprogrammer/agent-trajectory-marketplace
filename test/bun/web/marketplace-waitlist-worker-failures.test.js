@@ -16,11 +16,109 @@ const request = () =>
     method: "POST",
   });
 
-const dependencies = (fetcher) => ({
+const dependencies = (fetcher, requestBodyTimeoutSignal = () => new AbortController().signal) => ({
   fetcher,
   nonce: () => "00000000-0000-4000-8000-000000000001",
   now: () => 1_787_054_400_000,
+  requestBodyTimeoutSignal,
   timeoutSignal: () => new AbortController().signal,
+});
+
+const deferred = () => {
+  let resolve;
+  const promise = new Promise((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+};
+
+test("cancels a stalled inbound request body and returns a bounded timeout", async () => {
+  const reading = deferred();
+  const cancelled = deferred();
+  const timeout = new AbortController();
+  let fetchCalled = false;
+  const stream = new ReadableStream({
+    pull() {
+      reading.resolve();
+    },
+    cancel() {
+      cancelled.resolve();
+    },
+  });
+  const stalledRequest = new Request("https://getatm.io/api/waitlist", {
+    body: stream,
+    headers: {
+      "cf-connecting-ip": "203.0.113.9",
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+
+  const responsePromise = handleWaitlist(
+    stalledRequest,
+    { REGISTRY_WAITLIST_EDGE_SECRET: edgeSecret },
+    dependencies(async () => {
+      fetchCalled = true;
+      return new Response("unexpected");
+    }, () => timeout.signal),
+  );
+
+  await reading.promise;
+  timeout.abort();
+
+  const response = await responsePromise;
+  await cancelled.promise;
+  expect(response.status).toBe(408);
+  expect(await response.json()).toEqual({
+    error: {
+      code: "request_timeout",
+      message: "request timed out",
+    },
+  });
+  expect(fetchCalled).toBe(false);
+});
+
+test("returns an oversized-body response without awaiting stream cancellation", async () => {
+  const cancelStarted = deferred();
+  const releaseCancel = deferred();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(4_097));
+    },
+    cancel() {
+      cancelStarted.resolve();
+      return releaseCancel.promise;
+    },
+  });
+  const oversizedRequest = new Request("https://getatm.io/api/waitlist", {
+    body: stream,
+    headers: {
+      "cf-connecting-ip": "203.0.113.9",
+      "content-type": "application/json",
+    },
+    method: "POST",
+  });
+
+  const responsePromise = handleWaitlist(
+    oversizedRequest,
+    { REGISTRY_WAITLIST_EDGE_SECRET: edgeSecret },
+    dependencies(async () => new Response("unexpected")),
+  );
+
+  await cancelStarted.promise;
+  try {
+    const outcome = await Promise.race([
+      responsePromise.then((response) => ({ kind: "response", response })),
+      new Promise((resolve) => setImmediate(() => resolve({ kind: "pending" }))),
+    ]);
+
+    expect(outcome.kind).toBe("response");
+    if (outcome.kind === "response") {
+      expect(outcome.response.status).toBe(413);
+    }
+  } finally {
+    releaseCancel.resolve();
+  }
 });
 
 test("contains Registry response-stream failures as bad gateway responses", async () => {

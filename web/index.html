@@ -30,7 +30,7 @@
           <span class="live-dot" aria-hidden="true"></span>
           <span data-status-label></span>
         </span>
-        <button class="nav-auth-button" type="button" data-auth-open data-testid="request-access-button">Request access</button>
+        <button class="nav-auth-button" type="button" data-auth-open data-testid="request-access-button">Request buyer access</button>
         <button class="nav-auth-button nav-logout-button" type="button" data-auth-logout data-testid="auth-logout-button" hidden>Log out</button>
       </div>
     </div>
@@ -41,17 +41,17 @@
       <div class="auth-gate-panel">
         <header class="auth-console-bar">
           <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="auth-console-path">ATM / access-request</span>
+          <span class="auth-console-path" data-auth-console-path>ATM / buyer-access</span>
           <button class="auth-close-button" type="button" data-auth-close data-testid="auth-close-button" aria-label="Close access dialog">
             <span aria-hidden="true">×</span>
           </button>
         </header>
         <div class="auth-panel-body">
-          <p class="kicker">Marketplace access</p>
-          <h1 id="auth-title"><span data-auth-title-prefix>Request</span><em data-auth-title-accent>access.</em></h1>
-          <p class="auth-intro" id="auth-description" data-auth-description>Join the waitlist for Marketplace access. We will only contact you about your request.</p>
+          <p class="kicker" data-auth-kicker>Buyer access</p>
+          <h1 id="auth-title"><span data-auth-title-prefix>Request</span><em data-auth-title-accent>buyer access.</em></h1>
+          <p class="auth-intro" id="auth-description" data-auth-description>For teams looking to license agent-session datasets. We will only contact you about this buyer access request.</p>
           <div class="auth-mode-tabs" aria-label="Marketplace access mode" data-auth-mode-tabs>
-            <button class="auth-mode-tab is-selected" type="button" aria-pressed="true" data-auth-mode="waitlist">Request access</button>
+            <button class="auth-mode-tab is-selected" type="button" aria-pressed="true" data-auth-mode="waitlist">Buyer access</button>
             <button class="auth-mode-tab" type="button" aria-pressed="false" data-auth-mode="login">Member sign in</button>
           </div>
           <form class="auth-form" data-auth-request-form novalidate>
@@ -59,17 +59,17 @@
             <input id="auth-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="320" required aria-describedby="auth-feedback" data-auth-email />
             <label class="auth-terms" data-auth-contact-consent>
               <input type="checkbox" data-auth-accept-contact required />
-              <span>I agree that ATM may contact me about Marketplace access.</span>
+              <span>I agree that ATM may contact me about licensing agent-session datasets.</span>
             </label>
             <button class="signal-button" type="submit" data-auth-request-submit>
-              <span data-auth-request-label>Request access</span>
+              <span data-auth-request-label>Request buyer access</span>
               <span aria-hidden="true">→</span>
             </button>
           </form>
           <section class="auth-waitlist-success" data-auth-waitlist-success role="status" aria-live="polite" tabindex="-1" hidden>
-            <p class="kicker">Request received</p>
-            <h2>You’re on the waitlist.</h2>
-            <p>We’ll be in touch when Marketplace access is available.</p>
+            <p class="kicker">Buyer request received</p>
+            <h2>You’re on the buyer waitlist.</h2>
+            <p>We'll contact you about licensing agent-session datasets.</p>
           </section>
           <form class="auth-form" data-auth-verify-form hidden novalidate>
             <p class="auth-verify-note"><span class="live-dot" aria-hidden="true"></span>Code sent to <strong data-auth-challenge-email></strong></p>
@@ -125,7 +125,7 @@
       <div class="content-shell hero-copy">
         <p class="kicker">Monetize real agent work</p>
         <h1><span>Turn agent sessions</span><em>into revenue.</em></h1>
-        <p class="hero-lead">Publish credential-redacted coding-agent sessions as sellable data supply. Every accepted session preserves real requests, decisions, tool use, and recoveries without exposing credentials.</p>
+        <p class="hero-lead">Publish credential-redacted coding-agent sessions as sellable data supply. Every accepted session preserves real requests, decisions, tool use, and recoveries without exposing credentials. <span data-testid="seller-onboarding-note">No approval required to install the CLI, create a seller account, and submit sessions.</span></p>
         <div class="hero-actions">
           <a class="signal-button" href="#install-command">
             <span>Start selling sessions</span>
@@ -159,11 +159,11 @@
         <div class="supply-locked reveal" data-supply-locked data-reveal>
           <div>
             <p class="kicker">Protected aggregate</p>
-            <h3>Live supply stays private until access is approved.</h3>
-            <p>The public Marketplace explains how the corpus works. Membership unlocks the current aggregate totals without exposing individual sessions.</p>
+            <h3>Live supply is available to signed-in members.</h3>
+            <p>Teams interested in licensing agent-session datasets can request buyer access. Existing members can sign in to view aggregate totals.</p>
           </div>
           <button class="signal-button" type="button" data-auth-open data-testid="supply-request-access-button">
-            <span>Request access</span>
+            <span>Request buyer access</span>
             <span aria-hidden="true">→</span>
           </button>
         </div>
