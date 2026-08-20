@@ -1077,6 +1077,49 @@ button {
   line-height: 1.7;
 }
 
+.supply-locked-actions {
+  width: min(18rem, 100%);
+  display: grid;
+  gap: var(--space-4);
+}
+
+.public-token-total {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--canvas-deep);
+  padding: var(--space-5);
+}
+
+.supply-locked .public-token-total p {
+  margin-top: 0;
+}
+
+.public-token-total .metric-skeleton {
+  width: 80%;
+  height: var(--space-12);
+}
+
+.public-token-total .metric-value {
+  font-size: clamp(1.75rem, 2.5vw, 2rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.public-token-total .metric-note {
+  color: var(--text-muted);
+  font-size: var(--type-label);
+  line-height: 1.45;
+}
+
+.public-token-total.is-error .metric-value {
+  color: var(--text-secondary);
+  font-size: var(--type-body);
+}
+
 .token-metric {
   min-height: 31rem;
   justify-content: space-between;

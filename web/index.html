@@ -131,12 +131,20 @@
           <div>
             <p class="kicker">Protected aggregate</p>
             <h3>Live supply is available to signed-in members.</h3>
-            <p>Teams interested in licensing agent-session datasets can request buyer access. Existing members can sign in to view aggregate totals.</p>
+            <p>The total token volume is public. Teams interested in licensing agent-session datasets can request buyer access, while existing members can sign in to view session and runtime totals.</p>
           </div>
-          <button class="signal-button" type="button" data-auth-open data-testid="supply-request-access-button">
-            <span>Request buyer access</span>
-            <span aria-hidden="true">→</span>
-          </button>
+          <div class="supply-locked-actions">
+            <article class="public-token-total is-loading" data-public-token-region aria-busy="true" aria-live="polite" role="status">
+              <p class="metric-label">Total training tokens</p>
+              <span class="metric-skeleton" aria-hidden="true" data-public-token-skeleton></span>
+              <strong class="metric-value" data-public-token-count data-testid="public-token-count" hidden>—</strong>
+              <p class="metric-note">Across accepted Registry sessions</p>
+            </article>
+            <button class="signal-button" type="button" data-auth-open data-testid="supply-request-access-button">
+              <span>Request buyer access</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
         </div>
 
         <div class="supply-layout reveal" data-authenticated-content data-reveal aria-busy="true" data-supply-region hidden>

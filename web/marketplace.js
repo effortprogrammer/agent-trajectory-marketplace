@@ -112,6 +112,9 @@ const authOpenButtons = document.querySelectorAll("[data-auth-open]");
 const authCloseButton = document.querySelector("[data-auth-close]");
 const authLogoutButton = document.querySelector("[data-auth-logout]");
 const status = document.querySelector("[data-registry-status]");
+const publicTokenRegion = document.querySelector("[data-public-token-region]");
+const publicTokenCount = document.querySelector("[data-public-token-count]");
+const publicTokenSkeleton = document.querySelector("[data-public-token-skeleton]");
 
 let authMode = "waitlist";
 let challenge;
@@ -261,6 +264,32 @@ const renderAuthenticated = (session) => {
   setStatus("is-connecting", "Connecting to Registry");
   resetSupply();
   scheduleExpiry(session);
+};
+
+const loadPublicTokenTotal = async () => {
+  if (!publicTokenRegion || !publicTokenCount || !publicTokenSkeleton) return;
+  try {
+    const response = await fetch(`${registry}/v1/marketplace/public-stats`, {
+      headers: { accept: "application/json" },
+      redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error("Registry public stats unavailable");
+    const stats = await response.json();
+    const tokens = parseStat(stats.tradeableTokens);
+    publicTokenCount.textContent = formatInteger(tokens);
+    publicTokenCount.hidden = false;
+    publicTokenSkeleton.hidden = true;
+    publicTokenRegion.classList.remove("is-loading", "is-error");
+    publicTokenRegion.setAttribute("aria-busy", "false");
+  } catch {
+    publicTokenCount.textContent = "Unavailable";
+    publicTokenCount.hidden = false;
+    publicTokenSkeleton.hidden = true;
+    publicTokenRegion.classList.remove("is-loading");
+    publicTokenRegion.classList.add("is-error");
+    publicTokenRegion.setAttribute("aria-busy", "false");
+  }
 };
 
 const showVerification = () => {
@@ -619,3 +648,4 @@ for (const element of document.querySelectorAll("[data-reveal]")) {
 document.body.classList.remove("no-js");
 setAuthMode("waitlist");
 showPublicAccess();
+void loadPublicTokenTotal();

@@ -108,6 +108,9 @@ const startRegistry = () => {
           ? json({ ok: true, revoked: true })
           : json({ error: { code: "unavailable" }, ok: false }, logoutStatus)
       }
+      if (url.pathname === "/v1/marketplace/public-stats") {
+        return json({ tradeableTokens: 39_048_328 })
+      }
       if (url.pathname === "/v1/marketplace/stats") {
         if (request.headers.get("authorization") !== `Bearer ${accessToken}`) {
           return json({ error: { code: "unauthorized" }, ok: false }, 401)

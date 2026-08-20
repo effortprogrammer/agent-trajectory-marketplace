@@ -53,7 +53,7 @@ afterAll(async () => {
 })
 
 describe("authenticated aggregate marketplace browser contract", () => {
-  test("shows the public landing while withholding aggregate supply before login", async () => {
+  test("shows public token volume while withholding member aggregates", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
 
@@ -62,10 +62,23 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("#top").isVisible()).toBe(true)
     expect(await page.locator("[data-auth-gate]").isVisible()).toBe(false)
     expect(await page.locator("[data-supply-locked]").isVisible()).toBe(true)
+    expect(await page.getByTestId("public-token-count").count()).toBe(1)
+    expect(await page.getByTestId("public-token-count").innerText()).toBe("39,048,328")
+    expect(await page.getByTestId("public-token-count").evaluate((element) => {
+      const range = element.ownerDocument.createRange()
+      range.selectNodeContents(element)
+      return range.getClientRects().length
+    })).toBe(1)
+    expect(await page.locator("[data-public-token-region]").getAttribute("aria-live")).toBe("polite")
     expect(await page.locator("[data-authenticated-content]:visible").count()).toBe(0)
     expect(await page.getByTestId("aggregate-status").isVisible()).toBe(false)
     expect(await page.locator("[data-session-count]:visible, [data-token-count]:visible").count()).toBe(0)
-    expect(harness.registryRequests).toEqual([])
+    expect(harness.registryRequests).toEqual([{
+      authorization: null,
+      body: undefined,
+      method: "GET",
+      path: "/v1/marketplace/public-stats",
+    }])
   })
 
   test("copies the exact installer from the simplified seller hero", async () => {
@@ -415,7 +428,12 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(new URL(page.url()).pathname).toBe("/index.html")
     expect(await page.locator("[data-auth-gate]").isVisible()).toBe(false)
     expect(await page.locator("#top").isVisible()).toBe(true)
-    expect(harness.registryRequests).toEqual([])
+    expect(harness.registryRequests).toEqual([{
+      authorization: null,
+      body: undefined,
+      method: "GET",
+      path: "/v1/marketplace/public-stats",
+    }])
   })
 
   test("keeps the public landing and explicit sign-in usable on mobile", async () => {
