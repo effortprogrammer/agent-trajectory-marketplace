@@ -71,7 +71,11 @@ const renderLedger = (root, events) => {
     const item = element("li"); item.append(element("span", "seller-event-date", dateLabel(event.occurredAt)));
     const subject = event.sessionId ? ` / ${shortId(event.sessionId)}` : event.relatedSessionCount === null ? "" : ` / ${event.relatedSessionCount} sessions`;
     item.append(element("span", "seller-event-text", `${labels[event.type]}${subject}`));
-    if (event.amountCredits !== null) item.append(element("span", "seller-event-amount", `+${formatCredits(event.amountCredits)}`));
+    if (event.amountCredits !== null && event.type === "clearance") {
+      item.append(element("span", "seller-event-amount", `+${formatCredits(event.amountCredits)}`));
+    } else if (event.amountCredits !== null && ["payout", "refund", "chargeback"].includes(event.type)) {
+      item.append(element("span", "seller-event-amount seller-amount-negative", `-${formatCredits(event.amountCredits)}`));
+    }
     root.append(item);
   }
 };
