@@ -91,6 +91,37 @@ describe("authenticated aggregate marketplace browser contract", () => {
     )
   })
 
+  test("separates buyer access from approval-free seller onboarding", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    expect(await page.getByTestId("request-access-button").innerText()).toBe(
+      "Request buyer access",
+    )
+    expect(await page.getByTestId("seller-onboarding-note").innerText()).toContain(
+      "No approval required",
+    )
+    await page.getByTestId("request-access-button").click()
+    expect(await page.locator("[data-auth-mode=waitlist]").innerText()).toBe(
+      "Buyer access",
+    )
+    expect(await page.locator("[data-auth-description]").innerText()).toContain(
+      "license agent-session datasets",
+    )
+    expect(await page.locator("[data-auth-mode=login]").innerText()).toBe(
+      "Member sign in",
+    )
+    await page.locator("[data-auth-mode=login]").click()
+    expect(await page.locator("[data-auth-console-path]").innerText()).toBe(
+      "ATM / member-sign-in",
+    )
+    expect(await page.locator("[data-auth-kicker]").innerText()).toBe(
+      "Existing member",
+    )
+  })
+
   test("opens a dismissible auth dialog only after an explicit supply action", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
