@@ -102,6 +102,36 @@ describe("authenticated aggregate marketplace browser contract", () => {
     ]))
   })
 
+  test("renders payout ledger events as negative debits", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    const payoutLedger = {
+      asOf: "2026-08-20T12:00:00Z",
+      events: [{
+        amountCredits: 100,
+        eventId: "33333333-3333-4333-8333-333333333333",
+        occurredAt: "2026-08-20T11:30:00Z",
+        relatedSessionCount: 1,
+        sessionId: null,
+        type: "payout",
+      }],
+      ok: true,
+      page: { nextCursor: null },
+    }
+    await page.route("https://gateway.getatm.io/v1/marketplace/seller/sales/ledger", async (route) => {
+      await route.fulfill({ body: JSON.stringify(payoutLedger), contentType: "application/json", status: 200 })
+    })
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    await page.getByTestId("seller-console-link").click()
+    const payoutAmount = page.locator("[data-console-ledger] .seller-event-amount")
+    await payoutAmount.waitFor({ state: "visible" })
+
+    expect(await payoutAmount.innerText()).toBe("-100 credits")
+    expect(await payoutAmount.evaluate((element) => element.classList.contains("seller-amount-negative"))).toBe(true)
+  })
+
   test("shows empty seller sales states when the account has no sales activity", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)

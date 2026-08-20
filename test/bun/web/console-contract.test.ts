@@ -61,3 +61,9 @@ test("seller sales contract validators reject unknown fields, snake case, and wr
   expect(() => parseEarningsResponse({ ...earnings, openingCumulativeCredits: "500" })).toThrow()
   expect(() => parseLedgerResponse({ ...ledger, events: [{ ...ledger.events[0], amountCredits: -1 }] })).toThrow()
 })
+
+test("seller sales contract validators reject non-canonical timestamps", () => {
+  expect(() => parseSessionsResponse({ ...sessions, asOf: "Aug 20 2026" })).toThrow()
+  expect(() => parseSessionsResponse({ ...sessions, asOf: "2026-08-20T12:00:00+09:00" })).toThrow()
+  expect(() => parseEarningsResponse({ ...earnings, points: [{ ...earnings.points[0], periodStart: "2026-08-20" }] })).toThrow()
+})

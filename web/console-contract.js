@@ -3,6 +3,7 @@ const stages = new Set(["not_listed", "listed", "sold", "cleared", "paid", "with
 const exceptions = new Set([null, "clearance_failed", "refunded", "charged_back"]);
 const eventTypes = new Set(["sale", "clearance", "payout", "withdrawal", "relisting", "clearance_failed", "refund", "chargeback"]);
 const intervals = new Set(["day", "week", "month"]);
+const utcTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 export class SellerSalesContractError extends TypeError {}
 
@@ -21,7 +22,7 @@ const text = (value, label) => {
 };
 const timestamp = (value, label) => {
   text(value, label);
-  if (!Number.isFinite(Date.parse(value))) fail(`Invalid ${label}`);
+  if (!utcTimestamp.test(value) || !Number.isFinite(Date.parse(value))) fail(`Invalid ${label}`);
 };
 const date = (value, label) => {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(`${value}T00:00:00Z`))) fail(`Invalid ${label}`);
