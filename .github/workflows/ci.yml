@@ -39,6 +39,15 @@ jobs:
       - name: Verify wallet balance fixtures
         run: bun run verify:wallet-balance
 
+      - name: Verify immutable waitlist edge contract revision
+        run: >-
+          echo
+          "b5d1a8278cb967c6caacde863d764abae5eaae053870084b0ac1659a7fd71674  contract/waitlist-edge/v1/fixture.json"
+          | sha256sum --check
+
+      - name: Verify Marketplace web asset revision
+        run: sha256sum --check web/assets.sha256
+
       - name: Test process boundaries
         run: |
           while IFS= read -r -d '' test_file; do
@@ -47,7 +56,7 @@ jobs:
 
       - name: Test remaining suite
         run: >-
-          find test/bun -type f -name '*.test.ts'
+          find test/bun -type f \( -name '*.test.ts' -o -name '*.test.js' \)
           ! -name '*process.test.ts'
           -print0
           | xargs -0 bun test

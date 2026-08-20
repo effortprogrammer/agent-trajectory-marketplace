@@ -1,7 +1,10 @@
+import { handleWaitlist } from "./waitlist.js";
+
 const RAILWAY_ORIGIN = "https://marketplace-web-production-production.up.railway.app";
 const CANONICAL_ORIGIN = "https://getatm.io";
 const HSTS = "max-age=31536000; includeSubDomains";
 const READ_METHODS = new Set(["GET", "HEAD"]);
+const WAITLIST_PATH = "/api/waitlist";
 const FORWARDED_HEADERS = [
   "accept",
   "accept-language",
@@ -13,7 +16,7 @@ const FORWARDED_HEADERS = [
 ];
 
 export default {
-  async fetch(request) {
+  async fetch(request, environment) {
     const incomingUrl = new URL(request.url);
     if (incomingUrl.protocol !== "https:") {
       const redirectUrl = new URL(CANONICAL_ORIGIN);
@@ -27,6 +30,10 @@ export default {
         },
         status: 308,
       });
+    }
+
+    if (incomingUrl.pathname === WAITLIST_PATH) {
+      return handleWaitlist(request, environment);
     }
 
     if (!READ_METHODS.has(request.method)) {

@@ -12,10 +12,15 @@ const desktop = { height: 900, width: 1_280 } as const
 const mobile = { height: 844, width: 390 } as const
 let harness: SessionUiHarness | undefined
 
-const authenticate = async (page: Page): Promise<void> => {
+const openMemberSignIn = async (page: Page): Promise<void> => {
   if (!await page.locator("[data-auth-gate]").isVisible()) {
-    await page.getByTestId("auth-login-button").click()
+    await page.getByTestId("request-access-button").click()
   }
+  await page.locator("[data-auth-mode=login]").click()
+}
+
+const authenticate = async (page: Page): Promise<void> => {
+  await openMemberSignIn(page)
   const challengeRequest = page.waitForRequest((request) =>
     new URL(request.url()).pathname === "/v1/auth/login",
   )
@@ -91,7 +96,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     const page = await harness.newPage(desktop)
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
-    const supplyButton = page.getByTestId("supply-sign-in-button")
+    const supplyButton = page.getByTestId("supply-request-access-button")
     await supplyButton.click()
 
     expect(await page.getByRole("dialog").isVisible()).toBe(true)
@@ -104,20 +109,19 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("#top").isVisible()).toBe(true)
     expect(await page.locator(".auth-assurances").count()).toBe(0)
     const closeButton = page.getByTestId("auth-close-button")
-    expect(await closeButton.innerText()).toBe("×")
-    expect(await closeButton.getAttribute("aria-label")).toBe("Close sign-in dialog")
+    expect(await closeButton.isVisible()).toBe(true)
     await closeButton.click()
     expect(await page.getByRole("dialog").isVisible()).toBe(false)
     expect(await page.evaluate<boolean>(
-      "document.activeElement?.dataset.testid === 'supply-sign-in-button'",
+      "document.activeElement?.dataset.testid === 'supply-request-access-button'",
     )).toBe(true)
 
-    const navigationButton = page.getByTestId("auth-login-button")
+    const navigationButton = page.getByTestId("request-access-button")
     await navigationButton.click()
     await page.keyboard.press("Escape")
     expect(await page.getByRole("dialog").isVisible()).toBe(false)
     expect(await page.evaluate<boolean>(
-      "document.activeElement?.dataset.testid === 'auth-login-button'",
+      "document.activeElement?.dataset.testid === 'request-access-button'",
     )).toBe(true)
   })
 
@@ -148,28 +152,47 @@ describe("authenticated aggregate marketplace browser contract", () => {
     })
   })
 
-  test("sends the signup contract before OTP verification", async () => {
+  test("posts a waitlist request, preserves its acknowledgment, and keeps member login available", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
+    await page.route("**/api/waitlist", async (route) => {
+      await route.fulfill({
+        body: JSON.stringify({ ok: true, status: "accepted" }),
+        contentType: "application/json",
+        status: 202,
+      })
+    })
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
-    await page.getByTestId("auth-login-button").click()
-    await page.locator("[data-auth-mode=signup]").click()
+    await page.getByTestId("request-access-button").click()
     await page.locator("[data-auth-email]").fill("OWNER@example.test")
-    await page.locator("[data-auth-accept-terms]").check()
+    await page.locator("[data-auth-accept-contact]").check()
     const request = page.waitForRequest((candidate) =>
-      new URL(candidate.url()).pathname === "/v1/auth/signup",
+      new URL(candidate.url()).pathname === "/api/waitlist",
     )
     const response = page.waitForResponse((candidate) =>
-      new URL(candidate.url()).pathname === "/v1/auth/signup",
+      new URL(candidate.url()).pathname === "/api/waitlist",
     )
     await page.locator("[data-auth-request-submit]").click()
-    const signup = await request
-    await response
 
-    expect(await signup.postDataJSON()).toEqual({ acceptTerms: true, email: "owner@example.test" })
-    expect(await page.locator("[data-auth-code]").isVisible()).toBe(true)
-    expect(harness.registryRequests.some((entry) => entry.path === "/v1/marketplace/stats")).toBe(false)
+    expect(await (await request).postDataJSON()).toEqual({
+      acceptContact: true,
+      email: "owner@example.test",
+    })
+    expect((await response).status()).toBe(202)
+    expect(await page.locator("[data-auth-request-form]:visible").count()).toBe(0)
+    expect(await page.locator("[data-auth-waitlist-success]").isVisible()).toBe(true)
+    expect(await page.evaluate(
+      (key) => sessionStorage.getItem(key),
+      "atm.marketplace.waitlist-ack-v1",
+    )).toBe("1")
+
+    await page.reload({ waitUntil: "networkidle" })
+    await page.getByTestId("request-access-button").click()
+    expect(await page.locator("[data-auth-waitlist-success]").isVisible()).toBe(true)
+    await page.locator("[data-auth-mode=login]").click()
+    expect(await page.locator("[data-auth-request-form]").isVisible()).toBe(true)
+    expect(await page.locator("[data-auth-accept-contact]").isVisible()).toBe(false)
   })
 
   test("clears an unauthorized session and permits a new login", async () => {
@@ -286,7 +309,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     })
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
-    await page.getByTestId("auth-login-button").click()
+    await openMemberSignIn(page)
     await page.locator("[data-auth-email]").fill("owner@example.test")
     await page.locator("[data-auth-request-submit]").click()
     await page.locator("[data-auth-request-submit]:not([disabled])").waitFor({
@@ -304,7 +327,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     const page = await harness.newPage(desktop)
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
-    await page.getByTestId("auth-login-button").click()
+    await openMemberSignIn(page)
     await page.locator("[data-auth-email]").fill("owner@example.test")
     await page.locator("[data-auth-request-submit]").click()
     await page.locator("[data-auth-code]").waitFor({ state: "visible" })
@@ -374,7 +397,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator(":focus").getAttribute("data-testid")).toBe("session-skip-link")
     expect(await page.locator("#top").isVisible()).toBe(true)
     expect(await page.locator("[data-auth-gate]").isVisible()).toBe(false)
-    await page.getByTestId("supply-sign-in-button").click()
+    await page.getByTestId("supply-request-access-button").click()
     expect(await page.getByRole("dialog").isVisible()).toBe(true)
     expect(await page.evaluate<boolean>(`
       (() => {

@@ -1,4 +1,5 @@
 const registry = "https://gateway.getatm.io";
+const waitlistAcknowledgmentKey = "atm.marketplace.waitlist-ack-v1";
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const numeric = (candidate) => {
@@ -94,8 +95,9 @@ const authRequestForm = document.querySelector("[data-auth-request-form]");
 const authVerifyForm = document.querySelector("[data-auth-verify-form]");
 const authEmail = document.querySelector("[data-auth-email]");
 const authCode = document.querySelector("[data-auth-code]");
-const authTerms = document.querySelector("[data-auth-terms]");
-const authAcceptTerms = document.querySelector("[data-auth-accept-terms]");
+const authContactConsent = document.querySelector("[data-auth-contact-consent]");
+const authAcceptContact = document.querySelector("[data-auth-accept-contact]");
+const authWaitlistSuccess = document.querySelector("[data-auth-waitlist-success]");
 const authFeedback = document.querySelector("[data-auth-feedback]");
 const authChallengeEmail = document.querySelector("[data-auth-challenge-email]");
 const authModeTabs = document.querySelector("[data-auth-mode-tabs]");
@@ -103,13 +105,13 @@ const authTitlePrefix = document.querySelector("[data-auth-title-prefix]");
 const authTitleAccent = document.querySelector("[data-auth-title-accent]");
 const authDescription = document.querySelector("[data-auth-description]");
 const authRequestLabel = document.querySelector("[data-auth-request-label]");
-const authLoginButton = document.querySelector("[data-auth-login]");
+const authAccessButton = document.querySelector("[data-testid=request-access-button]");
 const authOpenButtons = document.querySelectorAll("[data-auth-open]");
 const authCloseButton = document.querySelector("[data-auth-close]");
 const authLogoutButton = document.querySelector("[data-auth-logout]");
 const status = document.querySelector("[data-registry-status]");
 
-let authMode = "login";
+let authMode = "waitlist";
 let challenge;
 let expiryTimer;
 let dataRequest;
@@ -170,8 +172,28 @@ const openAuthDialog = (trigger) => {
   restoreAuthTrigger = true;
   if (!authGate.open) authGate.showModal();
   document.body.classList.add("is-auth-open");
-  const target = authVerifyForm.hidden ? authEmail : authCode;
+  const target = !authWaitlistSuccess.hidden
+    ? authWaitlistSuccess
+    : authVerifyForm.hidden
+      ? authEmail
+      : authCode;
   target.focus({ preventScroll: true });
+};
+
+const hasWaitlistAcknowledgment = () => {
+  try {
+    return window.sessionStorage.getItem(waitlistAcknowledgmentKey) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const rememberWaitlistAcknowledgment = () => {
+  try {
+    window.sessionStorage.setItem(waitlistAcknowledgmentKey, "1");
+  } catch {
+    // The current dialog still keeps the acknowledgment visible.
+  }
 };
 
 const closeAuthDialog = (restoreFocus = true) => {
@@ -184,24 +206,25 @@ const closeAuthDialog = (restoreFocus = true) => {
   if (!restoreFocus) authTrigger = undefined;
 };
 
-const showLogin = (message = "", revealGate = false) => {
+const showPublicAccess = (message = "", revealGate = false) => {
   authRequestVersion += 1;
   stopDataRequest();
   if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
   expiryTimer = undefined;
   activeSession = undefined;
   challenge = undefined;
-  document.body.dataset.authState = "login";
+  document.body.dataset.authState = "waitlist";
   for (const section of authenticatedContent) section.hidden = true;
   supplyLocked.hidden = false;
   authRequestForm.hidden = false;
   authVerifyForm.hidden = true;
   authModeTabs.hidden = false;
+  authWaitlistSuccess.hidden = true;
   authLogoutButton.hidden = true;
-  authLoginButton.hidden = false;
+  authAccessButton.hidden = false;
   status.hidden = true;
   resetSupply();
-  setAuthMode("login");
+  setAuthMode("waitlist");
   if (revealGate) openAuthDialog();
   else closeAuthDialog(false);
   setFeedback(message);
@@ -211,12 +234,12 @@ const scheduleExpiry = (session) => {
   if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
   const expiresIn = Date.parse(session.expiresAt) - Date.now();
   if (expiresIn <= 0) {
-    showLogin("Your session has expired. Sign in again.", true);
+    showPublicAccess("Your session has expired. Use Member sign in to continue.", true);
     return;
   }
   expiryTimer = window.setTimeout(() => {
     if (activeSession === undefined || Date.parse(activeSession.expiresAt) <= Date.now()) {
-      showLogin("Your session has expired. Sign in again.", true);
+      showPublicAccess("Your session has expired. Use Member sign in to continue.", true);
       return;
     }
     scheduleExpiry(activeSession);
@@ -229,7 +252,7 @@ const renderAuthenticated = (session) => {
   closeAuthDialog(false);
   for (const section of authenticatedContent) section.hidden = false;
   supplyLocked.hidden = true;
-  authLoginButton.hidden = true;
+  authAccessButton.hidden = true;
   authLogoutButton.hidden = false;
   status.hidden = false;
   setFeedback("");
@@ -258,20 +281,30 @@ const setAuthMode = (mode) => {
     challenge = undefined;
   }
   authMode = mode;
+  document.body.dataset.authState = mode;
   authModeTabs.hidden = false;
+  authRequestForm.hidden = false;
+  authVerifyForm.hidden = true;
+  authWaitlistSuccess.hidden = true;
   for (const button of document.querySelectorAll("[data-auth-mode]")) {
     const selected = button.dataset.authMode === mode;
     button.classList.toggle("is-selected", selected);
     button.setAttribute("aria-pressed", String(selected));
   }
-  authTerms.hidden = mode !== "signup";
-  authAcceptTerms.required = mode === "signup";
-  authTitlePrefix.textContent = mode === "signup" ? "Create your" : "Sign in to";
-  authTitleAccent.textContent = mode === "signup" ? "Marketplace account." : "live supply.";
-  authDescription.textContent = mode === "signup"
-    ? "Verify your email once to access the member aggregate."
+  const isWaitlist = mode === "waitlist";
+  authContactConsent.hidden = !isWaitlist;
+  authAcceptContact.required = isWaitlist;
+  authTitlePrefix.textContent = isWaitlist ? "Request" : "Member sign in to";
+  authTitleAccent.textContent = isWaitlist ? "access." : "live supply.";
+  authDescription.textContent = isWaitlist
+    ? "Join the waitlist for Marketplace access. We will only contact you about your request."
     : "We will email a six-digit code. No password and no browser-stored session.";
-  authRequestLabel.textContent = mode === "signup" ? "Create account" : "Send one-time code";
+  authRequestLabel.textContent = isWaitlist ? "Request access" : "Send one-time code";
+  authRequestForm.querySelector("button[type=submit]").disabled = false;
+  if (isWaitlist && hasWaitlistAcknowledgment()) {
+    authRequestForm.hidden = true;
+    authWaitlistSuccess.hidden = false;
+  }
   setFeedback("");
 };
 
@@ -297,26 +330,76 @@ const requestJson = async (endpoint, options = {}) => {
   return body;
 };
 
-const requestChallenge = async (event) => {
+const validEmail = (email) => /^\S+@\S+\.\S+$/.test(email);
+
+const requestWaitlist = async (event) => {
   event.preventDefault();
   const requestVersion = ++authRequestVersion;
   const email = authEmail.value.trim().toLowerCase();
-  if (!/^\S+@\S+\.\S+$/.test(email)) {
+  if (email.length > 320 || !validEmail(email)) {
     setFeedback("Enter a valid email address.");
     authEmail.focus();
     return;
   }
-  if (authMode === "signup" && !authAcceptTerms.checked) {
-    setFeedback("Accept the terms to create an account.");
-    authAcceptTerms.focus();
+  if (!authAcceptContact.checked) {
+    setFeedback("Consent is required to request access.");
+    authAcceptContact.focus();
     return;
   }
   const submit = authRequestForm.querySelector("button[type=submit]");
   submit.disabled = true;
   setFeedback("");
   try {
-    const body = await requestJson(authMode === "signup" ? "/v1/auth/signup" : "/v1/auth/login", {
-      body: JSON.stringify(authMode === "signup" ? { email, acceptTerms: true } : { email }),
+    const response = await fetch("/api/waitlist", {
+      body: JSON.stringify({ email, acceptContact: true }),
+      cache: "no-store",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      method: "POST",
+      redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    });
+    let body;
+    try {
+      body = await response.json();
+    } catch {
+      throw new TypeError("Invalid Registry waitlist response");
+    }
+    if (
+      response.status !== 202
+      || body?.ok !== true
+      || body.status !== "accepted"
+    ) {
+      throw new Error("Registry waitlist request failed");
+    }
+    if (requestVersion !== authRequestVersion) return;
+    rememberWaitlistAcknowledgment();
+    authRequestForm.hidden = true;
+    authWaitlistSuccess.hidden = false;
+    authWaitlistSuccess.focus({ preventScroll: true });
+  } catch {
+    if (requestVersion === authRequestVersion) {
+      setFeedback("We couldn’t request access. Check your connection and try again.");
+    }
+  } finally {
+    if (requestVersion === authRequestVersion) submit.disabled = false;
+  }
+};
+
+const requestChallenge = async (event) => {
+  event.preventDefault();
+  const requestVersion = ++authRequestVersion;
+  const email = authEmail.value.trim().toLowerCase();
+  if (email.length > 320 || !validEmail(email)) {
+    setFeedback("Enter a valid email address.");
+    authEmail.focus();
+    return;
+  }
+  const submit = authRequestForm.querySelector("button[type=submit]");
+  submit.disabled = true;
+  setFeedback("");
+  try {
+    const body = await requestJson("/v1/auth/login", {
+      body: JSON.stringify({ email }),
       headers: { "content-type": "application/json" },
       method: "POST",
     });
@@ -339,6 +422,10 @@ const requestChallenge = async (event) => {
     if (requestVersion === authRequestVersion) submit.disabled = false;
   }
 };
+
+const requestAccess = (event) => authMode === "waitlist"
+  ? requestWaitlist(event)
+  : requestChallenge(event);
 
 const verifyChallenge = async (event) => {
   event.preventDefault();
@@ -400,7 +487,7 @@ const loadLiveSupply = async (session) => {
     });
     if (requestVersion !== dataRequestVersion) return;
     if (response.status === 401) {
-      showLogin("Your session is no longer valid. Sign in again.", true);
+      showPublicAccess("Your session is no longer valid. Use Member sign in to continue.", true);
       return;
     }
     if (!response.ok) throw new Error("Registry stats unavailable");
@@ -457,7 +544,7 @@ const loadLiveSupply = async (session) => {
 const logout = async () => {
   const session = activeSession;
   if (session === undefined) {
-    showLogin();
+    showPublicAccess();
     return;
   }
   authLogoutButton.disabled = true;
@@ -472,7 +559,7 @@ const logout = async () => {
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok && response.status !== 401) throw new Error("Registry logout failed");
-    showLogin("You have been signed out.", true);
+    showPublicAccess("You have been signed out.", true);
   } catch {
     setFeedback("Unable to log out. Try again.");
     setStatus("is-unavailable", "Logout failed");
@@ -484,7 +571,7 @@ const logout = async () => {
 for (const button of document.querySelectorAll("[data-auth-mode]")) {
   button.addEventListener("click", () => setAuthMode(button.dataset.authMode));
 }
-authRequestForm.addEventListener("submit", requestChallenge);
+authRequestForm.addEventListener("submit", requestAccess);
 authVerifyForm.addEventListener("submit", verifyChallenge);
 document.querySelector("[data-auth-restart]").addEventListener("click", () => {
   authRequestVersion += 1;
@@ -497,7 +584,10 @@ document.querySelector("[data-auth-restart]").addEventListener("click", () => {
   authEmail.focus();
 });
 for (const button of authOpenButtons) {
-  button.addEventListener("click", () => openAuthDialog(button));
+  button.addEventListener("click", () => {
+    setAuthMode("waitlist");
+    openAuthDialog(button);
+  });
 }
 authCloseButton.addEventListener("click", () => closeAuthDialog());
 authGate.addEventListener("click", (event) => {
@@ -523,5 +613,5 @@ for (const element of document.querySelectorAll("[data-reveal]")) {
 }
 
 document.body.classList.remove("no-js");
-setAuthMode("login");
-showLogin();
+setAuthMode("waitlist");
+showPublicAccess();
