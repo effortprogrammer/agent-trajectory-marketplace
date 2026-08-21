@@ -6,6 +6,18 @@ const publicRoot = resolve(import.meta.dir, "../../..")
 const testRevision = "0123456789abcdef0123456789abcdef01234567"
 setDefaultTimeout(10_000)
 
+const assetDigest = async (file: string): Promise<string> =>
+  new Bun.CryptoHasher("sha256")
+    .update(await Bun.file(resolve(publicRoot, "web", file)).arrayBuffer())
+    .digest("hex")
+
+const fingerprintedAssetPath = async (file: string): Promise<string> => {
+  const extensionOffset = file.lastIndexOf(".")
+  if (extensionOffset <= 0) throw new Error(`asset has no extension: ${file}`)
+  const digest = await assetDigest(file)
+  return `${file.slice(0, extensionOffset)}.${digest}${file.slice(extensionOffset)}`
+}
+
 const reservePort = (): number => {
   const probe = Bun.serve({ fetch: () => new Response("reserved"), port: 0 })
   const port = probe.port
@@ -51,6 +63,28 @@ const rawHttpRequest = (port: number, path: string, host: string): Promise<strin
     socket.on("error", reject)
   })
 
+test("binds every public asset URL to fingerprinted paths so releases cannot reuse stale code", async () => {
+  const html = await Bun.file(resolve(publicRoot, "web/index.html")).text()
+  const marketplaceScript = await Bun.file(resolve(publicRoot, "web/marketplace.js")).text()
+  const consoleScript = await Bun.file(resolve(publicRoot, "web/console.js")).text()
+  const marketplaceStylesheet = await fingerprintedAssetPath("marketplace.css")
+  const consoleStylesheet = await fingerprintedAssetPath("console.css")
+  const marketplaceScriptPath = await fingerprintedAssetPath("marketplace.js")
+  const consoleScriptPath = await fingerprintedAssetPath("console.js")
+  const consoleContractPath = await fingerprintedAssetPath("console-contract.js")
+
+  expect(html).toContain(`href="${marketplaceStylesheet}"`)
+  expect(html).toContain(`href="${consoleStylesheet}"`)
+  expect(html).toContain(`src="${marketplaceScriptPath}"`)
+  expect(marketplaceScript).toContain(
+    `import { mountSellerConsole } from "./${consoleScriptPath}";`,
+  )
+  expect(marketplaceScript).not.toContain(`import("./${consoleScriptPath}")`)
+  expect(consoleScript).toContain(
+    `from "./${consoleContractPath}"`,
+  )
+})
+
 test("serves session-only public pages without World UI artifacts", async () => {
   const port = reservePort()
   const baseUrl = `http://127.0.0.1:${port}`
@@ -71,11 +105,23 @@ test("serves session-only public pages without World UI artifacts", async () => 
     const detail = await fetch(`${baseUrl}/detail.html?id=sub_14m3r01jp1wd7a3rm2j719p9vv`, {
       redirect: "manual",
     })
-    const stylesheet = await fetch(`${baseUrl}/marketplace.css`)
-    const script = await fetch(`${baseUrl}/marketplace.js`)
-    const consoleStylesheet = await fetch(`${baseUrl}/console.css`)
-    const consoleScript = await fetch(`${baseUrl}/console.js`)
-    const consoleContract = await fetch(`${baseUrl}/console-contract.js`)
+    const stylesheetPath = await fingerprintedAssetPath("marketplace.css")
+    const scriptPath = await fingerprintedAssetPath("marketplace.js")
+    const consoleStylesheetPath = await fingerprintedAssetPath("console.css")
+    const consoleScriptPath = await fingerprintedAssetPath("console.js")
+    const consoleContractPath = await fingerprintedAssetPath("console-contract.js")
+    const stylesheet = await fetch(`${baseUrl}/${stylesheetPath}`)
+    const script = await fetch(`${baseUrl}/${scriptPath}`)
+    const consoleStylesheet = await fetch(`${baseUrl}/${consoleStylesheetPath}`)
+    const consoleScript = await fetch(`${baseUrl}/${consoleScriptPath}`)
+    const consoleContract = await fetch(`${baseUrl}/${consoleContractPath}`)
+    const legacyConsoleScript = await fetch(`${baseUrl}/console.js`)
+    const invalidAssets = await Promise.all([
+      fetch(`${baseUrl}/marketplace.js`),
+      fetch(`${baseUrl}/console-contract.js`),
+      fetch(`${baseUrl}/marketplace.${"0".repeat(64)}.js`),
+      fetch(`${baseUrl}/${scriptPath}?v=duplicate`),
+    ])
     const retired = await fetch(
       `${baseUrl}/detail.html?view=world&id=world%2Frefund-unit&registry=https%3A%2F%2Fevil.example`,
       { redirect: "manual" },
@@ -121,11 +167,22 @@ test("serves session-only public pages without World UI artifacts", async () => 
     expect(stylesheet.headers.get("content-type")).toBe("text/css; charset=utf-8")
     expect(script.status).toBe(200)
     expect(script.headers.get("content-type")).toBe("text/javascript; charset=utf-8")
-    for (const asset of [consoleStylesheet, consoleScript, consoleContract]) {
+    for (const asset of [stylesheet, script, consoleStylesheet, consoleScript, consoleContract]) {
       expect(asset.status).toBe(200)
-      expect(asset.headers.get("cache-control")).toBe("public, max-age=300")
+      expect(asset.headers.get("cache-control")).toBe(
+        "public, max-age=31536000, immutable",
+      )
       expect(asset.headers.get("content-security-policy")).toContain("script-src 'self'")
       expect(asset.headers.get("x-content-type-options")).toBe("nosniff")
+    }
+    expect(legacyConsoleScript.status).toBe(200)
+    expect(legacyConsoleScript.headers.get("cache-control")).toBe("no-store")
+    expect(await legacyConsoleScript.text()).toBe(
+      await Bun.file(resolve(publicRoot, "web/console.js")).text(),
+    )
+    for (const invalidAsset of invalidAssets) {
+      expect(invalidAsset.status).toBe(404)
+      expect(invalidAsset.headers.get("cache-control")).toBe("no-store")
     }
     expect(consoleStylesheet.headers.get("content-type")).toBe("text/css; charset=utf-8")
     expect(consoleScript.headers.get("content-type")).toBe("text/javascript; charset=utf-8")
@@ -141,9 +198,9 @@ test("serves session-only public pages without World UI artifacts", async () => 
     expect(schemeRelativeRetired.status).toBe(302)
     expect(schemeRelativeRetired.headers.get("location")).toBe("/index.html")
     for (const html of pages) {
-      expect(html).toContain('href="marketplace.css"')
-      expect(html).toContain('href="console.css"')
-      expect(html).toContain('src="marketplace.js"')
+      expect(html).toContain('href="marketplace.')
+      expect(html).toContain('href="console.')
+      expect(html).toContain('src="marketplace.')
       expect(html).toContain('data-console-view')
       expect(html).not.toContain("World pack")
       expect(html).not.toContain("/v1/marketplace/worlds")
