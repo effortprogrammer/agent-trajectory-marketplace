@@ -1,4 +1,7 @@
-import { parseEarningsResponse, parseSessionsResponse } from "./console-contract.js";
+import {
+  parseEarningsResponse,
+  parseSessionsResponse,
+} from "./console-contract.js?v=ee640a577297eee1141972c32b77b3322064aed602702eddd82b863e94c3c478";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const shortId = (id) => id.slice(0, 8);

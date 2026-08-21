@@ -6,6 +6,11 @@ const publicRoot = resolve(import.meta.dir, "../../..")
 const testRevision = "0123456789abcdef0123456789abcdef01234567"
 setDefaultTimeout(10_000)
 
+const assetDigest = async (file: string): Promise<string> =>
+  new Bun.CryptoHasher("sha256")
+    .update(await Bun.file(resolve(publicRoot, "web", file)).arrayBuffer())
+    .digest("hex")
+
 const reservePort = (): number => {
   const probe = Bun.serve({ fetch: () => new Response("reserved"), port: 0 })
   const port = probe.port
@@ -50,6 +55,25 @@ const rawHttpRequest = (port: number, path: string, host: string): Promise<strin
     socket.on("end", () => resolveResponse(response))
     socket.on("error", reject)
   })
+
+test("binds every public asset URL to content hashes so releases cannot reuse stale code", async () => {
+  const html = await Bun.file(resolve(publicRoot, "web/index.html")).text()
+  const marketplaceScript = await Bun.file(resolve(publicRoot, "web/marketplace.js")).text()
+  const consoleScript = await Bun.file(resolve(publicRoot, "web/console.js")).text()
+  const marketplaceStylesheetDigest = await assetDigest("marketplace.css")
+  const consoleStylesheetDigest = await assetDigest("console.css")
+  const marketplaceScriptDigest = await assetDigest("marketplace.js")
+  const consoleScriptDigest = await assetDigest("console.js")
+  const consoleContractDigest = await assetDigest("console-contract.js")
+
+  expect(html).toContain(`href="marketplace.css?v=${marketplaceStylesheetDigest}"`)
+  expect(html).toContain(`href="console.css?v=${consoleStylesheetDigest}"`)
+  expect(html).toContain(`src="marketplace.js?v=${marketplaceScriptDigest}"`)
+  expect(marketplaceScript).toContain(`"./console.js?v=${consoleScriptDigest}"`)
+  expect(consoleScript).toContain(
+    `from "./console-contract.js?v=${consoleContractDigest}"`,
+  )
+})
 
 test("serves session-only public pages without World UI artifacts", async () => {
   const port = reservePort()
@@ -141,9 +165,9 @@ test("serves session-only public pages without World UI artifacts", async () => 
     expect(schemeRelativeRetired.status).toBe(302)
     expect(schemeRelativeRetired.headers.get("location")).toBe("/index.html")
     for (const html of pages) {
-      expect(html).toContain('href="marketplace.css"')
-      expect(html).toContain('href="console.css"')
-      expect(html).toContain('src="marketplace.js"')
+      expect(html).toContain('href="marketplace.css?v=')
+      expect(html).toContain('href="console.css?v=')
+      expect(html).toContain('src="marketplace.js?v=')
       expect(html).toContain('data-console-view')
       expect(html).not.toContain("World pack")
       expect(html).not.toContain("/v1/marketplace/worlds")
