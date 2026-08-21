@@ -3,6 +3,7 @@ import { connect } from "node:net"
 import { resolve } from "node:path"
 
 const publicRoot = resolve(import.meta.dir, "../../..")
+const testRevision = "0123456789abcdef0123456789abcdef01234567"
 setDefaultTimeout(10_000)
 
 const reservePort = (): number => {
@@ -55,7 +56,11 @@ test("serves session-only public pages without World UI artifacts", async () => 
   const baseUrl = `http://127.0.0.1:${port}`
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
-    env: { ...Bun.env, PORT: String(port) },
+    env: {
+      ...Bun.env,
+      PORT: String(port),
+      RAILWAY_GIT_COMMIT_SHA: testRevision,
+    },
     stderr: "pipe",
     stdout: "pipe",
   })
@@ -84,6 +89,7 @@ test("serves session-only public pages without World UI artifacts", async () => 
     const robots = await fetch(`${baseUrl}/robots.txt`)
     const robotsText = await robots.text()
     const favicon = await fetch(`${baseUrl}/favicon.ico`)
+    const revision = await fetch(`${baseUrl}/.well-known/atm-origin-revision`)
     const missing = await fetch(`${baseUrl}/not-found`)
     const canonicalRedirect = await fetch(`${baseUrl}/seller?ref=legacy`, {
       headers: { host: "marketplace.getatm.io" },
@@ -147,6 +153,10 @@ test("serves session-only public pages without World UI artifacts", async () => 
       expect(html).not.toContain("data:text/")
     }
     expect(favicon.status).toBe(204)
+    expect(revision.status).toBe(200)
+    expect(revision.headers.get("cache-control")).toBe("no-store")
+    expect(revision.headers.get("x-atm-origin-revision")).toBe(testRevision)
+    expect(await revision.json()).toEqual({ revision: testRevision })
     expect(missing.status).toBe(404)
     expect(canonicalRedirect.status).toBe(301)
     expect(canonicalRedirect.headers.get("location")).toBe(
@@ -156,6 +166,34 @@ test("serves session-only public pages without World UI artifacts", async () => 
     expect(canonicalDoubleSlashRedirect.toLowerCase()).toContain(
       "location: https://getatm.io//attacker.example/payload?ref=legacy",
     )
+  } finally {
+    server.kill()
+    await server.exited
+  }
+})
+
+test("fails closed when the Railway source revision is unavailable", async () => {
+  const port = reservePort()
+  const server = Bun.spawn(["bun", "web/server.ts"], {
+    cwd: publicRoot,
+    env: {
+      ...Bun.env,
+      PORT: String(port),
+      RAILWAY_GIT_COMMIT_SHA: "",
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  try {
+    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+
+    const response = await fetch(
+      `http://127.0.0.1:${port}/.well-known/atm-origin-revision`,
+    )
+
+    expect(response.status).toBe(503)
+    expect(response.headers.get("cache-control")).toBe("no-store")
+    expect(response.headers.get("x-atm-origin-revision")).toBeNull()
   } finally {
     server.kill()
     await server.exited

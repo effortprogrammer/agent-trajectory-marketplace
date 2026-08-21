@@ -1,0 +1,18 @@
+{
+  "projectId": "ac736878-3095-4c1d-b8c4-e0a184c06ece",
+  "staging": {
+    "environment": "staging",
+    "service": "marketplace-web",
+    "branch": "dev",
+    "domain": "https://marketplace-web-staging.up.railway.app"
+  },
+  "production": {
+    "environment": "production",
+    "service": "marketplace-web-production",
+    "branch": "production",
+    "domain": "https://marketplace-web-production-production.up.railway.app",
+    "revisionPath": "/.well-known/atm-origin-revision",
+    "requiredStatus": "release-production-approved",
+    "trigger": "protected-release-tag"
+  }
+}
