@@ -1,4 +1,4 @@
-import { parseEarningsResponse, parseLedgerResponse, parseSessionsResponse } from "./console-contract.js";
+import { parseEarningsResponse, parseSessionsResponse } from "./console-contract.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const shortId = (id) => id.slice(0, 8);
@@ -63,23 +63,6 @@ const renderSessions = (root, sessions) => {
   }
 };
 
-const renderLedger = (root, events) => {
-  root.replaceChildren();
-  if (events.length === 0) { root.append(element("li", "seller-console-state", "No sale events yet.")); return; }
-  const labels = { clearance: "Clearance released", clearance_failed: "Clearance failed", chargeback: "Chargeback", payout: "Payout sent", refund: "Refund", relisting: "Relisted", sale: "Sold", withdrawal: "Withdrawn" };
-  for (const event of events) {
-    const item = element("li"); item.append(element("span", "seller-event-date", dateLabel(event.occurredAt)));
-    const subject = event.sessionId ? ` / ${shortId(event.sessionId)}` : event.relatedSessionCount === null ? "" : ` / ${event.relatedSessionCount} sessions`;
-    item.append(element("span", "seller-event-text", `${labels[event.type]}${subject}`));
-    if (event.amountCredits !== null && event.type === "clearance") {
-      item.append(element("span", "seller-event-amount", `+${formatCredits(event.amountCredits)}`));
-    } else if (event.amountCredits !== null && ["payout", "refund", "chargeback"].includes(event.type)) {
-      item.append(element("span", "seller-event-amount seller-amount-negative", `-${formatCredits(event.amountCredits)}`));
-    }
-    root.append(item);
-  }
-};
-
 export const mountSellerConsole = async ({ requestJson, session, showLogin }) => {
   const view = document.querySelector("[data-console-view]");
   if (!view) return;
@@ -87,26 +70,24 @@ export const mountSellerConsole = async ({ requestJson, session, showLogin }) =>
   const state = view.querySelector("[data-console-state]");
   const chart = view.querySelector("[data-console-chart]");
   const sessions = view.querySelector("[data-console-sessions]");
-  const ledger = view.querySelector("[data-console-ledger]");
   const seller = view.querySelector("[data-console-seller]");
   const total = view.querySelector("[data-console-total]");
   const today = new Date(); const from = new Date(today); from.setUTCDate(from.getUTCDate() - 30);
   const day = (value) => value.toISOString().slice(0, 10);
   const headers = { authorization: `Bearer ${session.accessToken}` };
   state.hidden = false; state.dataset.state = "loading"; state.textContent = "Loading seller sales...";
-  chart.replaceChildren(element("div", "seller-console-skeleton")); sessions.replaceChildren(); ledger.replaceChildren();
+  chart.replaceChildren(element("div", "seller-console-skeleton")); sessions.replaceChildren();
   try {
-    const [me, sessionsBody, earningsBody, ledgerBody] = await Promise.all([
+    const [me, sessionsBody, earningsBody] = await Promise.all([
       requestJson("/v1/auth/me", { headers }),
       requestJson("/v1/marketplace/seller/sales/sessions", { headers }),
       requestJson(`/v1/marketplace/seller/sales/earnings?from=${day(from)}&to=${day(today)}&interval=day`, { headers }),
-      requestJson("/v1/marketplace/seller/sales/ledger", { headers }),
     ]);
     if (me?.ok !== true || typeof me.account?.accountId !== "string") throw new TypeError("Invalid Registry account response");
-    const validatedSessions = parseSessionsResponse(sessionsBody); const earnings = parseEarningsResponse(earningsBody); const events = parseLedgerResponse(ledgerBody);
+    const validatedSessions = parseSessionsResponse(sessionsBody); const earnings = parseEarningsResponse(earningsBody);
     seller.textContent = me.account.accountId; total.textContent = `${formatCredits(earnings.points.at(-1)?.cumulativeNetCredits ?? earnings.openingCumulativeCredits)} cumulative`;
-    renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions); renderLedger(ledger, events.events);
-    state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions and ${events.events.length} events.`;
+    renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
+    state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;
   } catch (error) {
     if (error?.status === 401) { showLogin(); return; }
     state.hidden = false; state.dataset.state = "error"; state.textContent = "Seller sales are unavailable. Try again shortly."; announcement.textContent = "Seller console could not load.";
