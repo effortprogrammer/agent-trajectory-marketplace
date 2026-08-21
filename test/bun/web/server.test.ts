@@ -68,6 +68,9 @@ test("serves session-only public pages without World UI artifacts", async () => 
     })
     const stylesheet = await fetch(`${baseUrl}/marketplace.css`)
     const script = await fetch(`${baseUrl}/marketplace.js`)
+    const consoleStylesheet = await fetch(`${baseUrl}/console.css`)
+    const consoleScript = await fetch(`${baseUrl}/console.js`)
+    const consoleContract = await fetch(`${baseUrl}/console-contract.js`)
     const retired = await fetch(
       `${baseUrl}/detail.html?view=world&id=world%2Frefund-unit&registry=https%3A%2F%2Fevil.example`,
       { redirect: "manual" },
@@ -112,6 +115,15 @@ test("serves session-only public pages without World UI artifacts", async () => 
     expect(stylesheet.headers.get("content-type")).toBe("text/css; charset=utf-8")
     expect(script.status).toBe(200)
     expect(script.headers.get("content-type")).toBe("text/javascript; charset=utf-8")
+    for (const asset of [consoleStylesheet, consoleScript, consoleContract]) {
+      expect(asset.status).toBe(200)
+      expect(asset.headers.get("cache-control")).toBe("public, max-age=300")
+      expect(asset.headers.get("content-security-policy")).toContain("script-src 'self'")
+      expect(asset.headers.get("x-content-type-options")).toBe("nosniff")
+    }
+    expect(consoleStylesheet.headers.get("content-type")).toBe("text/css; charset=utf-8")
+    expect(consoleScript.headers.get("content-type")).toBe("text/javascript; charset=utf-8")
+    expect(consoleContract.headers.get("content-type")).toBe("text/javascript; charset=utf-8")
     expect(robots.status).toBe(200)
     expect(robots.headers.get("content-type")).toBe("text/plain; charset=utf-8")
     expect(robotsText).toBe("User-agent: *\nAllow: /\n")
@@ -124,7 +136,9 @@ test("serves session-only public pages without World UI artifacts", async () => 
     expect(schemeRelativeRetired.headers.get("location")).toBe("/index.html")
     for (const html of pages) {
       expect(html).toContain('href="marketplace.css"')
+      expect(html).toContain('href="console.css"')
       expect(html).toContain('src="marketplace.js"')
+      expect(html).toContain('data-console-view')
       expect(html).not.toContain("World pack")
       expect(html).not.toContain("/v1/marketplace/worlds")
       expect(html).not.toContain("data-world")

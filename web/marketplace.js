@@ -112,6 +112,8 @@ const authOpenButtons = document.querySelectorAll("[data-auth-open]");
 const authCloseButton = document.querySelector("[data-auth-close]");
 const authLogoutButton = document.querySelector("[data-auth-logout]");
 const status = document.querySelector("[data-registry-status]");
+const consoleLink = document.querySelector("[data-console-link]");
+const consoleView = document.querySelector("[data-console-view]");
 
 let authMode = "waitlist";
 let challenge;
@@ -224,6 +226,9 @@ const showPublicAccess = (message = "", revealGate = false) => {
   authWaitlistSuccess.hidden = true;
   authLogoutButton.hidden = true;
   authAccessButton.hidden = false;
+  consoleLink.hidden = true;
+  consoleView.hidden = true;
+  document.body.classList.remove("is-console-view");
   status.hidden = true;
   resetSupply();
   setAuthMode("waitlist");
@@ -256,11 +261,13 @@ const renderAuthenticated = (session) => {
   supplyLocked.hidden = true;
   authAccessButton.hidden = true;
   authLogoutButton.hidden = false;
+  consoleLink.hidden = false;
   status.hidden = false;
   setFeedback("");
   setStatus("is-connecting", "Connecting to Registry");
   resetSupply();
   scheduleExpiry(session);
+  if (window.location.hash === "#console") void showConsole(session);
 };
 
 const showVerification = () => {
@@ -332,6 +339,33 @@ const requestJson = async (endpoint, options = {}) => {
     throw error;
   }
   return body;
+};
+
+const showConsole = async (session = activeSession) => {
+  if (session === undefined) return;
+  document.body.classList.add("is-console-view");
+  consoleView.hidden = false;
+  try {
+    const consoleModule = await import("./console.js");
+    if (activeSession !== session || window.location.hash !== "#console") return;
+    await consoleModule.mountSellerConsole({
+      requestJson,
+      session,
+      showLogin: () => showPublicAccess("Your session is no longer valid. Use Member sign in to continue.", true),
+    });
+  } catch {
+    const state = consoleView.querySelector("[data-console-state]");
+    if (state) {
+      state.hidden = false;
+      state.dataset.state = "error";
+      state.textContent = "Seller sales are unavailable. Try again shortly.";
+    }
+  }
+};
+
+const closeConsole = () => {
+  document.body.classList.remove("is-console-view");
+  consoleView.hidden = true;
 };
 
 const validEmail = (email) => /^\S+@\S+\.\S+$/.test(email);
@@ -610,6 +644,10 @@ authGate.addEventListener("close", () => {
   restoreAuthTrigger = false;
 });
 authLogoutButton.addEventListener("click", () => void logout());
+window.addEventListener("hashchange", () => {
+  if (window.location.hash === "#console" && activeSession !== undefined) void showConsole();
+  else closeConsole();
+});
 
 for (const element of document.querySelectorAll("[data-reveal]")) {
   if (reduceMotion.matches || !revealObserver) element.classList.add("is-visible");
