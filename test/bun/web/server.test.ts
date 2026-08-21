@@ -115,8 +115,10 @@ test("serves session-only public pages without World UI artifacts", async () => 
     const consoleStylesheet = await fetch(`${baseUrl}/${consoleStylesheetPath}`)
     const consoleScript = await fetch(`${baseUrl}/${consoleScriptPath}`)
     const consoleContract = await fetch(`${baseUrl}/${consoleContractPath}`)
+    const legacyConsoleScript = await fetch(`${baseUrl}/console.js`)
     const invalidAssets = await Promise.all([
       fetch(`${baseUrl}/marketplace.js`),
+      fetch(`${baseUrl}/console-contract.js`),
       fetch(`${baseUrl}/marketplace.${"0".repeat(64)}.js`),
       fetch(`${baseUrl}/${scriptPath}?v=duplicate`),
     ])
@@ -173,6 +175,11 @@ test("serves session-only public pages without World UI artifacts", async () => 
       expect(asset.headers.get("content-security-policy")).toContain("script-src 'self'")
       expect(asset.headers.get("x-content-type-options")).toBe("nosniff")
     }
+    expect(legacyConsoleScript.status).toBe(200)
+    expect(legacyConsoleScript.headers.get("cache-control")).toBe("no-store")
+    expect(await legacyConsoleScript.text()).toBe(
+      await Bun.file(resolve(publicRoot, "web/console.js")).text(),
+    )
     for (const invalidAsset of invalidAssets) {
       expect(invalidAsset.status).toBe(404)
       expect(invalidAsset.headers.get("cache-control")).toBe("no-store")

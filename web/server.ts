@@ -33,6 +33,9 @@ type Asset = Readonly<{
 const assets = new Map<string, Asset>([
   ["/", { cacheControl: "no-store", file: "index.html", type: "text/html; charset=utf-8" }],
   ["/index.html", { cacheControl: "no-store", file: "index.html", type: "text/html; charset=utf-8" }],
+  // v1.0.12 deferred this module by its stable path. Keep one non-cacheable
+  // transition alias so already-open tabs can finish loading the seller console.
+  ["/console.js", { cacheControl: "no-store", file: "console.js", type: "text/javascript; charset=utf-8" }],
   ["/robots.txt", { cacheControl: "public, max-age=300", file: "robots.txt", type: "text/plain; charset=utf-8" }],
 ]);
 
