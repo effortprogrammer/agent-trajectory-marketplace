@@ -1106,7 +1106,7 @@ button {
   font-size: clamp(1.75rem, 2.5vw, 2rem);
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .public-token-total .metric-note {

@@ -65,9 +65,10 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.getByTestId("public-token-count").count()).toBe(1)
     expect(await page.getByTestId("public-token-count").innerText()).toBe("39,048,328")
     expect(await page.getByTestId("public-token-count").evaluate((element) => {
-      const range = element.ownerDocument.createRange()
-      range.selectNodeContents(element)
-      return range.getClientRects().length
+      const view = element.ownerDocument.defaultView
+      if (view === null) throw new Error("Public token value has no browser view")
+      const lineHeight = Number.parseFloat(view.getComputedStyle(element).lineHeight)
+      return Math.round(element.getBoundingClientRect().height / lineHeight)
     })).toBe(1)
     expect(await page.locator("[data-public-token-region]").getAttribute("aria-live")).toBe("polite")
     expect(await page.locator("[data-authenticated-content]:visible").count()).toBe(0)
@@ -79,6 +80,23 @@ describe("authenticated aggregate marketplace browser contract", () => {
       method: "GET",
       path: "/v1/marketplace/public-stats",
     }])
+  })
+
+  test("renders exact large public token totals without horizontal overflow", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPublicTokenTotal("9007199254740993")
+    const page = await harness.newPage({ height: 844, width: 375 })
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    expect(await page.getByTestId("public-token-count").innerText()).toBe(
+      "9,007,199,254,740,993",
+    )
+    expect(
+      await page.locator("html").evaluate((element) =>
+        element.scrollWidth <= element.clientWidth
+      ),
+    ).toBe(true)
   })
 
   test("copies the exact installer from the simplified seller hero", async () => {
