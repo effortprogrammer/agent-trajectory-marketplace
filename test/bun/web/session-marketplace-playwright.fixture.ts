@@ -32,9 +32,6 @@ const sellerEarnings = {
   points: [{ cumulativeNetCredits: 0, periodStart: "2026-08-19T00:00:00Z" }, { cumulativeNetCredits: 100, periodStart: "2026-08-20T00:00:00Z" }],
   window: { from: "2026-07-21", to: "2026-08-20" },
 }
-const sellerLedger = {
-  asOf: "2026-08-20T12:00:00Z", events: [{ amountCredits: 100, eventId: "33333333-3333-4333-8333-333333333333", occurredAt: "2026-08-20T11:30:00Z", relatedSessionCount: null, sessionId: "11111111-1111-4111-8111-111111111111", type: "sale" }], ok: true, page: { nextCursor: null },
-}
 let sharedBrowser: Browser | undefined
 
 export type RegistryRequest = Readonly<{
@@ -138,10 +135,6 @@ const startRegistry = () => {
       if (url.pathname === "/v1/marketplace/seller/sales/earnings") {
         if (request.headers.get("authorization") !== `Bearer ${accessToken}`) return json({ error: { code: "unauthorized" }, ok: false }, 401)
         return json(sellerEarnings)
-      }
-      if (url.pathname === "/v1/marketplace/seller/sales/ledger") {
-        if (request.headers.get("authorization") !== `Bearer ${accessToken}`) return json({ error: { code: "unauthorized" }, ok: false }, 401)
-        return json(sellerLedger)
       }
       if (url.pathname === "/v1/auth/logout") {
         return logoutStatus === 200
