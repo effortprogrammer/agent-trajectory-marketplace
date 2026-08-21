@@ -77,7 +77,7 @@ atm_require_tools() {
 }
 
 atm_package_version() {
-  bun -e 'const p=await Bun.file(process.argv[1]).json(); if(p.name!=="agent-trajectory-marketplace"||!/^\d+\.\d+\.\d+$/.test(p.version))process.exit(1); process.stdout.write(p.version)' "$1/package.json"
+  bun -e 'const p=await Bun.file(process.argv[1]).json();const stable=(value)=>{if(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value))return true;const m=/^([1-9]\d{3})\.(0[1-9]|1[0-2])\.(0[1-9]|[12]\d|3[01])\.(0|[1-9]\d*)$/.exec(value);return m!==null&&new Date(Date.UTC(Number(m[1]),Number(m[2]),0)).getUTCDate()>=Number(m[3])};if(p.name!=="agent-trajectory-marketplace"||!stable(p.version))process.exit(1);process.stdout.write(p.version)' "$1/package.json"
 }
 
 atm_classify_legacy() {
@@ -145,7 +145,8 @@ atm_fetch_verified_release() {
   curl -fsSL "https://api.github.com/repos/effortprogrammer/agent-trajectory-marketplace/releases/latest" -o "$metadata"
   IFS=$'\t' read -r manifest_url manifest_sha < <(bun -e '
     const release=await Bun.file(process.argv[1]).json();
-    if(release.immutable!==true||release.draft!==false||release.prerelease!==false||!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(release.tag_name))process.exit(1);
+    const stable=(tag)=>{if(/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag))return true;const m=/^v([1-9]\d{3})\.(0[1-9]|1[0-2])\.(0[1-9]|[12]\d|3[01])\.(0|[1-9]\d*)$/.exec(tag);return m!==null&&new Date(Date.UTC(Number(m[1]),Number(m[2]),0)).getUTCDate()>=Number(m[3])};
+    if(release.immutable!==true||release.draft!==false||release.prerelease!==false||!stable(release.tag_name))process.exit(1);
     const matches=release.assets.filter((asset)=>asset.name==="atm-release-manifest.json");
     if(matches.length!==1)process.exit(1);
     const asset=matches[0], expected=`https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/download/${release.tag_name}/atm-release-manifest.json`;

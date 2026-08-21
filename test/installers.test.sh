@@ -32,7 +32,7 @@ if (command === "trajectory" && service === "service" && action === "install") {
   const file = Bun.file(process.env.ATM_SERVICE_STATE_FILE);
   const prior = await file.exists() ? await file.text() : "";
   await Bun.write(file, `${prior}${JSON.stringify({cwd:process.cwd(),area})}\n`);
-  if (process.env.ATM_TEST_FAIL_NEW_SERVICE === "1" && process.cwd().includes("/releases/1.1.0")) process.exit(42);
+  if (process.env.ATM_TEST_FAIL_NEW_SERVICE === "1" && process.cwd().includes("/releases/2026.08.18.2")) process.exit(42);
 }
 EOF
   "$REAL_GIT" -C "$root" init -q
@@ -42,7 +42,7 @@ EOF
 }
 
 mkdir -p "$TEMP_ROOT/bin" "$TEMP_ROOT/release/agent-trajectory-marketplace/dist"
-printf '%s\n' '{"name":"agent-trajectory-marketplace","version":"1.1.0"}' >"$TEMP_ROOT/release/agent-trajectory-marketplace/package.json"
+printf '%s\n' '{"name":"agent-trajectory-marketplace","version":"2026.08.18.2"}' >"$TEMP_ROOT/release/agent-trajectory-marketplace/package.json"
 printf '%s\n' 'stable release' >"$TEMP_ROOT/release/agent-trajectory-marketplace/README.md"
 cat >"$TEMP_ROOT/release/agent-trajectory-marketplace/dist/collector.js" <<'EOF'
 const [command, area, service, action] = process.argv.slice(2);
@@ -50,16 +50,16 @@ if (command === "trajectory" && service === "service" && action === "install") {
   const file = Bun.file(process.env.ATM_SERVICE_STATE_FILE);
   const prior = await file.exists() ? await file.text() : "";
   await Bun.write(file, `${prior}${JSON.stringify({cwd:process.cwd(),area})}\n`);
-  if (process.env.ATM_TEST_FAIL_NEW_SERVICE === "1" && process.cwd().includes("/releases/1.1.0")) process.exit(42);
+  if (process.env.ATM_TEST_FAIL_NEW_SERVICE === "1" && process.cwd().includes("/releases/2026.08.18.2")) process.exit(42);
 }
 EOF
 mkdir -p "$TEMP_ROOT/release/agent-trajectory-marketplace/scripts"
 cp "$ROOT/scripts/install-core.sh" "$TEMP_ROOT/release/agent-trajectory-marketplace/scripts/install-core.sh"
-tar --format=ustar -czf "$TEMP_ROOT/atm-v1.1.0.tar.gz" -C "$TEMP_ROOT/release" agent-trajectory-marketplace
-release_archive_digest="$(shasum -a 256 "$TEMP_ROOT/atm-v1.1.0.tar.gz" | cut -d' ' -f1)"
-release_archive_size="$(wc -c <"$TEMP_ROOT/atm-v1.1.0.tar.gz" | tr -d '[:space:]')"
+tar --format=ustar -czf "$TEMP_ROOT/atm-v2026.08.18.2.tar.gz" -C "$TEMP_ROOT/release" agent-trajectory-marketplace
+release_archive_digest="$(shasum -a 256 "$TEMP_ROOT/atm-v2026.08.18.2.tar.gz" | cut -d' ' -f1)"
+release_archive_size="$(wc -c <"$TEMP_ROOT/atm-v2026.08.18.2.tar.gz" | tr -d '[:space:]')"
 cat >"$TEMP_ROOT/atm-release-manifest.json" <<EOF
-{"schemaVersion":1,"packageName":"agent-trajectory-marketplace","version":"1.1.0","tag":"v1.1.0","archive":{"name":"atm-v1.1.0.tar.gz","size":$release_archive_size,"sha256":"$release_archive_digest"}}
+{"schemaVersion":1,"packageName":"agent-trajectory-marketplace","version":"2026.08.18.2","tag":"v2026.08.18.2","archive":{"name":"atm-v2026.08.18.2.tar.gz","size":$release_archive_size,"sha256":"$release_archive_digest"}}
 EOF
 release_manifest_digest="$(shasum -a 256 "$TEMP_ROOT/atm-release-manifest.json" | cut -d' ' -f1)"
 
@@ -100,9 +100,9 @@ remote_core_digest="$(shasum -a 256 "$TEMP_ROOT/remote-core.sh" | cut -d' ' -f1)
 printf '%s\n' "$remote_core_digest" >"$TEMP_ROOT/remote-core.sh.sha256"
 remote_checksum_digest="$(shasum -a 256 "$TEMP_ROOT/remote-core.sh.sha256" | cut -d' ' -f1)"
 cat >"$TEMP_ROOT/release-metadata.json" <<EOF
-{"tag_name":"v1.1.0","immutable":true,"draft":false,"prerelease":false,"assets":[{"name":"install-core.sh","digest":"sha256:$remote_core_digest","browser_download_url":"https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/download/v1.1.0/install-core.sh"},{"name":"install-core.sh.sha256","digest":"sha256:$remote_checksum_digest","browser_download_url":"https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/download/v1.1.0/install-core.sh.sha256"},{"name":"atm-release-manifest.json","digest":"sha256:$release_manifest_digest","browser_download_url":"https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/download/v1.1.0/atm-release-manifest.json"},{"name":"atm-v1.1.0.tar.gz","digest":"sha256:$release_archive_digest","size":$release_archive_size,"browser_download_url":"https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/download/v1.1.0/atm-v1.1.0.tar.gz"}]}
+{"tag_name":"v2026.08.18.2","immutable":true,"draft":false,"prerelease":false,"assets":[{"name":"install-core.sh","digest":"sha256:$remote_core_digest","browser_download_url":"https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/download/v2026.08.18.2/install-core.sh"},{"name":"install-core.sh.sha256","digest":"sha256:$remote_checksum_digest","browser_download_url":"https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/download/v2026.08.18.2/install-core.sh.sha256"},{"name":"atm-release-manifest.json","digest":"sha256:$release_manifest_digest","browser_download_url":"https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/download/v2026.08.18.2/atm-release-manifest.json"},{"name":"atm-v2026.08.18.2.tar.gz","digest":"sha256:$release_archive_digest","size":$release_archive_size,"browser_download_url":"https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/download/v2026.08.18.2/atm-v2026.08.18.2.tar.gz"}]}
 EOF
-sed 's#/v1.1.0/install-core.sh"#/v9.9.9/install-core.sh"#' "$TEMP_ROOT/release-metadata.json" >"$TEMP_ROOT/release-metadata-bad.json"
+sed 's#/v2026.08.18.2/install-core.sh"#/v9.9.9/install-core.sh"#' "$TEMP_ROOT/release-metadata.json" >"$TEMP_ROOT/release-metadata-bad.json"
 cat >"$TEMP_ROOT/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -125,7 +125,7 @@ case "$url" in
     if [ "${ATM_TEST_CORRUPT_CORE:-0}" = 1 ]; then printf '%s\n' '# corrupt' >>"$output"; fi
     ;;
   */atm-release-manifest.json) /bin/cp "$ATM_TEST_RELEASE_MANIFEST" "$output" ;;
-  */atm-v1.1.0.tar.gz)
+  */atm-v2026.08.18.2.tar.gz)
     /bin/cp "$ATM_TEST_RELEASE_ARCHIVE" "$output"
     if [ "${ATM_TEST_CORRUPT_ARCHIVE:-0}" = 1 ]; then printf '%s\n' corrupt >>"$output"; fi
     ;;
@@ -140,7 +140,7 @@ run_installer() {
   ATM_REAL_BUN="$REAL_BUN" ATM_REAL_GIT="$REAL_GIT" ATM_TEST_RELEASE="$TEMP_ROOT/release" \
     ATM_TEST_CALLS="$calls" ATM_TEST_RELEASE_META="$TEMP_ROOT/release-metadata.json" \
     ATM_TEST_RELEASE_MANIFEST="$TEMP_ROOT/atm-release-manifest.json" \
-    ATM_TEST_RELEASE_ARCHIVE="$TEMP_ROOT/atm-v1.1.0.tar.gz" \
+    ATM_TEST_RELEASE_ARCHIVE="$TEMP_ROOT/atm-v2026.08.18.2.tar.gz" \
     ATM_TEST_FAIL_NEW_SERVICE="${ATM_TEST_FAIL_NEW_SERVICE:-0}" \
     ATM_TEST_FAIL_PHASE="${ATM_TEST_FAIL_PHASE:-}" \
     ATM_TEST_CORRUPT_ARCHIVE="${ATM_TEST_CORRUPT_ARCHIVE:-0}" \
@@ -158,7 +158,7 @@ for installer in scripts/install.sh scripts/install-agent.sh; do
   calls="$TEMP_ROOT/fresh-${installer##*/}.calls"
   output="$(run_installer "$installer" "$destination" "$calls")"
   [[ -L "$destination/current" ]] || fail "$installer did not create the current release pointer"
-  [[ "$(readlink "$destination/current")" = "releases/1.1.0" ]] || fail "$installer current pointer is not versioned"
+  [[ "$(readlink "$destination/current")" = "releases/2026.08.18.2" ]] || fail "$installer current pointer is not versioned"
   [[ -f "$destination/install-state.json" ]] || fail "$installer omitted install state"
   "$REAL_BUN" -e '
     const [statePath,root]=process.argv.slice(1); const state=await Bun.file(statePath).json();
@@ -169,7 +169,7 @@ for installer in scripts/install.sh scripts/install-agent.sh; do
   [[ "$(<"$calls")" == *"trajectory collect service uninstall"*"trajectory collect service install --out $destination/collected"* ]] || fail "$installer did not reconcile the collector service before installing"
   [[ "$(<"$calls")" == *"trajectory update service install --state-root $destination"* ]] || fail "$installer did not enable the updater service"
   [[ "$(<"$calls")" != *$'trajectory update\n'* ]] || fail "$installer blocks on the updater's first network check"
-  "$REAL_BUN" -e 'const value=JSON.parse(process.argv[1]);if(value.status!=="installed"||value.version!=="1.1.0")process.exit(1)' "${output##*$'\n'}" || fail "$installer completion is not short JSON"
+  "$REAL_BUN" -e 'const value=JSON.parse(process.argv[1]);if(value.status!=="installed"||value.version!=="2026.08.18.2")process.exit(1)' "${output##*$'\n'}" || fail "$installer completion is not short JSON"
   printf '%s\n' 'keep across rerun' >"$destination/collected/rerun.atf.json"
   run_installer "$installer" "$destination" "$calls" >/dev/null
   [[ "$(<"$destination/collected/rerun.atf.json")" == 'keep across rerun' ]] || fail "$installer lost output on stable rerun"
@@ -184,7 +184,7 @@ for installer in scripts/install.sh scripts/install-agent.sh; do
   [[ "$(<"$legacy/collected/collect-watch-state.json")" == *preserve-me* ]] || fail "$installer lost watch state during migration"
   [[ "$(<"$legacy/collected/session.atf.json")" == *preserve-me* ]] || fail "$installer lost collected output during migration"
   [[ -d "$legacy/releases/1.0.0/.git" ]] || fail "$installer did not retain the known legacy checkout"
-  [[ "$(readlink "$legacy/current")" = "releases/1.1.0" ]] || fail "$installer did not activate the verified new release"
+  [[ "$(readlink "$legacy/current")" = "releases/2026.08.18.2" ]] || fail "$installer did not activate the verified new release"
   [[ "$(readlink "$legacy/previous")" = "releases/1.0.0" ]] || fail "$installer did not preserve the legacy checkout as rollback"
   [[ "$(<"$TEMP_ROOT/legacy-${installer##*/}.calls")" == *"cwd=$legacy/current bun dist/collector.js trajectory collect service install"* ]] || fail "$installer did not install services from the new release"
 
@@ -313,7 +313,7 @@ for installer in scripts/install.sh scripts/install-agent.sh; do
     ATM_TEST_REMOTE_CORE="$TEMP_ROOT/remote-core.sh"
     ATM_TEST_REMOTE_CHECKSUM="$TEMP_ROOT/remote-core.sh.sha256"
     ATM_TEST_RELEASE_MANIFEST="$TEMP_ROOT/atm-release-manifest.json"
-    ATM_TEST_RELEASE_ARCHIVE="$TEMP_ROOT/atm-v1.1.0.tar.gz"
+    ATM_TEST_RELEASE_ARCHIVE="$TEMP_ROOT/atm-v2026.08.18.2.tar.gz"
     PATH="$TEMP_ROOT/bin:/usr/bin:/bin"
   )
   remote_output="$(env "${remote_environment[@]}" /bin/bash "$standalone")"

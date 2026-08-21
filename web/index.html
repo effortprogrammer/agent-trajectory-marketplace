@@ -9,6 +9,7 @@
   <link rel="canonical" href="https://getatm.io/" />
   <link rel="preconnect" href="https://gateway.getatm.io" />
   <link rel="stylesheet" href="marketplace.css" />
+  <link rel="stylesheet" href="console.css" />
 </head>
 <body class="marketplace-page no-js">
   <a class="skip-link" href="#main-content" data-testid="session-skip-link">Skip to live corpus</a>
@@ -24,11 +25,12 @@
         <a href="#provenance">How it grows</a>
       </nav>
       <div class="nav-account-actions">
+        <a class="nav-auth-button" href="#console" data-console-link data-testid="seller-console-link" hidden>Seller console</a>
         <span class="live-badge" role="status" data-registry-status data-testid="aggregate-status" hidden>
           <span class="live-dot" aria-hidden="true"></span>
           <span data-status-label></span>
         </span>
-        <button class="nav-auth-button" type="button" data-auth-open data-testid="request-access-button">Request access</button>
+        <button class="nav-auth-button" type="button" data-auth-open data-testid="request-access-button">Request buyer access</button>
         <button class="nav-auth-button nav-logout-button" type="button" data-auth-logout data-testid="auth-logout-button" hidden>Log out</button>
       </div>
     </div>
@@ -39,17 +41,17 @@
       <div class="auth-gate-panel">
         <header class="auth-console-bar">
           <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="auth-console-path">ATM / access-request</span>
+          <span class="auth-console-path" data-auth-console-path>ATM / buyer-access</span>
           <button class="auth-close-button" type="button" data-auth-close data-testid="auth-close-button" aria-label="Close access dialog">
             <span aria-hidden="true">×</span>
           </button>
         </header>
         <div class="auth-panel-body">
-          <p class="kicker">Marketplace access</p>
-          <h1 id="auth-title"><span data-auth-title-prefix>Request</span><em data-auth-title-accent>access.</em></h1>
-          <p class="auth-intro" id="auth-description" data-auth-description>Join the waitlist for Marketplace access. We will only contact you about your request.</p>
+          <p class="kicker" data-auth-kicker>Buyer access</p>
+          <h1 id="auth-title"><span data-auth-title-prefix>Request</span><em data-auth-title-accent>buyer access.</em></h1>
+          <p class="auth-intro" id="auth-description" data-auth-description>For teams looking to license agent-session datasets. We will only contact you about this buyer access request.</p>
           <div class="auth-mode-tabs" aria-label="Marketplace access mode" data-auth-mode-tabs>
-            <button class="auth-mode-tab is-selected" type="button" aria-pressed="true" data-auth-mode="waitlist">Request access</button>
+            <button class="auth-mode-tab is-selected" type="button" aria-pressed="true" data-auth-mode="waitlist">Buyer access</button>
             <button class="auth-mode-tab" type="button" aria-pressed="false" data-auth-mode="login">Member sign in</button>
           </div>
           <form class="auth-form" data-auth-request-form novalidate>
@@ -57,17 +59,17 @@
             <input id="auth-email" name="email" type="email" autocomplete="email" inputmode="email" maxlength="320" required aria-describedby="auth-feedback" data-auth-email />
             <label class="auth-terms" data-auth-contact-consent>
               <input type="checkbox" data-auth-accept-contact required />
-              <span>I agree that ATM may contact me about Marketplace access.</span>
+              <span>I agree that ATM may contact me about licensing agent-session datasets.</span>
             </label>
             <button class="signal-button" type="submit" data-auth-request-submit>
-              <span data-auth-request-label>Request access</span>
+              <span data-auth-request-label>Request buyer access</span>
               <span aria-hidden="true">→</span>
             </button>
           </form>
           <section class="auth-waitlist-success" data-auth-waitlist-success role="status" aria-live="polite" tabindex="-1" hidden>
-            <p class="kicker">Request received</p>
-            <h2>You’re on the waitlist.</h2>
-            <p>We’ll be in touch when Marketplace access is available.</p>
+            <p class="kicker">Buyer request received</p>
+            <h2>You’re on the buyer waitlist.</h2>
+            <p>We'll contact you about licensing agent-session datasets.</p>
           </section>
           <form class="auth-form" data-auth-verify-form hidden novalidate>
             <p class="auth-verify-note"><span class="live-dot" aria-hidden="true"></span>Code sent to <strong data-auth-challenge-email></strong></p>
@@ -81,7 +83,28 @@
       </div>
     </dialog>
 
-    <section id="top" class="hero-cinematic">
+    <section data-console-view class="seller-console" aria-labelledby="seller-console-title" hidden>
+      <div class="seller-console-shell">
+        <header class="seller-console-heading">
+          <p class="kicker">Earnings</p>
+          <h1 id="seller-console-title">Your sales, over time.</h1>
+          <p>See cumulative earnings and what each session earned.</p>
+          <span class="seller-account-chip" data-console-seller></span>
+        </header>
+        <p class="sr-only" aria-live="polite" data-console-announcement></p>
+        <p class="seller-console-state" role="status" aria-live="polite" data-console-state>Loading seller sales...</p>
+        <section class="seller-panel seller-chart-panel" aria-label="Cumulative earnings">
+          <div class="seller-panel-heading"><h2>Cumulative earnings</h2><span data-console-total></span></div>
+          <div class="seller-chart-wrap" data-console-chart></div>
+        </section>
+        <section class="seller-panel" aria-label="Earnings by session">
+          <div class="seller-panel-heading"><h2>Earnings by session</h2></div>
+          <ul class="seller-performance-list" data-console-sessions></ul>
+        </section>
+      </div>
+    </section>
+
+    <section id="top" class="hero-cinematic" data-landing-view>
       <div class="terrain-stage" aria-hidden="true">
         <div class="terrain-grid"></div>
         <i class="terrain-ridge ridge-far"></i>
@@ -96,7 +119,7 @@
       <div class="content-shell hero-copy">
         <p class="kicker">Monetize real agent work</p>
         <h1><span>Turn agent sessions</span><em>into revenue.</em></h1>
-        <p class="hero-lead">Publish credential-redacted coding-agent sessions as sellable data supply. Every accepted session preserves real requests, decisions, tool use, and recoveries without exposing credentials.</p>
+        <p class="hero-lead">Publish credential-redacted coding-agent sessions as sellable data supply. Every accepted session preserves real requests, decisions, tool use, and recoveries without exposing credentials. <span data-testid="seller-onboarding-note">No approval required to install the CLI, create a seller account, and submit sessions.</span></p>
         <div class="hero-actions">
           <a class="signal-button" href="#install-command">
             <span>Start selling sessions</span>
@@ -115,7 +138,7 @@
       </div>
     </section>
 
-    <section id="supply" class="supply-chapter" aria-labelledby="supply-title">
+    <section id="supply" class="supply-chapter" aria-labelledby="supply-title" data-landing-view>
       <div class="content-shell">
         <div class="chapter-heading reveal" data-reveal>
           <p class="kicker">Live aggregate supply</p>
@@ -130,13 +153,21 @@
         <div class="supply-locked reveal" data-supply-locked data-reveal>
           <div>
             <p class="kicker">Protected aggregate</p>
-            <h3>Live supply stays private until access is approved.</h3>
-            <p>The public Marketplace explains how the corpus works. Membership unlocks the current aggregate totals without exposing individual sessions.</p>
+            <h3>Live supply is available to signed-in members.</h3>
+            <p>The total token volume is public. Teams interested in licensing agent-session datasets can request buyer access, while existing members can sign in to view session and runtime totals.</p>
           </div>
-          <button class="signal-button" type="button" data-auth-open data-testid="supply-request-access-button">
-            <span>Request access</span>
-            <span aria-hidden="true">→</span>
-          </button>
+          <div class="supply-locked-actions">
+            <article class="public-token-total is-loading" data-public-token-region aria-busy="true" aria-live="polite" role="status">
+              <p class="metric-label">Total training tokens</p>
+              <span class="metric-skeleton" aria-hidden="true" data-public-token-skeleton></span>
+              <strong class="metric-value" data-public-token-count data-testid="public-token-count" hidden>—</strong>
+              <p class="metric-note" data-public-token-note hidden>Across accepted Registry sessions</p>
+            </article>
+            <button class="signal-button" type="button" data-auth-open data-testid="supply-request-access-button">
+              <span>Request buyer access</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
         </div>
 
         <div class="supply-layout reveal" data-authenticated-content data-reveal aria-busy="true" data-supply-region hidden>
@@ -166,7 +197,7 @@
       </div>
     </section>
 
-    <section class="corpus-thesis" aria-labelledby="thesis-title">
+    <section class="corpus-thesis" aria-labelledby="thesis-title" data-landing-view>
       <div class="wide-shell thesis-stage reveal" data-reveal>
         <div class="orbit-lines" aria-hidden="true"><i></i><i></i><i></i></div>
         <p class="kicker">Useful data is behavioral</p>
@@ -184,7 +215,7 @@
       </div>
     </section>
 
-    <section id="provenance" class="process-chapter" aria-labelledby="process-title">
+    <section id="provenance" class="process-chapter" aria-labelledby="process-title" data-landing-view>
       <div class="content-shell process-layout">
         <div class="process-intro reveal" data-reveal>
           <p class="kicker">From local session to corpus</p>

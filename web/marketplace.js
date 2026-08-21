@@ -8,13 +8,46 @@ const numeric = (candidate) => {
 };
 
 const parseStat = (candidate) => {
-  if (typeof candidate !== "number" || !Number.isFinite(candidate) || candidate < 0) {
+  if (
+    typeof candidate !== "number"
+    || !Number.isSafeInteger(candidate)
+    || candidate < 0
+  ) {
     throw new TypeError("Invalid aggregate statistic");
   }
   return candidate;
 };
 
-const formatInteger = (value) => Math.round(value).toLocaleString("en-US");
+const parsePublicTokenTotal = (candidate) => {
+  if (typeof candidate === "string" && /^(0|[1-9][0-9]*)$/.test(candidate)) {
+    return BigInt(candidate);
+  }
+  if (
+    typeof candidate === "number"
+    && Number.isSafeInteger(candidate)
+    && candidate >= 0
+  ) {
+    return BigInt(candidate);
+  }
+  throw new TypeError("Invalid public token statistic");
+};
+
+const formatInteger = (value) =>
+  (typeof value === "bigint" ? value : Math.round(value)).toLocaleString("en-US");
+
+const renderPublicTokenTotal = (value) => {
+  if (!publicTokenCount) return;
+  const formatted = formatInteger(value);
+  const [first, ...rest] = formatted.split(",");
+  const nodes = [document.createTextNode(first)];
+  for (const group of rest) {
+    nodes.push(document.createTextNode(","));
+    nodes.push(document.createElement("wbr"));
+    nodes.push(document.createTextNode(group));
+  }
+  publicTokenCount.replaceChildren(...nodes);
+  publicTokenCount.setAttribute("aria-label", formatted);
+};
 const formatCompact = (value) =>
   value >= 1e9 ? `${(value / 1e9).toFixed(2)}B`
     : value >= 1e6 ? `${(value / 1e6).toFixed(1)}M`
@@ -101,6 +134,8 @@ const authWaitlistSuccess = document.querySelector("[data-auth-waitlist-success]
 const authFeedback = document.querySelector("[data-auth-feedback]");
 const authChallengeEmail = document.querySelector("[data-auth-challenge-email]");
 const authModeTabs = document.querySelector("[data-auth-mode-tabs]");
+const authConsolePath = document.querySelector("[data-auth-console-path]");
+const authKicker = document.querySelector("[data-auth-kicker]");
 const authTitlePrefix = document.querySelector("[data-auth-title-prefix]");
 const authTitleAccent = document.querySelector("[data-auth-title-accent]");
 const authDescription = document.querySelector("[data-auth-description]");
@@ -110,6 +145,12 @@ const authOpenButtons = document.querySelectorAll("[data-auth-open]");
 const authCloseButton = document.querySelector("[data-auth-close]");
 const authLogoutButton = document.querySelector("[data-auth-logout]");
 const status = document.querySelector("[data-registry-status]");
+const publicTokenRegion = document.querySelector("[data-public-token-region]");
+const publicTokenCount = document.querySelector("[data-public-token-count]");
+const publicTokenSkeleton = document.querySelector("[data-public-token-skeleton]");
+const publicTokenNote = document.querySelector("[data-public-token-note]");
+const consoleLink = document.querySelector("[data-console-link]");
+const consoleView = document.querySelector("[data-console-view]");
 
 let authMode = "waitlist";
 let challenge;
@@ -222,6 +263,9 @@ const showPublicAccess = (message = "", revealGate = false) => {
   authWaitlistSuccess.hidden = true;
   authLogoutButton.hidden = true;
   authAccessButton.hidden = false;
+  consoleLink.hidden = true;
+  consoleView.hidden = true;
+  document.body.classList.remove("is-console-view");
   status.hidden = true;
   resetSupply();
   setAuthMode("waitlist");
@@ -254,11 +298,42 @@ const renderAuthenticated = (session) => {
   supplyLocked.hidden = true;
   authAccessButton.hidden = true;
   authLogoutButton.hidden = false;
+  consoleLink.hidden = false;
   status.hidden = false;
   setFeedback("");
   setStatus("is-connecting", "Connecting to Registry");
   resetSupply();
   scheduleExpiry(session);
+  if (window.location.hash === "#console") void showConsole(session);
+};
+
+const loadPublicTokenTotal = async () => {
+  if (!publicTokenRegion || !publicTokenCount || !publicTokenSkeleton) return;
+  try {
+    const response = await fetch(`${registry}/v1/marketplace/public-stats`, {
+      headers: { accept: "application/json" },
+      redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error("Registry public stats unavailable");
+    const stats = await response.json();
+    const tokens = parsePublicTokenTotal(stats.tradeableTokens);
+    renderPublicTokenTotal(tokens);
+    publicTokenCount.hidden = false;
+    publicTokenSkeleton.hidden = true;
+    if (publicTokenNote) publicTokenNote.hidden = false;
+    publicTokenRegion.classList.remove("is-loading", "is-error");
+    publicTokenRegion.setAttribute("aria-busy", "false");
+  } catch {
+    publicTokenCount.textContent = "Unavailable";
+    publicTokenCount.removeAttribute("aria-label");
+    publicTokenCount.hidden = false;
+    publicTokenSkeleton.hidden = true;
+    if (publicTokenNote) publicTokenNote.hidden = true;
+    publicTokenRegion.classList.remove("is-loading");
+    publicTokenRegion.classList.add("is-error");
+    publicTokenRegion.setAttribute("aria-busy", "false");
+  }
 };
 
 const showVerification = () => {
@@ -294,12 +369,14 @@ const setAuthMode = (mode) => {
   const isWaitlist = mode === "waitlist";
   authContactConsent.hidden = !isWaitlist;
   authAcceptContact.required = isWaitlist;
+  authConsolePath.textContent = isWaitlist ? "ATM / buyer-access" : "ATM / member-sign-in";
+  authKicker.textContent = isWaitlist ? "Buyer access" : "Existing member";
   authTitlePrefix.textContent = isWaitlist ? "Request" : "Member sign in to";
-  authTitleAccent.textContent = isWaitlist ? "access." : "live supply.";
+  authTitleAccent.textContent = isWaitlist ? "buyer access." : "live supply.";
   authDescription.textContent = isWaitlist
-    ? "Join the waitlist for Marketplace access. We will only contact you about your request."
+    ? "For teams looking to license agent-session datasets. We will only contact you about this buyer access request."
     : "We will email a six-digit code. No password and no browser-stored session.";
-  authRequestLabel.textContent = isWaitlist ? "Request access" : "Send one-time code";
+  authRequestLabel.textContent = isWaitlist ? "Request buyer access" : "Send one-time code";
   authRequestForm.querySelector("button[type=submit]").disabled = false;
   if (isWaitlist && hasWaitlistAcknowledgment()) {
     authRequestForm.hidden = true;
@@ -330,6 +407,33 @@ const requestJson = async (endpoint, options = {}) => {
   return body;
 };
 
+const showConsole = async (session = activeSession) => {
+  if (session === undefined) return;
+  document.body.classList.add("is-console-view");
+  consoleView.hidden = false;
+  try {
+    const consoleModule = await import("./console.js");
+    if (activeSession !== session || window.location.hash !== "#console") return;
+    await consoleModule.mountSellerConsole({
+      requestJson,
+      session,
+      showLogin: () => showPublicAccess("Your session is no longer valid. Use Member sign in to continue.", true),
+    });
+  } catch {
+    const state = consoleView.querySelector("[data-console-state]");
+    if (state) {
+      state.hidden = false;
+      state.dataset.state = "error";
+      state.textContent = "Seller sales are unavailable. Try again shortly.";
+    }
+  }
+};
+
+const closeConsole = () => {
+  document.body.classList.remove("is-console-view");
+  consoleView.hidden = true;
+};
+
 const validEmail = (email) => /^\S+@\S+\.\S+$/.test(email);
 
 const requestWaitlist = async (event) => {
@@ -342,7 +446,7 @@ const requestWaitlist = async (event) => {
     return;
   }
   if (!authAcceptContact.checked) {
-    setFeedback("Consent is required to request access.");
+    setFeedback("Consent is required to request buyer access.");
     authAcceptContact.focus();
     return;
   }
@@ -378,7 +482,7 @@ const requestWaitlist = async (event) => {
     authWaitlistSuccess.focus({ preventScroll: true });
   } catch {
     if (requestVersion === authRequestVersion) {
-      setFeedback("We couldn’t request access. Check your connection and try again.");
+      setFeedback("We couldn’t request buyer access. Check your connection and try again.");
     }
   } finally {
     if (requestVersion === authRequestVersion) submit.disabled = false;
@@ -606,6 +710,10 @@ authGate.addEventListener("close", () => {
   restoreAuthTrigger = false;
 });
 authLogoutButton.addEventListener("click", () => void logout());
+window.addEventListener("hashchange", () => {
+  if (window.location.hash === "#console" && activeSession !== undefined) void showConsole();
+  else closeConsole();
+});
 
 for (const element of document.querySelectorAll("[data-reveal]")) {
   if (reduceMotion.matches || !revealObserver) element.classList.add("is-visible");
@@ -615,3 +723,4 @@ for (const element of document.querySelectorAll("[data-reveal]")) {
 document.body.classList.remove("no-js");
 setAuthMode("waitlist");
 showPublicAccess();
+void loadPublicTokenTotal();

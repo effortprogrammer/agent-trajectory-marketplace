@@ -15,7 +15,8 @@ if [ -z "$CORE" ] || [ ! -f "$CORE" ]; then
   curl -fsSL "https://api.github.com/repos/effortprogrammer/agent-trajectory-marketplace/releases/latest" -o "$ATM_BOOTSTRAP_TEMP/release.json"
   IFS=$'\t' read -r ATM_BOOTSTRAP_TAG ATM_CORE_DIGEST ATM_CHECKSUM_DIGEST < <(bun -e '
     const release=await Bun.file(process.argv[1]).json();
-    if(release.immutable!==true||release.draft!==false||release.prerelease!==false||!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(release.tag_name))process.exit(1);
+    const stable=(tag)=>{if(/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag))return true;const m=/^v([1-9]\d{3})\.(0[1-9]|1[0-2])\.(0[1-9]|[12]\d|3[01])\.(0|[1-9]\d*)$/.exec(tag);return m!==null&&new Date(Date.UTC(Number(m[1]),Number(m[2]),0)).getUTCDate()>=Number(m[3])};
+    if(release.immutable!==true||release.draft!==false||release.prerelease!==false||!stable(release.tag_name))process.exit(1);
     const asset=(name)=>{const matches=release.assets.filter((value)=>value.name===name);if(matches.length!==1)process.exit(1);const value=matches[0];const expected=`https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/download/${release.tag_name}/${name}`;if(value.browser_download_url!==expected||!/^sha256:[a-f0-9]{64}$/.test(value.digest))process.exit(1);return value.digest.slice(7)};
     console.log([release.tag_name,asset("install-core.sh"),asset("install-core.sh.sha256")].join("\t"));
   ' "$ATM_BOOTSTRAP_TEMP/release.json")

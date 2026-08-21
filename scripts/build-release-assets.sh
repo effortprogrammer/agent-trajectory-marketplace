@@ -6,6 +6,7 @@ COMMIT="${2:?release commit is required}"
 OUTPUT="${3:?output directory is required}"
 REPOSITORY="${ATM_RELEASE_REPOSITORY:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 TELEMETRY_KEY="${ATM_RELEASE_POSTHOG_API_KEY:?ATM_RELEASE_POSTHOG_API_KEY is required}"
+source "$(dirname "${BASH_SOURCE[0]}")/version-contract.sh"
 
 [[ "$TELEMETRY_KEY" =~ ^[A-Za-z0-9_]+$ ]]
 
@@ -13,7 +14,7 @@ sha256() {
   if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
-[[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+atm_is_stable_tag "$TAG"
 version="${TAG#v}"
 [ "$(git -C "$REPOSITORY" show "$COMMIT:package.json" | jq -r '.version')" = "$version" ]
 

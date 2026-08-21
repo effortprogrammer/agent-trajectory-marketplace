@@ -13,12 +13,12 @@ import { isAbsolute, join, resolve } from "node:path";
 
 import { z } from "zod";
 
+import { isStableVersion } from "./update-release-contract";
+
 export type { InstallRootClassification } from "./install-state-checkout";
 export { classifyInstallRoot } from "./install-state-checkout";
 export type { InstallLock } from "./install-state-lock";
 export { acquireInstallLock, InstallLockHeldError } from "./install-state-lock";
-
-const STABLE_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
 const absolutePathSchema = z.string().min(1).refine(isAbsolute, "expected an absolute path");
 
@@ -102,7 +102,7 @@ export class InstallStateParseError extends Error {
 }
 
 export const deriveInstallPaths = (stateRoot: string, version: string): InstallPaths => {
-  if (!STABLE_VERSION_PATTERN.test(version)) {
+  if (!isStableVersion(version)) {
     throw new InstallStateParseError(join(resolve(stateRoot), "install-state.json"));
   }
   const resolvedRoot = resolve(stateRoot);

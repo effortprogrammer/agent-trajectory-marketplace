@@ -1,0 +1,27 @@
+.seller-console { padding: var(--space-32) 0 var(--space-20); }
+.seller-console-shell { width: min(72rem, calc(100% - var(--space-12))); margin: 0 auto; }
+.seller-console-heading { max-width: 44rem; }
+.seller-console-heading h1 { margin: var(--space-2) 0 var(--space-3); font-family: var(--font-display); font-size: clamp(2.2rem, 4.5vw, 3.4rem); font-weight: 300; letter-spacing: -.035em; line-height: 1.05; }
+.seller-console-heading > p:last-child { color: var(--text-secondary); }
+.seller-account-chip { display: inline-flex; align-items: center; gap: var(--space-2); margin-top: var(--space-5); border: 1px solid var(--border-quiet); border-radius: var(--radius-pill); background: var(--surface); color: var(--text-secondary); padding: var(--space-1) var(--space-3); font-family: var(--font-mono); font-size: var(--type-mono-sm); }
+.seller-account-chip::before { width: .45rem; height: .45rem; border-radius: 50%; background: var(--accent-bright); content: ""; }
+.seller-panel { overflow: hidden; border: 1px solid var(--border-quiet); border-radius: var(--radius-shell); background: var(--surface); }
+.seller-panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); border-bottom: 1px solid var(--border-quiet); padding: var(--space-4) var(--space-5); }
+.seller-panel-heading h2 { font-family: var(--font-display); font-size: 1.25rem; font-weight: 500; }
+.seller-panel-heading span { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--type-mono-sm); }
+.seller-chart-panel { margin: var(--space-8) 0 var(--space-4); }
+.seller-chart-wrap { min-height: 15rem; padding: var(--space-5) var(--space-5) var(--space-3); }
+.seller-chart-wrap svg { display: block; width: 100%; height: auto; }
+.seller-chart-area { fill: var(--accent-glass); } .seller-chart-line { fill: none; stroke: var(--accent-bright); stroke-width: 2; } .seller-chart-dot { fill: var(--accent-bright); } .seller-chart-grid { stroke: var(--border-quiet); stroke-width: 1; } .seller-chart-label { fill: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.seller-performance-list { list-style: none; }
+.seller-performance-row { border-top: 1px solid var(--border-quiet); padding: var(--space-3) var(--space-5); } .seller-performance-list > li:first-child .seller-performance-row { border-top: 0; }
+.seller-performance-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.seller-session-label { overflow: hidden; font-size: var(--type-body-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.seller-amount { flex: 0 0 auto; color: var(--accent-bright); font-family: var(--font-mono); font-size: var(--type-body-sm); white-space: nowrap; }
+.seller-status-pill { display: inline-block; flex: 0 0 auto; border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface-soft); color: var(--text-secondary); padding: .1rem var(--space-2); font-family: var(--font-mono); font-size: var(--type-mono-sm); white-space: nowrap; }
+.seller-status-pill[data-stage="sold"] { border-color: rgba(224,180,92,.4); color: #e0b45c; } .seller-status-pill[data-stage="cleared"], .seller-status-pill[data-stage="paid"] { border-color: var(--accent-ring); color: var(--accent-bright); }
+.seller-performance-bar { height: .4rem; margin-top: var(--space-2); overflow: hidden; border-radius: var(--radius-pill); background: var(--surface-soft); } .seller-performance-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.seller-performance-meta { margin-top: var(--space-1); color: var(--text-muted); font-family: var(--font-mono); font-size: var(--type-mono-sm); }
+.seller-console-state { min-height: 10rem; display: grid; place-items: center; padding: var(--space-6); color: var(--text-secondary); text-align: center; } .seller-console-state[data-state="error"] { color: var(--status-error); } .seller-console-skeleton { width: 100%; height: 9rem; border-radius: var(--radius-control); background: linear-gradient(90deg, var(--surface-soft), var(--border), var(--surface-soft)); background-size: 200% 100%; animation: skeleton-sweep 1.8s var(--ease-standard) infinite; }
+.is-console-view [data-landing-view], .is-console-view .marketplace-footer { display: none; }
+@media (max-width: 640px) { .seller-console { padding-top: var(--space-24); } .seller-console-shell { width: min(100% - var(--space-8), 72rem); } .seller-console-heading h1 { font-size: 2.25rem; } }

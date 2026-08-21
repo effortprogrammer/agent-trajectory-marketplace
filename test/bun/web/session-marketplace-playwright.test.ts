@@ -53,7 +53,7 @@ afterAll(async () => {
 })
 
 describe("authenticated aggregate marketplace browser contract", () => {
-  test("shows the public landing while withholding aggregate supply before login", async () => {
+  test("shows public token volume while withholding member aggregates", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
 
@@ -62,10 +62,142 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("#top").isVisible()).toBe(true)
     expect(await page.locator("[data-auth-gate]").isVisible()).toBe(false)
     expect(await page.locator("[data-supply-locked]").isVisible()).toBe(true)
+    expect(await page.getByTestId("public-token-count").count()).toBe(1)
+    expect(await page.getByTestId("public-token-count").innerText()).toBe("39,048,328")
+    expect(await page.locator("[data-public-token-note]").isVisible()).toBe(true)
+    expect(await page.getByTestId("public-token-count").evaluate((element) => {
+      const view = element.ownerDocument.defaultView
+      if (view === null) throw new Error("Public token value has no browser view")
+      const lineHeight = Number.parseFloat(view.getComputedStyle(element).lineHeight)
+      return Math.round(element.getBoundingClientRect().height / lineHeight)
+    })).toBe(1)
+    expect(await page.locator("[data-public-token-region]").getAttribute("aria-live")).toBe("polite")
     expect(await page.locator("[data-authenticated-content]:visible").count()).toBe(0)
     expect(await page.getByTestId("aggregate-status").isVisible()).toBe(false)
     expect(await page.locator("[data-session-count]:visible, [data-token-count]:visible").count()).toBe(0)
-    expect(harness.registryRequests).toEqual([])
+    expect(harness.registryRequests).toEqual([{
+      authorization: null,
+      body: undefined,
+      method: "GET",
+      path: "/v1/marketplace/public-stats",
+    }])
+  })
+
+  test("renders exact large public token totals without horizontal overflow", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPublicTokenTotal("9007199254740993")
+    const page = await harness.newPage({ height: 844, width: 375 })
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    expect(await page.getByTestId("public-token-count").innerText()).toBe(
+      "9,007,199,254,740,993",
+    )
+    expect(
+      await page.locator("html").evaluate((element) =>
+        element.scrollWidth <= element.clientWidth
+      ),
+    ).toBe(true)
+  })
+
+  test("hides the acceptance note when public token stats are unavailable", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPublicTokenTotal("invalid")
+    const page = await harness.newPage(mobile)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    expect(await page.getByTestId("public-token-count").innerText()).toBe(
+      "Unavailable",
+    )
+    expect(
+      await page.locator("[data-public-token-note]").isVisible(),
+    ).toBe(false)
+  })
+
+  test("keeps seller sales requests and navigation unavailable to anonymous visitors", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    expect(await page.getByTestId("seller-console-link").isVisible()).toBe(false)
+    expect(harness.registryRequests.filter((request) => request.path.includes("/seller/sales/"))).toEqual([])
+  })
+
+  test("renders the authenticated seller console with bearer-authorized sales data", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    const salesResponses = Promise.all([
+      page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/sales/sessions")),
+      page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/sales/earnings")),
+    ])
+    await page.getByTestId("seller-console-link").click()
+    await salesResponses
+
+    await page.locator("[data-console-chart] svg").waitFor({ state: "visible" })
+    expect(await page.locator("[data-console-sessions] li").count()).toBeGreaterThan(0)
+    expect(await page.locator("[data-console-ledger]").count()).toBe(0)
+    expect(await page.locator("[data-console-seller]").innerText()).toBe("acct-0123456789abcdef")
+    expect(await page.locator("[data-console-sessions] .seller-status-pill[data-stage=sold]").count()).toBe(1)
+    expect(harness.registryRequests.filter((request) => request.path.includes("/seller/sales/"))).toEqual(expect.arrayContaining([
+      expect.objectContaining({ authorization: "Bearer marketplace-browser-session-token", body: undefined, method: "GET", path: "/v1/marketplace/seller/sales/sessions" }),
+    ]))
+    expect(harness.registryRequests.filter((request) => request.path.endsWith("/sales/ledger"))).toEqual([])
+  })
+
+  test("shows empty seller sales states when the account has no sales activity", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    const emptySessions = { asOf: "2026-08-20T12:00:00Z", ok: true, page: { nextCursor: null }, sessions: [] }
+    const emptyEarnings = { asOf: "2026-08-20T12:00:00Z", currency: "USD", interval: "day", ok: true, openingCumulativeCredits: 0, points: [], window: { from: "2026-07-21", to: "2026-08-20" } }
+    await page.route("https://gateway.getatm.io/v1/marketplace/seller/sales/**", async (route) => {
+      const pathname = new URL(route.request().url()).pathname
+      await route.fulfill({
+        body: JSON.stringify(pathname.endsWith("sessions") ? emptySessions : emptyEarnings),
+        contentType: "application/json",
+        status: 200,
+      })
+    })
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    await page.getByTestId("seller-console-link").click()
+    await page.getByText("No seller sessions yet.").waitFor({ state: "visible" })
+
+    expect(await page.getByText("No earnings recorded in this window.").isVisible()).toBe(true)
+    expect(await page.locator("[data-console-ledger]").count()).toBe(0)
+  })
+
+  test("returns to the sign-in gate when a seller sales endpoint rejects the session", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    await page.route("https://gateway.getatm.io/v1/marketplace/seller/sales/sessions", async (route) => {
+      await route.fulfill({ body: JSON.stringify({ error: { code: "unauthorized" }, ok: false }), contentType: "application/json", status: 401 })
+    })
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    await page.getByTestId("seller-console-link").click()
+    await page.locator("[data-auth-gate]").waitFor({ state: "visible" })
+
+    expect(await page.locator("[data-console-view]:visible").count()).toBe(0)
+    expect(await page.locator("[data-console-sessions] li").count()).toBe(0)
+  })
+
+  test("keeps the seller console usable without horizontal overflow at 375 pixels", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage({ height: 844, width: 375 })
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    await page.getByTestId("seller-console-link").click()
+    await page.locator("[data-console-chart] svg").waitFor({ state: "visible" })
+
+    expect(await page.locator("html").evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(false)
   })
 
   test("copies the exact installer from the simplified seller hero", async () => {
@@ -88,6 +220,37 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.evaluate<string>("navigator.clipboard.readText()")).toBe(command)
     expect(await page.locator("[data-copy-status]").innerText()).toBe(
       "Command copied to clipboard",
+    )
+  })
+
+  test("separates buyer access from approval-free seller onboarding", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    expect(await page.getByTestId("request-access-button").innerText()).toBe(
+      "Request buyer access",
+    )
+    expect(await page.getByTestId("seller-onboarding-note").innerText()).toContain(
+      "No approval required",
+    )
+    await page.getByTestId("request-access-button").click()
+    expect(await page.locator("[data-auth-mode=waitlist]").innerText()).toBe(
+      "Buyer access",
+    )
+    expect(await page.locator("[data-auth-description]").innerText()).toContain(
+      "license agent-session datasets",
+    )
+    expect(await page.locator("[data-auth-mode=login]").innerText()).toBe(
+      "Member sign in",
+    )
+    await page.locator("[data-auth-mode=login]").click()
+    expect(await page.locator("[data-auth-console-path]").innerText()).toBe(
+      "ATM / member-sign-in",
+    )
+    expect(await page.locator("[data-auth-kicker]").innerText()).toBe(
+      "Existing member",
     )
   })
 
@@ -384,7 +547,12 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(new URL(page.url()).pathname).toBe("/index.html")
     expect(await page.locator("[data-auth-gate]").isVisible()).toBe(false)
     expect(await page.locator("#top").isVisible()).toBe(true)
-    expect(harness.registryRequests).toEqual([])
+    expect(harness.registryRequests).toEqual([{
+      authorization: null,
+      body: undefined,
+      method: "GET",
+      path: "/v1/marketplace/public-stats",
+    }])
   })
 
   test("keeps the public landing and explicit sign-in usable on mobile", async () => {
