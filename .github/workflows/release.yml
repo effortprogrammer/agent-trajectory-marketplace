@@ -16,7 +16,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout protected tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -46,12 +46,13 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          source scripts/release-network.sh
           test "$REF_PROTECTED" = true
           [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           git rev-parse --verify "refs/tags/$TAG^{commit}"
           test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$GITHUB_SHA"
           test "$(jq -r '.version' package.json)" = "${TAG#v}"
-          git fetch --no-tags origin main dev production
+          atm_release_git_fetch --no-tags origin main dev production
           test "$(git rev-parse refs/remotes/origin/main)" = "$GITHUB_SHA"
           git merge-base --is-ancestor refs/remotes/origin/dev "$GITHUB_SHA"
           git merge-base --is-ancestor refs/remotes/origin/production "$GITHUB_SHA"
@@ -75,21 +76,22 @@ jobs:
           PRODUCTION_BRANCH: production
         run: |
           set -euo pipefail
+          source scripts/release-network.sh
           previous_sha="$(
-            gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
+            atm_release_gh_api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
               --jq '.object.sha'
           )"
           echo "previous_sha=$previous_sha" >>"$GITHUB_OUTPUT"
-          gh api --method POST \
+          atm_release_gh_api --method POST \
             "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
             --field state=success \
             --field context=release-production-approved \
             --field description="Protected release tag approved for production"
-          if ! gh api --method PATCH \
+          if ! atm_release_gh_api --method PATCH \
               "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
               --field "sha=$GITHUB_SHA" \
               --field force=false; then
-            gh api --method POST \
+            atm_release_gh_api --method POST \
               "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
               --field state=failure \
               --field context=release-production-approved \
@@ -104,16 +106,17 @@ jobs:
           PRODUCTION_BRANCH: production
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 60); do
+          source scripts/release-network.sh
+          for attempt in $(seq 1 24); do
             deployed_ref="$(
-              gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
+              atm_release_gh_api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
                 --jq '.object.sha'
             )"
             if [ "$deployed_ref" != "$GITHUB_SHA" ]; then
               echo "production branch changed during deployment" >&2
               exit 1
             fi
-            if curl --fail --silent --show-error \
+            if atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 --dump-header "$RUNNER_TEMP/origin-revision.headers" \
                 "$ORIGIN_URL/.well-known/atm-origin-revision" \
@@ -123,13 +126,13 @@ jobs:
                   "x-atm-origin-revision: $GITHUB_SHA" \
               && jq -e --arg revision "$GITHUB_SHA" '.revision == $revision' \
                 "$RUNNER_TEMP/origin-revision.json" \
-              && curl --fail --silent --show-error \
+              && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 https://getatm.io/ --output "$RUNNER_TEMP/index.html" \
-              && curl --fail --silent --show-error \
+              && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 https://getatm.io/marketplace.css --output "$RUNNER_TEMP/marketplace.css" \
-              && curl --fail --silent --show-error \
+              && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 https://getatm.io/marketplace.js --output "$RUNNER_TEMP/marketplace.js" \
               && cmp web/index.html "$RUNNER_TEMP/index.html" \
@@ -152,12 +155,14 @@ jobs:
           WORKER_REVISION: ${{ github.sha }}
         run: |
           set -euo pipefail
+          source scripts/release-network.sh
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           test -n "$CLOUDFLARE_API_TOKEN"
-          bun run wrangler deploy --config "$WORKER_CONFIG" --var "WORKER_REVISION:$WORKER_REVISION"
+          atm_release_wrangler deploy --config "$WORKER_CONFIG" \
+            --var "WORKER_REVISION:$WORKER_REVISION"
           attested=false
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent --show-error --header 'cache-control: no-cache' \
+          for attempt in $(seq 1 18); do
+            if atm_release_curl --fail --silent --show-error --header 'cache-control: no-cache' \
                 --dump-header "$RUNNER_TEMP/worker-attestation.headers" \
                 https://getatm.io/.well-known/atm-worker-revision \
                 --output "$RUNNER_TEMP/worker-attestation.json" \
@@ -180,17 +185,18 @@ jobs:
           PRODUCTION_BRANCH: production
         run: |
           set -euo pipefail
+          source scripts/release-network.sh
           attested=false
-          for attempt in $(seq 1 30); do
+          for attempt in $(seq 1 6); do
             deployed_ref="$(
-              gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
+              atm_release_gh_api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
                 --jq '.object.sha'
             )"
             if [ "$deployed_ref" != "$GITHUB_SHA" ]; then
               echo "production branch changed after Worker deployment" >&2
               exit 1
             fi
-            if curl --fail --silent --show-error \
+            if atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 --dump-header "$RUNNER_TEMP/final-origin-revision.headers" \
                 "$ORIGIN_URL/.well-known/atm-origin-revision" \
@@ -200,14 +206,14 @@ jobs:
                   "x-atm-origin-revision: $GITHUB_SHA" \
               && jq -e --arg revision "$GITHUB_SHA" '.revision == $revision' \
                 "$RUNNER_TEMP/final-origin-revision.json" \
-              && curl --fail --silent --show-error \
+              && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 https://getatm.io/ --output "$RUNNER_TEMP/final-index.html" \
-              && curl --fail --silent --show-error \
+              && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 https://getatm.io/marketplace.css \
                 --output "$RUNNER_TEMP/final-marketplace.css" \
-              && curl --fail --silent --show-error \
+              && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 https://getatm.io/marketplace.js \
                 --output "$RUNNER_TEMP/final-marketplace.js" \
@@ -228,7 +234,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh release create "$TAG" \
+          source scripts/release-network.sh
+          atm_release_gh_release create "$TAG" \
             "atm-$TAG.tar.gz" atm-release-manifest.json \
             install.sh install.sh.sha256 install-agent.sh install-agent.sh.sha256 \
             install-core.sh install-core.sh.sha256 \
@@ -241,7 +248,9 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > release-metadata.json
+          source scripts/release-network.sh
+          atm_release_gh_api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            > release-metadata.json
           core_digest="$(sha256sum install-core.sh | cut -d' ' -f1)"
           checksum_digest="$(sha256sum install-core.sh.sha256 | cut -d' ' -f1)"
           jq -e --slurpfile manifest atm-release-manifest.json \
@@ -269,20 +278,21 @@ jobs:
           PRODUCTION_BRANCH: production
         run: |
           set -euo pipefail
+          source scripts/release-network.sh
           deployed_ref="$(
-            gh api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
+            atm_release_gh_api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
               --jq '.object.sha'
           )"
           if [ "$deployed_ref" = "$PREVIOUS_SHA" ]; then
             exit 0
           fi
           test "$deployed_ref" = "$GITHUB_SHA"
-          gh api --method POST \
+          atm_release_gh_api --method POST \
             "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
             --field state=failure \
             --field context=release-production-approved \
             --field description="Production release rolled back"
-          gh api --method PATCH \
+          atm_release_gh_api --method PATCH \
             "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
             --field "sha=$PREVIOUS_SHA" \
             --field force=true
@@ -290,16 +300,16 @@ jobs:
           ROLLBACK_ROOT="$RUNNER_TEMP/worker-rollback"
           git worktree add --detach "$ROLLBACK_ROOT" "$PREVIOUS_SHA"
           restored=false
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent --show-error \
+          for attempt in $(seq 1 18); do
+            if atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 "$ORIGIN_URL/" \
                 --output "$RUNNER_TEMP/rollback-origin-index.html" \
-              && curl --fail --silent --show-error \
+              && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 "$ORIGIN_URL/marketplace.css" \
                 --output "$RUNNER_TEMP/rollback-origin-marketplace.css" \
-              && curl --fail --silent --show-error \
+              && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 "$ORIGIN_URL/marketplace.js" \
                 --output "$RUNNER_TEMP/rollback-origin-marketplace.js" \
@@ -317,12 +327,12 @@ jobs:
           test "$restored" = true
 
           ROLLBACK_WORKER_CONFIG="$ROLLBACK_ROOT/infra/cloudflare/marketplace-apex/wrangler.jsonc"
-          bun run wrangler deploy --config "$ROLLBACK_WORKER_CONFIG" \
+          atm_release_wrangler deploy --config "$ROLLBACK_WORKER_CONFIG" \
             --var "WORKER_REVISION:$PREVIOUS_SHA"
 
           worker_restored=false
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent --show-error \
+          for attempt in $(seq 1 18); do
+            if atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 --dump-header "$RUNNER_TEMP/rollback-worker.headers" \
                 https://getatm.io/.well-known/atm-worker-revision \
@@ -339,12 +349,12 @@ jobs:
           done
           test "$worker_restored" = true
 
-          curl --fail --silent --show-error --header 'cache-control: no-cache' \
+          atm_release_curl --fail --silent --show-error --header 'cache-control: no-cache' \
             https://getatm.io/ --output "$RUNNER_TEMP/rollback-index.html"
-          curl --fail --silent --show-error --header 'cache-control: no-cache' \
+          atm_release_curl --fail --silent --show-error --header 'cache-control: no-cache' \
             https://getatm.io/marketplace.css \
             --output "$RUNNER_TEMP/rollback-marketplace.css"
-          curl --fail --silent --show-error --header 'cache-control: no-cache' \
+          atm_release_curl --fail --silent --show-error --header 'cache-control: no-cache' \
             https://getatm.io/marketplace.js \
             --output "$RUNNER_TEMP/rollback-marketplace.js"
           cmp "$ROLLBACK_ROOT/web/index.html" "$RUNNER_TEMP/rollback-index.html"

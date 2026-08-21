@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/release.yml"
 RAILWAY_CONTRACT="$ROOT/infra/railway/deployment-contract.json"
+RELEASE_NETWORK="$ROOT/scripts/release-network.sh"
 TEMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEMP_ROOT"' EXIT
 
@@ -15,6 +16,13 @@ fail() {
 [[ -f "$WORKFLOW" ]] || fail "release workflow is missing"
 [[ -f "$ROOT/.github/workflows/promotion-policy.yml" ]] || fail "promotion policy workflow is missing"
 [[ -f "$RAILWAY_CONTRACT" ]] || fail "Railway deployment contract is missing"
+[[ -x "$RELEASE_NETWORK" ]] || fail "bounded release network helpers are missing or not executable"
+grep -Fq -- '--connect-timeout 3' "$RELEASE_NETWORK" || fail "release curl connect timeout is missing"
+grep -Fq -- '--max-time 8' "$RELEASE_NETWORK" || fail "release curl request timeout is missing"
+grep -Fq 'timeout --signal=TERM 20s gh api' "$RELEASE_NETWORK" || fail "release GitHub API timeout is missing"
+grep -Fq 'timeout --signal=TERM 120s gh release' "$RELEASE_NETWORK" || fail "GitHub release timeout is missing"
+grep -Fq 'timeout --signal=TERM 180s bun run wrangler' "$RELEASE_NETWORK" || fail "Worker deploy timeout is missing"
+grep -Fq 'timeout --signal=TERM 60s git fetch' "$RELEASE_NETWORK" || fail "release fetch timeout is missing"
 jq -e '
   .projectId == "ac736878-3095-4c1d-b8c4-e0a184c06ece" and
   .staging.environment == "staging" and
@@ -33,11 +41,15 @@ grep -Fq "'v*.*.*'" "$WORKFLOW" || fail "release workflow is not restricted to s
 grep -Fq 'github.ref_protected' "$WORKFLOW" || fail "release workflow does not require protected tags"
 grep -Fq 'group: marketplace-production-release' "$WORKFLOW" || fail "production releases are not serialized"
 grep -Fq 'cancel-in-progress: false' "$WORKFLOW" || fail "a newer release can cancel an active production deployment"
-grep -Fq 'timeout-minutes: 30' "$WORKFLOW" || fail "release timeout cannot cover deploy, attestation, and rollback bounds"
+grep -Fq 'timeout-minutes: 60' "$WORKFLOW" || fail "release timeout cannot cover deploy, attestation, and rollback bounds"
+grep -Fq 'source scripts/release-network.sh' "$WORKFLOW" || fail "release workflow does not load bounded network helpers"
+if grep -Eq '(^|[[:space:]])(curl|gh api|gh release create|bun run wrangler deploy|git fetch)([[:space:]]|$)' "$WORKFLOW"; then
+  fail "release workflow contains an unbounded external command"
+fi
 grep -Fq 'statuses: write' "$WORKFLOW" || fail "release cannot authorize the production ref update"
 grep -Fq 'statuses/$GITHUB_SHA' "$WORKFLOW" || fail "release does not bind production approval to the tag commit"
 grep -Fq 'release-production-approved' "$WORKFLOW" || fail "release does not emit the production approval status"
-grep -Fq 'git fetch --no-tags origin main dev production' "$WORKFLOW" || fail "release does not refresh approved branch tips"
+grep -Fq 'atm_release_git_fetch --no-tags origin main dev production' "$WORKFLOW" || fail "release does not refresh approved branch tips"
 grep -Fq 'refs/remotes/origin/main' "$WORKFLOW" || fail "release tag is not bound to the approved main head"
 grep -Fq 'merge-base --is-ancestor refs/remotes/origin/dev "$GITHUB_SHA"' "$WORKFLOW" || fail "release tag is not descended from tested dev"
 grep -Fq 'merge-base --is-ancestor refs/remotes/origin/production "$GITHUB_SHA"' "$WORKFLOW" || fail "release cannot prove a production fast-forward"
@@ -57,8 +69,9 @@ grep -Fq 'rollback-origin-marketplace.js' "$WORKFLOW" || fail "rollback origin b
 grep -Fq 'WORKER_REVISION:$PREVIOUS_SHA' "$WORKFLOW" || fail "Worker rollback is not bound to the prior production revision"
 grep -Fq 'Wait for and attest tagged Marketplace production bytes' "$WORKFLOW" || fail "release does not wait for tagged production bytes"
 grep -Fq 'Re-attest Marketplace production after Worker deployment' "$WORKFLOW" || fail "release does not verify public bytes after Worker deployment"
-grep -Fq 'for attempt in $(seq 1 60)' "$WORKFLOW" || fail "production attestation wait is not bounded"
-grep -Fq 'for attempt in $(seq 1 30)' "$WORKFLOW" || fail "Worker attestation wait is not bounded"
+grep -Fq 'for attempt in $(seq 1 24)' "$WORKFLOW" || fail "production attestation wait is not bounded"
+grep -Fq 'for attempt in $(seq 1 18)' "$WORKFLOW" || fail "rollback attestation wait is not bounded"
+grep -Fq 'for attempt in $(seq 1 6)' "$WORKFLOW" || fail "post-Worker attestation wait is not bounded"
 validation_line="$(grep -nF 'Validate stable protected tag' "$WORKFLOW" | cut -d: -f1)"
 build_line="$(grep -nF 'Build source archive and bound manifest' "$WORKFLOW" | cut -d: -f1)"
 promotion_line="$(grep -nF 'Promote protected tag to production branch' "$WORKFLOW" | cut -d: -f1)"
@@ -82,7 +95,7 @@ grep -Fq 'install-agent.sh.sha256' "$WORKFLOW" || fail "release bootstrap checks
 grep -Fq 'install-core.sh.sha256' "$WORKFLOW" || fail "release core checksum asset is missing"
 grep -Fq 'sha256' "$WORKFLOW" || fail "release manifest omits the archive checksum"
 grep -Fq 'stat -c%s' "$WORKFLOW" || fail "release manifest omits the archive size"
-grep -Fq 'gh release create' "$WORKFLOW" || fail "workflow does not create a GitHub Release"
+grep -Fq 'atm_release_gh_release create' "$WORKFLOW" || fail "workflow does not create a GitHub Release"
 grep -Fq -- '--verify-tag' "$WORKFLOW" || fail "release creation does not require the triggering tag"
 grep -Fq '.immutable == true' "$WORKFLOW" || fail "release workflow does not verify immutable release metadata"
 grep -Fq '.digest == ("sha256:" + $manifest[0].archive.sha256)' "$WORKFLOW" || fail "release asset digest is not rebound to the manifest"
@@ -95,7 +108,7 @@ grep -Fq 'CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}' "$WORKFLOW"
 grep -Fq '"wrangler": "4.58.0"' "$ROOT/package.json" || fail "Wrangler is not pinned in the package manifest"
 grep -Fq '"wrangler": ["wrangler@4.58.0"' "$ROOT/bun.lock" || fail "Wrangler is not integrity-pinned in the Bun lockfile"
 grep -Fq 'bun install --frozen-lockfile --ignore-scripts' "$WORKFLOW" || fail "release does not install locked tooling before exposing deploy credentials"
-grep -Fq 'bun run wrangler deploy --config "$WORKER_CONFIG" --var "WORKER_REVISION:$WORKER_REVISION"' "$WORKFLOW" || fail "release does not deploy the repository-controlled Worker revision"
+grep -Fq 'atm_release_wrangler deploy --config "$WORKER_CONFIG"' "$WORKFLOW" || fail "release does not deploy the repository-controlled Worker revision"
 if grep -Fq 'bunx wrangler' "$WORKFLOW"; then
   fail "release resolves Wrangler dynamically while deploy credentials are present"
 fi
