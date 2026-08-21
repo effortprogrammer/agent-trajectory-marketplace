@@ -40,8 +40,12 @@ describe("built collector update", () => {
 		const output = parseOutput(runBuiltUpdate(fixture));
 
 		// Then
-		expect(output).toEqual({ status: "updated", fromVersion: "1.0.0", toVersion: "1.1.0" });
-		expect(readCurrentVersion(fixture.root)).toBe("1.1.0");
+		expect(output).toEqual({
+			status: "updated",
+			fromVersion: "1.0.0",
+			toVersion: "2026.08.18.2",
+		});
+		expect(readCurrentVersion(fixture.root)).toBe("2026.08.18.2");
 		expect(readlinkSync(join(fixture.root, "previous"))).toBe(fixture.oldRelease);
 		expect(readFileSync(fixture.outputSentinel, "utf8")).toBe("preserve");
 		const commands = readFileSync(fixture.serviceLog, "utf8");
@@ -78,7 +82,7 @@ describe("built collector update", () => {
 		expect(output).toEqual({
 			status: "update_failed",
 			currentVersion: "1.0.0",
-			attemptedVersion: "1.1.0",
+			attemptedVersion: "2026.08.18.2",
 			rolledBack: false,
 		});
 		expect(readCurrentVersion(fixture.root)).toBe("1.0.0");
@@ -97,12 +101,14 @@ describe("built collector update", () => {
 		expect(output).toEqual({
 			status: "update_failed",
 			currentVersion: "1.0.0",
-			attemptedVersion: "1.1.0",
+			attemptedVersion: "2026.08.18.2",
 			rolledBack: true,
 		});
 		expect(readCurrentVersion(fixture.root)).toBe("1.0.0");
 		expect(readFileSync(fixture.priorService, "utf8")).toBe("prior-service");
 		expect(readFileSync(fixture.outputSentinel, "utf8")).toBe("preserve");
-		expect(existsSync(join(fixture.root, "releases", "1.1.0"))).toBe(false);
+		expect(
+			existsSync(join(fixture.root, "releases", "2026.08.18.2")),
+		).toBe(false);
 	}, 30_000);
 });

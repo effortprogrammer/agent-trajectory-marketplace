@@ -1,7 +1,7 @@
 import { rmSync } from "node:fs";
 import { basename, dirname } from "node:path";
 
-const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
+import { isStableVersion } from "./update-release-contract";
 
 export interface UpdateRetention {
 	remove(target: string): void;
@@ -15,7 +15,7 @@ export const removeSupersededRelease = (
 	if (
 		target === undefined ||
 		dirname(target) !== releasesDir ||
-		!VERSION_PATTERN.test(basename(target)) ||
+		!isStableVersion(basename(target)) ||
 		retained.includes(target)
 	) return;
 	rmSync(target, { force: true, recursive: true });
