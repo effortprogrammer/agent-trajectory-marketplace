@@ -64,6 +64,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("[data-supply-locked]").isVisible()).toBe(true)
     expect(await page.getByTestId("public-token-count").count()).toBe(1)
     expect(await page.getByTestId("public-token-count").innerText()).toBe("39,048,328")
+    expect(await page.locator("[data-public-token-note]").isVisible()).toBe(true)
     expect(await page.getByTestId("public-token-count").evaluate((element) => {
       const view = element.ownerDocument.defaultView
       if (view === null) throw new Error("Public token value has no browser view")
@@ -97,6 +98,21 @@ describe("authenticated aggregate marketplace browser contract", () => {
         element.scrollWidth <= element.clientWidth
       ),
     ).toBe(true)
+  })
+
+  test("hides the acceptance note when public token stats are unavailable", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPublicTokenTotal("invalid")
+    const page = await harness.newPage(mobile)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    expect(await page.getByTestId("public-token-count").innerText()).toBe(
+      "Unavailable",
+    )
+    expect(
+      await page.locator("[data-public-token-note]").isVisible(),
+    ).toBe(false)
   })
 
   test("keeps seller sales requests and navigation unavailable to anonymous visitors", async () => {

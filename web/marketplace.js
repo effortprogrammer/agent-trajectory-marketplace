@@ -148,6 +148,7 @@ const status = document.querySelector("[data-registry-status]");
 const publicTokenRegion = document.querySelector("[data-public-token-region]");
 const publicTokenCount = document.querySelector("[data-public-token-count]");
 const publicTokenSkeleton = document.querySelector("[data-public-token-skeleton]");
+const publicTokenNote = document.querySelector("[data-public-token-note]");
 const consoleLink = document.querySelector("[data-console-link]");
 const consoleView = document.querySelector("[data-console-view]");
 
@@ -320,6 +321,7 @@ const loadPublicTokenTotal = async () => {
     renderPublicTokenTotal(tokens);
     publicTokenCount.hidden = false;
     publicTokenSkeleton.hidden = true;
+    if (publicTokenNote) publicTokenNote.hidden = false;
     publicTokenRegion.classList.remove("is-loading", "is-error");
     publicTokenRegion.setAttribute("aria-busy", "false");
   } catch {
@@ -327,6 +329,7 @@ const loadPublicTokenTotal = async () => {
     publicTokenCount.removeAttribute("aria-label");
     publicTokenCount.hidden = false;
     publicTokenSkeleton.hidden = true;
+    if (publicTokenNote) publicTokenNote.hidden = true;
     publicTokenRegion.classList.remove("is-loading");
     publicTokenRegion.classList.add("is-error");
     publicTokenRegion.setAttribute("aria-busy", "false");
