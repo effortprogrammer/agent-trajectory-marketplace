@@ -8,13 +8,46 @@ const numeric = (candidate) => {
 };
 
 const parseStat = (candidate) => {
-  if (typeof candidate !== "number" || !Number.isFinite(candidate) || candidate < 0) {
+  if (
+    typeof candidate !== "number"
+    || !Number.isSafeInteger(candidate)
+    || candidate < 0
+  ) {
     throw new TypeError("Invalid aggregate statistic");
   }
   return candidate;
 };
 
-const formatInteger = (value) => Math.round(value).toLocaleString("en-US");
+const parsePublicTokenTotal = (candidate) => {
+  if (typeof candidate === "string" && /^(0|[1-9][0-9]*)$/.test(candidate)) {
+    return BigInt(candidate);
+  }
+  if (
+    typeof candidate === "number"
+    && Number.isSafeInteger(candidate)
+    && candidate >= 0
+  ) {
+    return BigInt(candidate);
+  }
+  throw new TypeError("Invalid public token statistic");
+};
+
+const formatInteger = (value) =>
+  (typeof value === "bigint" ? value : Math.round(value)).toLocaleString("en-US");
+
+const renderPublicTokenTotal = (value) => {
+  if (!publicTokenCount) return;
+  const formatted = formatInteger(value);
+  const [first, ...rest] = formatted.split(",");
+  const nodes = [document.createTextNode(first)];
+  for (const group of rest) {
+    nodes.push(document.createTextNode(","));
+    nodes.push(document.createElement("wbr"));
+    nodes.push(document.createTextNode(group));
+  }
+  publicTokenCount.replaceChildren(...nodes);
+  publicTokenCount.setAttribute("aria-label", formatted);
+};
 const formatCompact = (value) =>
   value >= 1e9 ? `${(value / 1e9).toFixed(2)}B`
     : value >= 1e6 ? `${(value / 1e6).toFixed(1)}M`
@@ -112,6 +145,9 @@ const authOpenButtons = document.querySelectorAll("[data-auth-open]");
 const authCloseButton = document.querySelector("[data-auth-close]");
 const authLogoutButton = document.querySelector("[data-auth-logout]");
 const status = document.querySelector("[data-registry-status]");
+const publicTokenRegion = document.querySelector("[data-public-token-region]");
+const publicTokenCount = document.querySelector("[data-public-token-count]");
+const publicTokenSkeleton = document.querySelector("[data-public-token-skeleton]");
 const consoleLink = document.querySelector("[data-console-link]");
 const consoleView = document.querySelector("[data-console-view]");
 
@@ -268,6 +304,33 @@ const renderAuthenticated = (session) => {
   resetSupply();
   scheduleExpiry(session);
   if (window.location.hash === "#console") void showConsole(session);
+};
+
+const loadPublicTokenTotal = async () => {
+  if (!publicTokenRegion || !publicTokenCount || !publicTokenSkeleton) return;
+  try {
+    const response = await fetch(`${registry}/v1/marketplace/public-stats`, {
+      headers: { accept: "application/json" },
+      redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error("Registry public stats unavailable");
+    const stats = await response.json();
+    const tokens = parsePublicTokenTotal(stats.tradeableTokens);
+    renderPublicTokenTotal(tokens);
+    publicTokenCount.hidden = false;
+    publicTokenSkeleton.hidden = true;
+    publicTokenRegion.classList.remove("is-loading", "is-error");
+    publicTokenRegion.setAttribute("aria-busy", "false");
+  } catch {
+    publicTokenCount.textContent = "Unavailable";
+    publicTokenCount.removeAttribute("aria-label");
+    publicTokenCount.hidden = false;
+    publicTokenSkeleton.hidden = true;
+    publicTokenRegion.classList.remove("is-loading");
+    publicTokenRegion.classList.add("is-error");
+    publicTokenRegion.setAttribute("aria-busy", "false");
+  }
 };
 
 const showVerification = () => {
@@ -657,3 +720,4 @@ for (const element of document.querySelectorAll("[data-reveal]")) {
 document.body.classList.remove("no-js");
 setAuthMode("waitlist");
 showPublicAccess();
+void loadPublicTokenTotal();

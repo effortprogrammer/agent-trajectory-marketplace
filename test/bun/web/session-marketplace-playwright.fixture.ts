@@ -49,6 +49,7 @@ export interface SessionUiHarness {
   readonly holdVerify: () => () => void
   readonly registryRequests: RegistryRequest[]
   readonly setLogoutStatus: (status: number) => void
+  readonly setPublicTokenTotal: (value: number | string) => void
   readonly newPage: (
     viewport: ViewportSize,
     options?: Pick<BrowserContextOptions, "javaScriptEnabled" | "permissions">,
@@ -105,6 +106,7 @@ const parseBody = async (request: Request): Promise<unknown> => {
 const startRegistry = () => {
   const requests: RegistryRequest[] = []
   let logoutStatus = 200
+  let publicTokenTotal: number | string = "39048328"
   let verifyGate: Promise<void> | undefined
   let verifyRelease: (() => void) | undefined
   const server = Bun.serve({
@@ -146,6 +148,9 @@ const startRegistry = () => {
           ? json({ ok: true, revoked: true })
           : json({ error: { code: "unavailable" }, ok: false }, logoutStatus)
       }
+      if (url.pathname === "/v1/marketplace/public-stats") {
+        return json({ tradeableTokens: publicTokenTotal })
+      }
       if (url.pathname === "/v1/marketplace/stats") {
         if (request.headers.get("authorization") !== `Bearer ${accessToken}`) {
           return json({ error: { code: "unauthorized" }, ok: false }, 401)
@@ -179,6 +184,9 @@ const startRegistry = () => {
     server,
     setLogoutStatus: (status: number) => {
       logoutStatus = status
+    },
+    setPublicTokenTotal: (value: number | string) => {
+      publicTokenTotal = value
     },
     url: `http://127.0.0.1:${server.port}`,
   }
@@ -214,6 +222,7 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
     holdVerify: registry.holdVerify,
     registryRequests: registry.requests,
     setLogoutStatus: registry.setLogoutStatus,
+    setPublicTokenTotal: registry.setPublicTokenTotal,
     newPage: async (viewport, options = {}) => {
       const context = await browser.newContext({ ...options, viewport })
       await context.route("https://gateway.getatm.io/**", async (route) => {
