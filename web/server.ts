@@ -28,6 +28,9 @@ const assets: Readonly<Record<string, Readonly<{ file: string; type: string }>>>
   "/index.html": { file: "index.html", type: "text/html; charset=utf-8" },
   "/marketplace.css": { file: "marketplace.css", type: "text/css; charset=utf-8" },
   "/marketplace.js": { file: "marketplace.js", type: "text/javascript; charset=utf-8" },
+  "/console.css": { file: "console.css", type: "text/css; charset=utf-8" },
+  "/console.js": { file: "console.js", type: "text/javascript; charset=utf-8" },
+  "/console-contract.js": { file: "console-contract.js", type: "text/javascript; charset=utf-8" },
   "/robots.txt": { file: "robots.txt", type: "text/plain; charset=utf-8" },
 };
 

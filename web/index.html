@@ -9,6 +9,7 @@
   <link rel="canonical" href="https://getatm.io/" />
   <link rel="preconnect" href="https://gateway.getatm.io" />
   <link rel="stylesheet" href="marketplace.css" />
+  <link rel="stylesheet" href="console.css" />
 </head>
 <body class="marketplace-page no-js">
   <a class="skip-link" href="#main-content" data-testid="session-skip-link">Skip to live corpus</a>
@@ -24,6 +25,7 @@
         <a href="#provenance">How it grows</a>
       </nav>
       <div class="nav-account-actions">
+        <a class="nav-auth-button" href="#console" data-console-link data-testid="seller-console-link" hidden>Seller console</a>
         <span class="live-badge" role="status" data-registry-status data-testid="aggregate-status" hidden>
           <span class="live-dot" aria-hidden="true"></span>
           <span data-status-label></span>
@@ -81,7 +83,34 @@
       </div>
     </dialog>
 
-    <section id="top" class="hero-cinematic">
+    <section data-console-view class="seller-console" aria-labelledby="seller-console-title" hidden>
+      <div class="seller-console-shell">
+        <header class="seller-console-heading">
+          <p class="kicker">Earnings</p>
+          <h1 id="seller-console-title">Your sales, over time.</h1>
+          <p>How your corpus converts: cumulative earnings, per-session performance, and the latest sale events.</p>
+          <span class="seller-account-chip" data-console-seller></span>
+        </header>
+        <p class="sr-only" aria-live="polite" data-console-announcement></p>
+        <p class="seller-console-state" role="status" aria-live="polite" data-console-state>Loading seller sales...</p>
+        <section class="seller-panel seller-chart-panel" aria-label="Cumulative earnings">
+          <div class="seller-panel-heading"><h2>Cumulative earnings</h2><span data-console-total></span></div>
+          <div class="seller-chart-wrap" data-console-chart></div>
+        </section>
+        <div class="seller-analytics-grid">
+          <section class="seller-panel" aria-label="Per-session performance">
+            <div class="seller-panel-heading"><h2>Session performance</h2><span>by earned credits</span></div>
+            <ul class="seller-performance-list" data-console-sessions></ul>
+          </section>
+          <section class="seller-panel" aria-label="Recent sale events">
+            <div class="seller-panel-heading"><h2>Recent events</h2><span>live feed</span></div>
+            <ol class="seller-event-feed" data-console-ledger></ol>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section id="top" class="hero-cinematic" data-landing-view>
       <div class="terrain-stage" aria-hidden="true">
         <div class="terrain-grid"></div>
         <i class="terrain-ridge ridge-far"></i>
@@ -115,7 +144,7 @@
       </div>
     </section>
 
-    <section id="supply" class="supply-chapter" aria-labelledby="supply-title">
+    <section id="supply" class="supply-chapter" aria-labelledby="supply-title" data-landing-view>
       <div class="content-shell">
         <div class="chapter-heading reveal" data-reveal>
           <p class="kicker">Live aggregate supply</p>
@@ -174,7 +203,7 @@
       </div>
     </section>
 
-    <section class="corpus-thesis" aria-labelledby="thesis-title">
+    <section class="corpus-thesis" aria-labelledby="thesis-title" data-landing-view>
       <div class="wide-shell thesis-stage reveal" data-reveal>
         <div class="orbit-lines" aria-hidden="true"><i></i><i></i><i></i></div>
         <p class="kicker">Useful data is behavioral</p>
@@ -192,7 +221,7 @@
       </div>
     </section>
 
-    <section id="provenance" class="process-chapter" aria-labelledby="process-title">
+    <section id="provenance" class="process-chapter" aria-labelledby="process-title" data-landing-view>
       <div class="content-shell process-layout">
         <div class="process-intro reveal" data-reveal>
           <p class="kicker">From local session to corpus</p>
