@@ -3,6 +3,7 @@ const root = new URL(".", import.meta.url).pathname;
 const port = Number(Bun.env.PORT ?? 4173);
 const canonicalOrigin = "https://getatm.io";
 const legacyMarketplaceHost = "marketplace.getatm.io";
+const originRevisionPattern = /^[a-f0-9]{40}$/;
 const securityHeaders = {
   "content-security-policy": [
     "default-src 'self'",
@@ -70,6 +71,28 @@ Bun.serve({
     const { pathname } = url;
     const canonicalRedirect = canonicalHostRedirect(url);
     if (canonicalRedirect) return canonicalRedirect;
+    if (pathname === "/.well-known/atm-origin-revision") {
+      const revision = Bun.env.RAILWAY_GIT_COMMIT_SHA ?? "";
+      if (!originRevisionPattern.test(revision)) {
+        return Response.json(
+          { error: "unavailable" },
+          {
+            headers: { ...securityHeaders, "cache-control": "no-store" },
+            status: 503,
+          },
+        );
+      }
+      return Response.json(
+        { revision },
+        {
+          headers: {
+            ...securityHeaders,
+            "cache-control": "no-store",
+            "x-atm-origin-revision": revision,
+          },
+        },
+      );
+    }
     if (pathname === "/favicon.ico") {
       return new Response(null, { headers: securityHeaders, status: 204 });
     }
