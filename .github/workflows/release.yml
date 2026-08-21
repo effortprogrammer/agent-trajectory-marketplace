@@ -114,6 +114,7 @@ jobs:
           marketplace_js_path="$(
             atm_release_fingerprinted_asset_path "$PWD" marketplace.js
           )"
+          attested=false
           for attempt in $(seq 1 24); do
             deployed_ref="$(
               atm_release_gh_api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
@@ -147,14 +148,13 @@ jobs:
               && cmp web/index.html "$RUNNER_TEMP/index.html" \
               && cmp web/marketplace.css "$RUNNER_TEMP/marketplace.css" \
               && cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js"; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 60 ]; then
-              echo "tagged Marketplace production bytes did not become live" >&2
-              exit 1
+              attested=true
+              break
             fi
             sleep 5
           done
+          atm_release_require_attested \
+            "$attested" "tagged Marketplace production bytes did not become live"
 
       - name: Deploy and attest Marketplace apex Worker revision
         env:
@@ -314,17 +314,12 @@ jobs:
 
           ROLLBACK_ROOT="$RUNNER_TEMP/worker-rollback"
           git worktree add --detach "$ROLLBACK_ROOT" "$PREVIOUS_SHA"
-          if grep --quiet --fixed-strings '?v=' "$ROLLBACK_ROOT/web/index.html"; then
-            rollback_css_path="/marketplace.css"
-            rollback_js_path="/marketplace.js"
-          else
-            rollback_css_path="$(
-              atm_release_fingerprinted_asset_path "$ROLLBACK_ROOT" marketplace.css
-            )"
-            rollback_js_path="$(
-              atm_release_fingerprinted_asset_path "$ROLLBACK_ROOT" marketplace.js
-            )"
-          fi
+          rollback_css_path="$(
+            atm_release_deployed_asset_path "$ROLLBACK_ROOT" marketplace.css
+          )"
+          rollback_js_path="$(
+            atm_release_deployed_asset_path "$ROLLBACK_ROOT" marketplace.js
+          )"
           restored=false
           for attempt in $(seq 1 18); do
             if atm_release_curl --fail --silent --show-error \

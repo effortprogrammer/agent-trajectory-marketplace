@@ -76,7 +76,10 @@ test("binds every public asset URL to fingerprinted paths so releases cannot reu
   expect(html).toContain(`href="${marketplaceStylesheet}"`)
   expect(html).toContain(`href="${consoleStylesheet}"`)
   expect(html).toContain(`src="${marketplaceScriptPath}"`)
-  expect(marketplaceScript).toContain(`"./${consoleScriptPath}"`)
+  expect(marketplaceScript).toContain(
+    `import { mountSellerConsole } from "./${consoleScriptPath}";`,
+  )
+  expect(marketplaceScript).not.toContain(`import("./${consoleScriptPath}")`)
   expect(consoleScript).toContain(
     `from "./${consoleContractPath}"`,
   )

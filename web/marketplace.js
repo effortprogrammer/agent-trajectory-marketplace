@@ -1,3 +1,5 @@
+import { mountSellerConsole } from "./console.0058fc69cdec16891c61cee7689ffccdcbf9d9560910d5eec55921d5290e8972.js";
+
 const registry = "https://gateway.getatm.io";
 const waitlistAcknowledgmentKey = "atm.marketplace.waitlist-ack-v1";
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -412,11 +414,8 @@ const showConsole = async (session = activeSession) => {
   document.body.classList.add("is-console-view");
   consoleView.hidden = false;
   try {
-    const consoleModule = await import(
-      "./console.0058fc69cdec16891c61cee7689ffccdcbf9d9560910d5eec55921d5290e8972.js"
-    );
     if (activeSession !== session || window.location.hash !== "#console") return;
-    await consoleModule.mountSellerConsole({
+    await mountSellerConsole({
       requestJson,
       session,
       showLogin: () => showPublicAccess("Your session is no longer valid. Use Member sign in to continue.", true),

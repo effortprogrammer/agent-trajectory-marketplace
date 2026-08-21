@@ -42,6 +42,25 @@ actual_marketplace_path="$(
 )"
 [[ "$actual_marketplace_path" == "$expected_marketplace_path" ]] \
   || fail "release fingerprint helper is not bound to asset bytes"
+actual_deployed_path="$(
+  atm_release_deployed_asset_path "$ROOT" marketplace.js
+)"
+[[ "$actual_deployed_path" == "$expected_marketplace_path" ]] \
+  || fail "fingerprinted deployment path is not detected"
+mkdir -p "$TEMP_ROOT/legacy/web" "$TEMP_ROOT/query/web"
+printf '%s\n' '<script type="module" src="marketplace.js"></script>' \
+  >"$TEMP_ROOT/legacy/web/index.html"
+printf '%s\n' '<script type="module" src="marketplace.js?v=abc"></script>' \
+  >"$TEMP_ROOT/query/web/index.html"
+[[ "$(atm_release_deployed_asset_path "$TEMP_ROOT/legacy" marketplace.js)" == "/marketplace.js" ]] \
+  || fail "legacy unversioned production path is not preserved"
+[[ "$(atm_release_deployed_asset_path "$TEMP_ROOT/query" marketplace.js)" == "/marketplace.js" ]] \
+  || fail "query-versioned production path is not preserved"
+atm_release_require_attested true "unexpected failure" \
+  || fail "successful release attestation is rejected"
+if atm_release_require_attested false "expected exhaustion" >/dev/null 2>&1; then
+  fail "release attestation exhaustion is not fatal"
+fi
 jq -e '
   .projectId == "ac736878-3095-4c1d-b8c4-e0a184c06ece" and
   .staging.environment == "staging" and
@@ -83,8 +102,8 @@ grep -Fq '.revision == $revision' "$WORKFLOW" || fail "release does not bind the
 grep -Fq 'deployed_ref="$(' "$WORKFLOW" || fail "release does not re-read the production ref after deployment"
 grep -Fq 'Roll back failed production promotion' "$WORKFLOW" || fail "failed release does not restore the prior production ref"
 grep -Fq 'git worktree add --detach "$ROLLBACK_ROOT" "$PREVIOUS_SHA"' "$WORKFLOW" || fail "failed release does not restore the prior Worker source"
-grep -Fq '"$ORIGIN_URL$rollback_js_path"' "$WORKFLOW" || fail "rollback does not read prior fingerprinted bytes from the Railway origin"
-grep -Fq 'rollback_js_path="/marketplace.js"' "$WORKFLOW" || fail "rollback cannot restore the pre-fingerprint production release"
+grep -Fq '"$ORIGIN_URL$rollback_js_path"' "$WORKFLOW" || fail "rollback does not read prior deployed bytes from the Railway origin"
+grep -Fq 'atm_release_deployed_asset_path "$ROLLBACK_ROOT" marketplace.js' "$WORKFLOW" || fail "rollback path selection does not support legacy production"
 grep -Fq 'rollback-origin-marketplace.js' "$WORKFLOW" || fail "rollback origin bytes are not isolated from apex bytes"
 grep -Fq 'WORKER_REVISION:$PREVIOUS_SHA' "$WORKFLOW" || fail "Worker rollback is not bound to the prior production revision"
 grep -Fq 'Wait for and attest tagged Marketplace production bytes' "$WORKFLOW" || fail "release does not wait for tagged production bytes"
@@ -124,6 +143,10 @@ grep -Fq 'sha256sum --check web/assets.sha256' "$WORKFLOW" || fail "release does
 (cd "$ROOT" && sha256sum --check web/assets.sha256 >/dev/null) || fail "Marketplace web asset manifest is stale"
 grep -Fq '"https://getatm.io$marketplace_js_path"' "$WORKFLOW" || fail "release does not fetch deployed fingerprinted Marketplace assets"
 grep -Fq 'cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js"' "$WORKFLOW" || fail "release does not attest deployed Marketplace bytes"
+grep -Fq 'atm_release_require_attested' "$WORKFLOW" || fail "release attestation does not fail closed"
+if grep -Fq '[ "$attempt" -eq 60 ]' "$WORKFLOW"; then
+  fail "release attestation contains an unreachable exhaustion check"
+fi
 grep -Fq 'CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}' "$WORKFLOW" || fail "release does not keep the Cloudflare token external"
 grep -Fq '"wrangler": "4.58.0"' "$ROOT/package.json" || fail "Wrangler is not pinned in the package manifest"
 grep -Fq '"wrangler": ["wrangler@4.58.0"' "$ROOT/bun.lock" || fail "Wrangler is not integrity-pinned in the Bun lockfile"
