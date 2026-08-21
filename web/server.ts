@@ -24,16 +24,47 @@ const securityHeaders = {
   "x-frame-options": "DENY",
 } as const;
 
-const assets: Readonly<Record<string, Readonly<{ file: string; type: string }>>> = {
-  "/": { file: "index.html", type: "text/html; charset=utf-8" },
-  "/index.html": { file: "index.html", type: "text/html; charset=utf-8" },
-  "/marketplace.css": { file: "marketplace.css", type: "text/css; charset=utf-8" },
-  "/marketplace.js": { file: "marketplace.js", type: "text/javascript; charset=utf-8" },
-  "/console.css": { file: "console.css", type: "text/css; charset=utf-8" },
-  "/console.js": { file: "console.js", type: "text/javascript; charset=utf-8" },
-  "/console-contract.js": { file: "console-contract.js", type: "text/javascript; charset=utf-8" },
-  "/robots.txt": { file: "robots.txt", type: "text/plain; charset=utf-8" },
-};
+type Asset = Readonly<{
+  cacheControl: string;
+  file: string;
+  type: string;
+}>;
+
+const assets = new Map<string, Asset>([
+  ["/", { cacheControl: "no-store", file: "index.html", type: "text/html; charset=utf-8" }],
+  ["/index.html", { cacheControl: "no-store", file: "index.html", type: "text/html; charset=utf-8" }],
+  // v1.0.12 deferred this module by its stable path. Keep one non-cacheable
+  // transition alias so already-open tabs can finish loading the seller console.
+  ["/console.js", { cacheControl: "no-store", file: "console.js", type: "text/javascript; charset=utf-8" }],
+  ["/robots.txt", { cacheControl: "public, max-age=300", file: "robots.txt", type: "text/plain; charset=utf-8" }],
+]);
+
+const fingerprintedAssetSpecs = [
+  { file: "marketplace.css", type: "text/css; charset=utf-8" },
+  { file: "marketplace.js", type: "text/javascript; charset=utf-8" },
+  { file: "console.css", type: "text/css; charset=utf-8" },
+  { file: "console.js", type: "text/javascript; charset=utf-8" },
+  { file: "console-contract.js", type: "text/javascript; charset=utf-8" },
+] as const;
+
+for (const asset of fingerprintedAssetSpecs) {
+  const extensionOffset = asset.file.lastIndexOf(".");
+  if (extensionOffset <= 0) throw new Error(`asset has no extension: ${asset.file}`);
+  const bytes = await Bun.file(`${root}${asset.file}`).arrayBuffer();
+  const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+  const path = `/${asset.file.slice(0, extensionOffset)}.${digest}${asset.file.slice(extensionOffset)}`;
+  assets.set(path, {
+    cacheControl: "public, max-age=31536000, immutable",
+    file: asset.file,
+    type: asset.type,
+  });
+}
+
+const notFound = (): Response =>
+  new Response("not found", {
+    headers: { ...securityHeaders, "cache-control": "no-store" },
+    status: 404,
+  });
 
 const compatibilityRedirect = (url: URL): Response | undefined => {
   if (url.pathname === "/detail.html") {
@@ -99,18 +130,14 @@ Bun.serve({
     const redirect = compatibilityRedirect(url);
     if (redirect) return redirect;
 
-    const asset = assets[pathname];
-    if (asset === undefined) {
-      return new Response("not found", { headers: securityHeaders, status: 404 });
-    }
+    const asset = url.search === "" ? assets.get(pathname) : undefined;
+    if (asset === undefined) return notFound();
     const file = Bun.file(`${root}${asset.file}`);
-    if (!(await file.exists())) {
-      return new Response("not found", { headers: securityHeaders, status: 404 });
-    }
+    if (!(await file.exists())) return notFound();
     return new Response(file, {
       headers: {
         ...securityHeaders,
-        "cache-control": asset.file === "index.html" ? "no-store" : "public, max-age=300",
+        "cache-control": asset.cacheControl,
         "content-type": asset.type,
       },
     });
