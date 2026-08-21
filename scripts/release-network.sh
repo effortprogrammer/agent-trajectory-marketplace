@@ -20,3 +20,14 @@ atm_release_wrangler() {
 atm_release_git_fetch() {
   command timeout --signal=TERM 60s git fetch "$@"
 }
+
+atm_release_fingerprinted_asset_path() {
+  local root="$1"
+  local file="$2"
+  local stem="${file%.*}"
+  local extension="${file##*.}"
+  test "$stem" != "$file"
+  local digest
+  digest="$(sha256sum "$root/web/$file" | cut -d' ' -f1)"
+  printf '/%s.%s.%s\n' "$stem" "$digest" "$extension"
+}

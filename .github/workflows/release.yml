@@ -108,6 +108,12 @@ jobs:
         run: |
           set -euo pipefail
           source scripts/release-network.sh
+          marketplace_css_path="$(
+            atm_release_fingerprinted_asset_path "$PWD" marketplace.css
+          )"
+          marketplace_js_path="$(
+            atm_release_fingerprinted_asset_path "$PWD" marketplace.js
+          )"
           for attempt in $(seq 1 24); do
             deployed_ref="$(
               atm_release_gh_api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
@@ -132,10 +138,12 @@ jobs:
                 https://getatm.io/ --output "$RUNNER_TEMP/index.html" \
               && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
-                https://getatm.io/marketplace.css --output "$RUNNER_TEMP/marketplace.css" \
+                "https://getatm.io$marketplace_css_path" \
+                --output "$RUNNER_TEMP/marketplace.css" \
               && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
-                https://getatm.io/marketplace.js --output "$RUNNER_TEMP/marketplace.js" \
+                "https://getatm.io$marketplace_js_path" \
+                --output "$RUNNER_TEMP/marketplace.js" \
               && cmp web/index.html "$RUNNER_TEMP/index.html" \
               && cmp web/marketplace.css "$RUNNER_TEMP/marketplace.css" \
               && cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js"; then
@@ -187,6 +195,12 @@ jobs:
         run: |
           set -euo pipefail
           source scripts/release-network.sh
+          marketplace_css_path="$(
+            atm_release_fingerprinted_asset_path "$PWD" marketplace.css
+          )"
+          marketplace_js_path="$(
+            atm_release_fingerprinted_asset_path "$PWD" marketplace.js
+          )"
           attested=false
           for attempt in $(seq 1 6); do
             deployed_ref="$(
@@ -212,11 +226,11 @@ jobs:
                 https://getatm.io/ --output "$RUNNER_TEMP/final-index.html" \
               && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
-                https://getatm.io/marketplace.css \
+                "https://getatm.io$marketplace_css_path" \
                 --output "$RUNNER_TEMP/final-marketplace.css" \
               && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
-                https://getatm.io/marketplace.js \
+                "https://getatm.io$marketplace_js_path" \
                 --output "$RUNNER_TEMP/final-marketplace.js" \
               && cmp web/index.html "$RUNNER_TEMP/final-index.html" \
               && cmp web/marketplace.css "$RUNNER_TEMP/final-marketplace.css" \
@@ -300,6 +314,17 @@ jobs:
 
           ROLLBACK_ROOT="$RUNNER_TEMP/worker-rollback"
           git worktree add --detach "$ROLLBACK_ROOT" "$PREVIOUS_SHA"
+          if grep --quiet --fixed-strings '?v=' "$ROLLBACK_ROOT/web/index.html"; then
+            rollback_css_path="/marketplace.css"
+            rollback_js_path="/marketplace.js"
+          else
+            rollback_css_path="$(
+              atm_release_fingerprinted_asset_path "$ROLLBACK_ROOT" marketplace.css
+            )"
+            rollback_js_path="$(
+              atm_release_fingerprinted_asset_path "$ROLLBACK_ROOT" marketplace.js
+            )"
+          fi
           restored=false
           for attempt in $(seq 1 18); do
             if atm_release_curl --fail --silent --show-error \
@@ -308,11 +333,11 @@ jobs:
                 --output "$RUNNER_TEMP/rollback-origin-index.html" \
               && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
-                "$ORIGIN_URL/marketplace.css" \
+                "$ORIGIN_URL$rollback_css_path" \
                 --output "$RUNNER_TEMP/rollback-origin-marketplace.css" \
               && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
-                "$ORIGIN_URL/marketplace.js" \
+                "$ORIGIN_URL$rollback_js_path" \
                 --output "$RUNNER_TEMP/rollback-origin-marketplace.js" \
               && cmp "$ROLLBACK_ROOT/web/index.html" \
                 "$RUNNER_TEMP/rollback-origin-index.html" \
@@ -353,10 +378,10 @@ jobs:
           atm_release_curl --fail --silent --show-error --header 'cache-control: no-cache' \
             https://getatm.io/ --output "$RUNNER_TEMP/rollback-index.html"
           atm_release_curl --fail --silent --show-error --header 'cache-control: no-cache' \
-            https://getatm.io/marketplace.css \
+            "https://getatm.io$rollback_css_path" \
             --output "$RUNNER_TEMP/rollback-marketplace.css"
           atm_release_curl --fail --silent --show-error --header 'cache-control: no-cache' \
-            https://getatm.io/marketplace.js \
+            "https://getatm.io$rollback_js_path" \
             --output "$RUNNER_TEMP/rollback-marketplace.js"
           cmp "$ROLLBACK_ROOT/web/index.html" "$RUNNER_TEMP/rollback-index.html"
           cmp "$ROLLBACK_ROOT/web/marketplace.css" "$RUNNER_TEMP/rollback-marketplace.css"

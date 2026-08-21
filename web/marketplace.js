@@ -413,7 +413,7 @@ const showConsole = async (session = activeSession) => {
   consoleView.hidden = false;
   try {
     const consoleModule = await import(
-      "./console.js?v=77ecc6dbd260688e89dc3c6b59f967392e80fb00c8efc005574e15b55697d755"
+      "./console.0058fc69cdec16891c61cee7689ffccdcbf9d9560910d5eec55921d5290e8972.js"
     );
     if (activeSession !== session || window.location.hash !== "#console") return;
     await consoleModule.mountSellerConsole({
