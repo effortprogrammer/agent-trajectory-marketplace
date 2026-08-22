@@ -27,6 +27,8 @@ grep -Fq 'group: marketplace-staging-deploy' "$WORKFLOW" \
   || fail "staging deployments are not serialized"
 grep -Fq 'cancel-in-progress: false' "$WORKFLOW" \
   || fail "an in-flight staging deployment can be cancelled"
+grep -Fq 'timeout-minutes: 60' "$WORKFLOW" \
+  || fail "staging timeout cannot cover bounded CLI calls and attestation"
 grep -Fq 'environment: staging' "$WORKFLOW" \
   || fail "staging token is not isolated in a GitHub environment"
 grep -Fq 'RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}' "$WORKFLOW" \
