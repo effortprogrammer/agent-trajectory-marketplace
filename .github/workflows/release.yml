@@ -135,7 +135,9 @@ jobs:
               atm_release_gh_api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
                 --jq '.object.sha'
             )"; then
-              sleep 5
+              if [ "$attempt" -lt 24 ]; then
+                sleep 5
+              fi
               continue
             fi
             if [ "$deployed_ref" != "$GITHUB_SHA" ]; then
@@ -169,7 +171,9 @@ jobs:
               attested=true
               break
             fi
-            sleep 5
+            if [ "$attempt" -lt 24 ]; then
+              sleep 5
+            fi
           done
           atm_release_require_attested \
             "$attested" "tagged Marketplace production bytes did not become live"
@@ -201,7 +205,9 @@ jobs:
               attested=true
               break
             fi
-            sleep 2
+            if [ "$attempt" -lt 18 ]; then
+              sleep 2
+            fi
           done
           test "$attested" = true
 
@@ -225,7 +231,9 @@ jobs:
               atm_release_gh_api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
                 --jq '.object.sha'
             )"; then
-              sleep 2
+              if [ "$attempt" -lt 6 ]; then
+                sleep 2
+              fi
               continue
             fi
             if [ "$deployed_ref" != "$GITHUB_SHA" ]; then
@@ -259,7 +267,9 @@ jobs:
               attested=true
               break
             fi
-            sleep 2
+            if [ "$attempt" -lt 6 ]; then
+              sleep 2
+            fi
           done
           test "$attested" = true
 
@@ -382,7 +392,9 @@ jobs:
               restored=true
               break
             fi
-            sleep 5
+            if [ "$attempt" -lt 18 ]; then
+              sleep 5
+            fi
           done
           test "$restored" = true
 
@@ -405,7 +417,9 @@ jobs:
               worker_restored=true
               break
             fi
-            sleep 2
+            if [ "$attempt" -lt 18 ]; then
+              sleep 2
+            fi
           done
           test "$worker_restored" = true
 
