@@ -1,0 +1,92 @@
+name: Deploy Marketplace staging
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketplace-staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    env:
+      ORIGIN_URL: https://marketplace-web-staging.up.railway.app
+      RAILWAY_ENVIRONMENT: staging
+      RAILWAY_PROJECT_ID: ac736878-3095-4c1d-b8c4-e0a184c06ece
+      RAILWAY_SERVICE: marketplace-web
+    steps:
+      - name: Checkout pushed dev commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Validate staging deployment ref
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/dev
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$GITHUB_SHA" "refs/remotes/origin/dev"
+
+      - name: Deploy exact dev commit to Railway staging
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$RAILWAY_TOKEN"
+          source scripts/release-network.sh
+          atm_release_railway_deploy "$PWD" "$GITHUB_SHA" \
+            "$RAILWAY_PROJECT_ID" "$RAILWAY_ENVIRONMENT" "$RAILWAY_SERVICE" \
+            "staging:$GITHUB_SHA"
+
+      - name: Attest staging revision and source bytes
+        run: |
+          set -euo pipefail
+          source scripts/release-network.sh
+          marketplace_css_path="$(
+            atm_release_fingerprinted_asset_path "$PWD" marketplace.css
+          )"
+          marketplace_js_path="$(
+            atm_release_fingerprinted_asset_path "$PWD" marketplace.js
+          )"
+          attested=false
+          for attempt in $(seq 1 6); do
+            if atm_release_curl --fail --silent --show-error \
+                --header 'cache-control: no-cache' \
+                --dump-header "$RUNNER_TEMP/staging-revision.headers" \
+                "$ORIGIN_URL/.well-known/atm-origin-revision" \
+                --output "$RUNNER_TEMP/staging-revision.json" \
+              && tr -d '\r' <"$RUNNER_TEMP/staging-revision.headers" \
+                | grep --ignore-case --fixed-strings --line-regexp \
+                  "x-atm-origin-revision: $GITHUB_SHA" \
+              && jq -e --arg revision "$GITHUB_SHA" '.revision == $revision' \
+                "$RUNNER_TEMP/staging-revision.json" \
+              && atm_release_curl --fail --silent --show-error \
+                --header 'cache-control: no-cache' \
+                "$ORIGIN_URL/" --output "$RUNNER_TEMP/staging-index.html" \
+              && atm_release_curl --fail --silent --show-error \
+                --header 'cache-control: no-cache' \
+                "$ORIGIN_URL$marketplace_css_path" \
+                --output "$RUNNER_TEMP/staging-marketplace.css" \
+              && atm_release_curl --fail --silent --show-error \
+                --header 'cache-control: no-cache' \
+                "$ORIGIN_URL$marketplace_js_path" \
+                --output "$RUNNER_TEMP/staging-marketplace.js" \
+              && cmp web/index.html "$RUNNER_TEMP/staging-index.html" \
+              && cmp web/marketplace.css "$RUNNER_TEMP/staging-marketplace.css" \
+              && cmp web/marketplace.js "$RUNNER_TEMP/staging-marketplace.js"; then
+              attested=true
+              break
+            fi
+            if [ "$attempt" -lt 6 ]; then
+              sleep 2
+            fi
+          done
+          atm_release_require_attested \
+            "$attested" "staging revision and source bytes did not become live"

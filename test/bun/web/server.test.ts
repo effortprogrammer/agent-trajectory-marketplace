@@ -92,8 +92,8 @@ test("serves session-only public pages without World UI artifacts", async () => 
     cwd: publicRoot,
     env: {
       ...Bun.env,
+      ATM_ORIGIN_REVISION: testRevision,
       PORT: String(port),
-      RAILWAY_GIT_COMMIT_SHA: testRevision,
     },
     stderr: "pipe",
     stdout: "pipe",
@@ -229,14 +229,15 @@ test("serves session-only public pages without World UI artifacts", async () => 
   }
 })
 
-test("fails closed when the Railway source revision is unavailable", async () => {
+test("rejects a Railway-native source revision", async () => {
   const port = reservePort()
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
     env: {
       ...Bun.env,
+      ATM_ORIGIN_REVISION: undefined,
       PORT: String(port),
-      RAILWAY_GIT_COMMIT_SHA: "",
+      RAILWAY_GIT_COMMIT_SHA: testRevision,
     },
     stderr: "pipe",
     stdout: "pipe",
@@ -251,6 +252,36 @@ test("fails closed when the Railway source revision is unavailable", async () =>
     expect(response.status).toBe(503)
     expect(response.headers.get("cache-control")).toBe("no-store")
     expect(response.headers.get("x-atm-origin-revision")).toBeNull()
+  } finally {
+    server.kill()
+    await server.exited
+  }
+})
+
+test("prefers the explicit CLI deployment revision", async () => {
+  const port = reservePort()
+  const cliRevision = "fedcba9876543210fedcba9876543210fedcba98"
+  const server = Bun.spawn(["bun", "web/server.ts"], {
+    cwd: publicRoot,
+    env: {
+      ...Bun.env,
+      ATM_ORIGIN_REVISION: cliRevision,
+      PORT: String(port),
+      RAILWAY_GIT_COMMIT_SHA: testRevision,
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  try {
+    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+
+    const response = await fetch(
+      `http://127.0.0.1:${port}/.well-known/atm-origin-revision`,
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("x-atm-origin-revision")).toBe(cliRevision)
+    expect(await response.json()).toEqual({ revision: cliRevision })
   } finally {
     server.kill()
     await server.exited
