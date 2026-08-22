@@ -122,7 +122,7 @@ grep -Fq "'v*.*.*'" "$WORKFLOW" || fail "release workflow is not restricted to s
 grep -Fq 'github.ref_protected' "$WORKFLOW" || fail "release workflow does not require protected tags"
 grep -Fq 'group: marketplace-production-release' "$WORKFLOW" || fail "production releases are not serialized"
 grep -Fq 'cancel-in-progress: false' "$WORKFLOW" || fail "a newer release can cancel an active production deployment"
-grep -Fq 'timeout-minutes: 60' "$WORKFLOW" || fail "release timeout cannot cover deploy, attestation, and rollback bounds"
+grep -Fq 'timeout-minutes: 120' "$WORKFLOW" || fail "release timeout cannot cover deploy, attestation, and rollback bounds"
 grep -Fq 'source scripts/release-network.sh' "$WORKFLOW" || fail "release workflow does not load bounded network helpers"
 if grep -Eq '(^|[[:space:]])(curl|gh api|gh release create|bun run wrangler deploy|git fetch)([[:space:]]|$)' "$WORKFLOW"; then
   fail "release workflow contains an unbounded external command"

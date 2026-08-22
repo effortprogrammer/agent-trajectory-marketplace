@@ -14,7 +14,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     environment: staging
     env:
       ORIGIN_URL: https://marketplace-web-staging.up.railway.app
