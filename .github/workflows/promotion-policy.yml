@@ -11,6 +11,8 @@ on:
       - reopened
       - edited
 
+permissions: {}
+
 jobs:
   promotion-policy:
     runs-on: ubuntu-latest

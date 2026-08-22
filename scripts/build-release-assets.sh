@@ -50,7 +50,10 @@ for installer in install.sh install-agent.sh install-core.sh; do
   if [ "$installer" = install-core.sh ]; then
     git -C "$REPOSITORY" show "$COMMIT:scripts/$installer" |
       sed "s/__ATM_RELEASE_POSTHOG_API_KEY__/$TELEMETRY_KEY/" >"$OUTPUT/$installer"
-    ! grep -Fq '__ATM_RELEASE_POSTHOG_API_KEY__' "$OUTPUT/$installer"
+    if grep -Fq '__ATM_RELEASE_POSTHOG_API_KEY__' "$OUTPUT/$installer"; then
+      printf '%s\n' 'telemetry key substitution incomplete' >&2
+      exit 1
+    fi
   else
     git -C "$REPOSITORY" show "$COMMIT:scripts/$installer" >"$OUTPUT/$installer"
   fi

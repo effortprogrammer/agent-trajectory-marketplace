@@ -10,6 +10,7 @@ fail() {
 }
 
 [[ -f "$WORKFLOW" ]] || fail "promotion policy workflow is missing"
+grep -Fq 'permissions: {}' "$WORKFLOW" || fail "promotion policy receives unnecessary token permissions"
 grep -Fq 'base === "main"' "$WORKFLOW" || fail "main promotion base is not checked"
 grep -Fq 'head === "dev"' "$WORKFLOW" || fail "dev promotion is not allowed"
 grep -Fq 'head.startsWith("hotfix/")' "$WORKFLOW" || fail "hotfix promotion is not allowed"

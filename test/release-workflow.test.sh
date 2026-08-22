@@ -14,6 +14,44 @@ fail() {
 }
 
 source "$ROOT/scripts/version-contract.sh"
+source "$RELEASE_NETWORK"
+
+DOCKER_LOG="$TEMP_ROOT/docker.log"
+atm_release_docker() {
+  printf '%s\n' "$*" >>"$DOCKER_LOG"
+}
+
+revision="$(git -C "$ROOT" rev-parse HEAD)"
+if (
+  unset RAILWAY_TOKEN
+  atm_release_railway_deploy \
+    "$ROOT" "$revision" project-id staging service-name "staging:$revision"
+) >/dev/null 2>&1; then
+  fail "Railway deploy accepts a missing project token"
+fi
+if (
+  export RAILWAY_TOKEN=test-token
+  atm_release_railway_deploy \
+    "$ROOT" not-a-revision project-id staging service-name "staging:$revision"
+) >/dev/null 2>&1; then
+  fail "Railway deploy accepts an invalid revision"
+fi
+export RAILWAY_TOKEN=test-token
+atm_release_railway_deploy \
+  "$ROOT" "$revision" project-id staging service-name "staging:$revision"
+grep -Fq "railway variable set ATM_ORIGIN_REVISION=$revision" "$DOCKER_LOG" \
+  || fail "Railway deploy does not persist the exact source revision"
+grep -Fq -- '--project project-id --environment staging --service service-name --skip-deploys' \
+  "$DOCKER_LOG" || fail "Railway revision mutation is not exactly scoped"
+grep -Fq 'railway up /workspace' "$DOCKER_LOG" \
+  || fail "Railway deploy does not upload the archived source"
+grep -Fq -- "--message staging:$revision --ci" "$DOCKER_LOG" \
+  || fail "Railway deploy does not wait for the named deployment"
+if grep -Fq test-token "$DOCKER_LOG"; then
+  fail "Railway project token leaked into the Docker command"
+fi
+unset RAILWAY_TOKEN
+
 atm_is_stable_tag "v1.0.11" || fail "SemVer tag is no longer accepted"
 atm_is_stable_tag "v2026.08.18.2" || fail "CalVer tag is not accepted"
 if atm_is_stable_tag "v2026.02.30.1"; then
@@ -72,6 +110,11 @@ jq -e '
   .production.branch == "production" and
   .production.domain == "https://marketplace-web-production-production.up.railway.app" and
   .production.revisionPath == "/.well-known/atm-origin-revision" and
+  .production.deploymentMode == "github-actions-cli" and
+  .production.sourceIntegration == false and
+  .production.revisionVariable == "ATM_ORIGIN_REVISION" and
+  .production.revisionAttestation == "cli-deployed-revisions-only" and
+  .production.workflow == ".github/workflows/release.yml" and
   .production.requiredStatus == "release-production-approved" and
   .production.trigger == "protected-release-tag"
 ' "$RAILWAY_CONTRACT" >/dev/null || fail "Railway deployment contract is invalid"
@@ -96,17 +139,26 @@ grep -Fq 'git/refs/heads/$PRODUCTION_BRANCH' "$WORKFLOW" || fail "release does n
 grep -Fq -- '--field "sha=$GITHUB_SHA"' "$WORKFLOW" || fail "production branch is not bound to the protected tag commit"
 grep -Fq -- '--field force=false' "$WORKFLOW" || fail "production branch promotion permits non-fast-forward updates"
 grep -Fq 'ORIGIN_URL: https://marketplace-web-production-production.up.railway.app' "$WORKFLOW" || fail "release does not target the Railway production origin"
+grep -Fq 'environment: production' "$WORKFLOW" || fail "production token is not isolated in a GitHub environment"
+grep -Fq 'RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}' "$WORKFLOW" || fail "production project token is not sourced from the environment secret"
+grep -Fq 'Deploy protected tag to Railway production' "$WORKFLOW" || fail "release does not explicitly deploy the protected tag"
+grep -Fq 'atm_release_railway_deploy "$PWD" "$GITHUB_SHA"' "$WORKFLOW" || fail "production upload is not bound to the protected tag commit"
+grep -Fq 'atm_release_railway_deploy "$ROLLBACK_ROOT" "$PREVIOUS_SHA"' "$WORKFLOW" || fail "rollback does not explicitly restore the prior Railway source"
 grep -Fq '$ORIGIN_URL/.well-known/atm-origin-revision' "$WORKFLOW" || fail "release does not attest the Railway source revision"
 grep -Fq 'x-atm-origin-revision: $GITHUB_SHA' "$WORKFLOW" || fail "release does not bind the Railway revision header"
 grep -Fq '.revision == $revision' "$WORKFLOW" || fail "release does not bind the Railway revision body"
 grep -Fq 'deployed_ref="$(' "$WORKFLOW" || fail "release does not re-read the production ref after deployment"
+[[ "$(grep -cF 'if ! deployed_ref="$(' "$WORKFLOW")" -ge 2 ]] \
+  || fail "transient production ref reads can abort attestation instead of retrying"
+grep -Fq 'for ref_attempt in 1 2 3' "$WORKFLOW" \
+  || fail "rollback production ref reads are not retried"
 grep -Fq 'Roll back failed production promotion' "$WORKFLOW" || fail "failed release does not restore the prior production ref"
 grep -Fq 'git worktree add --detach "$ROLLBACK_ROOT" "$PREVIOUS_SHA"' "$WORKFLOW" || fail "failed release does not restore the prior Worker source"
 grep -Fq '"$ORIGIN_URL$rollback_js_path"' "$WORKFLOW" || fail "rollback does not read prior deployed bytes from the Railway origin"
 grep -Fq 'atm_release_deployed_asset_path "$ROLLBACK_ROOT" marketplace.js' "$WORKFLOW" || fail "rollback path selection does not support legacy production"
 grep -Fq 'rollback-origin-marketplace.js' "$WORKFLOW" || fail "rollback origin bytes are not isolated from apex bytes"
 grep -Fq 'WORKER_REVISION:$PREVIOUS_SHA' "$WORKFLOW" || fail "Worker rollback is not bound to the prior production revision"
-grep -Fq 'Wait for and attest tagged Marketplace production bytes' "$WORKFLOW" || fail "release does not wait for tagged production bytes"
+grep -Fq 'Attest tagged Marketplace production bytes' "$WORKFLOW" || fail "release does not attest tagged production bytes"
 grep -Fq 'Re-attest Marketplace production after Worker deployment' "$WORKFLOW" || fail "release does not verify public bytes after Worker deployment"
 grep -Fq 'for attempt in $(seq 1 24)' "$WORKFLOW" || fail "production attestation wait is not bounded"
 grep -Fq 'for attempt in $(seq 1 18)' "$WORKFLOW" || fail "rollback attestation wait is not bounded"
@@ -114,15 +166,17 @@ grep -Fq 'for attempt in $(seq 1 6)' "$WORKFLOW" || fail "post-Worker attestatio
 validation_line="$(grep -nF 'Validate stable protected tag' "$WORKFLOW" | cut -d: -f1)"
 build_line="$(grep -nF 'Build source archive and bound manifest' "$WORKFLOW" | cut -d: -f1)"
 promotion_line="$(grep -nF 'Promote protected tag to production branch' "$WORKFLOW" | cut -d: -f1)"
-attestation_line="$(grep -nF 'Wait for and attest tagged Marketplace production bytes' "$WORKFLOW" | cut -d: -f1)"
+deployment_line="$(grep -nF 'Deploy protected tag to Railway production' "$WORKFLOW" | cut -d: -f1)"
+attestation_line="$(grep -nF 'Attest tagged Marketplace production bytes' "$WORKFLOW" | cut -d: -f1)"
 worker_line="$(grep -nF 'Deploy and attest Marketplace apex Worker revision' "$WORKFLOW" | cut -d: -f1)"
 post_worker_line="$(grep -nF 'Re-attest Marketplace production after Worker deployment' "$WORKFLOW" | cut -d: -f1)"
 release_line="$(grep -nF 'Create immutable release assets' "$WORKFLOW" | cut -d: -f1)"
-[[ -n "$validation_line" && -n "$build_line" && -n "$promotion_line" && -n "$attestation_line" \
+[[ -n "$validation_line" && -n "$build_line" && -n "$promotion_line" && -n "$deployment_line" && -n "$attestation_line" \
   && -n "$worker_line" && -n "$post_worker_line" && -n "$release_line" \
   && "$validation_line" -lt "$build_line" \
   && "$build_line" -lt "$promotion_line" \
-  && "$promotion_line" -lt "$attestation_line" \
+  && "$promotion_line" -lt "$deployment_line" \
+  && "$deployment_line" -lt "$attestation_line" \
   && "$attestation_line" -lt "$worker_line" \
   && "$worker_line" -lt "$post_worker_line" \
   && "$post_worker_line" -lt "$release_line" ]] \
@@ -170,6 +224,13 @@ while IFS= read -r action; do
 done < <(grep -RhE '^[[:space:]]*uses:[[:space:]]+' "$ROOT/.github/workflows" | sed -E 's/^[[:space:]]*uses:[[:space:]]+//')
 
 CI_WORKFLOW="$ROOT/.github/workflows/ci.yml"
+grep -Fq 'contents: read' "$CI_WORKFLOW" || fail "CI token permissions are not read-only"
+grep -Fq 'rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9' \
+  "$CI_WORKFLOW" || fail "CI does not pin the GitHub Actions parser image"
+grep -Fq -- '--network none' "$CI_WORKFLOW" \
+  || fail "GitHub Actions parser has unnecessary network access"
+grep -Fq '"$GITHUB_WORKSPACE:/repo:ro"' "$CI_WORKFLOW" \
+  || fail "GitHub Actions parser receives a writable repository mount"
 grep -Fq -- "-name '*.test.js'" "$CI_WORKFLOW" || fail "CI does not discover JavaScript Worker tests"
 grep -Fq 'b5d1a8278cb967c6caacde863d764abae5eaae053870084b0ac1659a7fd71674' "$CI_WORKFLOW" || fail "CI does not pin the waitlist contract revision"
 grep -Fq 'sha256sum --check web/assets.sha256' "$CI_WORKFLOW" || fail "CI does not verify the Marketplace web asset revision"
@@ -192,6 +253,21 @@ commit="$(git -C "$fixture" rev-parse HEAD)"
 ATM_RELEASE_REPOSITORY="$fixture" ATM_RELEASE_POSTHOG_API_KEY="phc_test_release_key" \
   bash "$ROOT/scripts/build-release-assets.sh" v2026.08.18.2 "$commit" "$output"
 grep -Fq 'export ATM_POSTHOG_API_KEY="phc_test_release_key"' "$output/install-core.sh" || fail "release installer core does not receive the configured telemetry key"
+fake_bin="$TEMP_ROOT/fake-bin"
+mkdir -p "$fake_bin"
+cat >"$fake_bin/sed" <<'SH'
+#!/usr/bin/env bash
+cat
+SH
+chmod +x "$fake_bin/sed"
+if PATH="$fake_bin:$PATH" \
+    ATM_RELEASE_REPOSITORY="$fixture" \
+    ATM_RELEASE_POSTHOG_API_KEY="phc_test_release_key" \
+    bash "$ROOT/scripts/build-release-assets.sh" \
+      v2026.08.18.2 "$commit" "$TEMP_ROOT/incomplete-output" \
+      >/dev/null 2>&1; then
+  fail "release builder accepts an unsubstituted telemetry key"
+fi
 bun -e '
   import {parseUpdateReleaseManifest} from "./src/trajectory/update-release-contract";
   import {verifyUpdateReleaseArchive} from "./src/trajectory/update-release-archive";
