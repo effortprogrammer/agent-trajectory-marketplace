@@ -4,13 +4,23 @@
     "environment": "staging",
     "service": "marketplace-web",
     "branch": "dev",
-    "domain": "https://marketplace-web-staging.up.railway.app"
+    "domain": "https://marketplace-web-staging.up.railway.app",
+    "deploymentMode": "github-actions-cli",
+    "sourceIntegration": false,
+    "revisionVariable": "ATM_ORIGIN_REVISION",
+    "workflow": ".github/workflows/deploy-staging.yml",
+    "trigger": "dev-push"
   },
   "production": {
     "environment": "production",
     "service": "marketplace-web-production",
     "branch": "production",
     "domain": "https://marketplace-web-production-production.up.railway.app",
+    "deploymentMode": "github-actions-cli",
+    "sourceIntegration": false,
+    "revisionVariable": "ATM_ORIGIN_REVISION",
+    "revisionAttestation": "cli-deployed-revisions-only",
+    "workflow": ".github/workflows/release.yml",
     "revisionPath": "/.well-known/atm-origin-revision",
     "requiredStatus": "release-production-approved",
     "trigger": "protected-release-tag"

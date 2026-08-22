@@ -16,7 +16,8 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
+    environment: production
     steps:
       - name: Checkout protected tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -100,7 +101,21 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for and attest tagged Marketplace production bytes
+      - name: Deploy protected tag to Railway production
+        env:
+          RAILWAY_ENVIRONMENT: production
+          RAILWAY_PROJECT_ID: ac736878-3095-4c1d-b8c4-e0a184c06ece
+          RAILWAY_SERVICE: marketplace-web-production
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$RAILWAY_TOKEN"
+          source scripts/release-network.sh
+          atm_release_railway_deploy "$PWD" "$GITHUB_SHA" \
+            "$RAILWAY_PROJECT_ID" "$RAILWAY_ENVIRONMENT" "$RAILWAY_SERVICE" \
+            "production:$GITHUB_SHA"
+
+      - name: Attest tagged Marketplace production bytes
         env:
           GH_TOKEN: ${{ github.token }}
           ORIGIN_URL: https://marketplace-web-production-production.up.railway.app
@@ -116,10 +131,15 @@ jobs:
           )"
           attested=false
           for attempt in $(seq 1 24); do
-            deployed_ref="$(
+            if ! deployed_ref="$(
               atm_release_gh_api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
                 --jq '.object.sha'
-            )"
+            )"; then
+              if [ "$attempt" -lt 24 ]; then
+                sleep 5
+              fi
+              continue
+            fi
             if [ "$deployed_ref" != "$GITHUB_SHA" ]; then
               echo "production branch changed during deployment" >&2
               exit 1
@@ -151,7 +171,9 @@ jobs:
               attested=true
               break
             fi
-            sleep 5
+            if [ "$attempt" -lt 24 ]; then
+              sleep 5
+            fi
           done
           atm_release_require_attested \
             "$attested" "tagged Marketplace production bytes did not become live"
@@ -183,7 +205,9 @@ jobs:
               attested=true
               break
             fi
-            sleep 2
+            if [ "$attempt" -lt 18 ]; then
+              sleep 2
+            fi
           done
           test "$attested" = true
 
@@ -203,10 +227,15 @@ jobs:
           )"
           attested=false
           for attempt in $(seq 1 6); do
-            deployed_ref="$(
+            if ! deployed_ref="$(
               atm_release_gh_api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
                 --jq '.object.sha'
-            )"
+            )"; then
+              if [ "$attempt" -lt 6 ]; then
+                sleep 2
+              fi
+              continue
+            fi
             if [ "$deployed_ref" != "$GITHUB_SHA" ]; then
               echo "production branch changed after Worker deployment" >&2
               exit 1
@@ -238,7 +267,9 @@ jobs:
               attested=true
               break
             fi
-            sleep 2
+            if [ "$attempt" -lt 6 ]; then
+              sleep 2
+            fi
           done
           test "$attested" = true
 
@@ -291,13 +322,28 @@ jobs:
           ORIGIN_URL: https://marketplace-web-production-production.up.railway.app
           PREVIOUS_SHA: ${{ steps.production.outputs.previous_sha }}
           PRODUCTION_BRANCH: production
+          RAILWAY_ENVIRONMENT: production
+          RAILWAY_PROJECT_ID: ac736878-3095-4c1d-b8c4-e0a184c06ece
+          RAILWAY_SERVICE: marketplace-web-production
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           set -euo pipefail
+          test -n "$RAILWAY_TOKEN"
           source scripts/release-network.sh
-          deployed_ref="$(
-            atm_release_gh_api "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
-              --jq '.object.sha'
-          )"
+          deployed_ref=
+          for ref_attempt in 1 2 3; do
+            if deployed_ref="$(
+                atm_release_gh_api \
+                  "repos/$GITHUB_REPOSITORY/git/refs/heads/$PRODUCTION_BRANCH" \
+                  --jq '.object.sha'
+              )"; then
+              break
+            fi
+            if [ "$ref_attempt" -lt 3 ]; then
+              sleep 2
+            fi
+          done
+          test -n "$deployed_ref"
           if [ "$deployed_ref" = "$PREVIOUS_SHA" ]; then
             exit 0
           fi
@@ -314,6 +360,9 @@ jobs:
 
           ROLLBACK_ROOT="$RUNNER_TEMP/worker-rollback"
           git worktree add --detach "$ROLLBACK_ROOT" "$PREVIOUS_SHA"
+          atm_release_railway_deploy "$ROLLBACK_ROOT" "$PREVIOUS_SHA" \
+            "$RAILWAY_PROJECT_ID" "$RAILWAY_ENVIRONMENT" "$RAILWAY_SERVICE" \
+            "rollback:$PREVIOUS_SHA"
           rollback_css_path="$(
             atm_release_deployed_asset_path "$ROLLBACK_ROOT" marketplace.css
           )"
@@ -343,7 +392,9 @@ jobs:
               restored=true
               break
             fi
-            sleep 5
+            if [ "$attempt" -lt 18 ]; then
+              sleep 5
+            fi
           done
           test "$restored" = true
 
@@ -366,7 +417,9 @@ jobs:
               worker_restored=true
               break
             fi
-            sleep 2
+            if [ "$attempt" -lt 18 ]; then
+              sleep 2
+            fi
           done
           test "$worker_restored" = true
 

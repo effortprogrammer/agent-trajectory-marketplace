@@ -103,7 +103,7 @@ Bun.serve({
     const canonicalRedirect = canonicalHostRedirect(url);
     if (canonicalRedirect) return canonicalRedirect;
     if (pathname === "/.well-known/atm-origin-revision") {
-      const revision = Bun.env.RAILWAY_GIT_COMMIT_SHA ?? "";
+      const revision = Bun.env.ATM_ORIGIN_REVISION ?? "";
       if (!originRevisionPattern.test(revision)) {
         return Response.json(
           { error: "unavailable" },
