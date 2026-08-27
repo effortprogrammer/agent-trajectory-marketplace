@@ -65,8 +65,10 @@ if grep -Fq -- '--detach' "$RELEASE_NETWORK" || grep -Fq -- '--no-wait' "$RELEAS
 fi
 grep -Fq '$ORIGIN_URL/.well-known/atm-origin-revision' "$WORKFLOW" \
   || fail "staging origin revision is not attested"
-grep -Fq 'for attempt in $(seq 1 6)' "$WORKFLOW" \
+grep -Fq 'for attempt in $(seq 1 24)' "$WORKFLOW" \
   || fail "staging attestation retry budget is missing or unbounded"
+grep -Fq 'sleep 5' "$WORKFLOW" \
+  || fail "staging attestation retry interval cannot cover Railway edge propagation"
 grep -Fq 'atm_release_require_attested' "$WORKFLOW" \
   || fail "staging attestation exhaustion does not fail closed"
 grep -Fq 'x-atm-origin-revision: $GITHUB_SHA' "$WORKFLOW" \
