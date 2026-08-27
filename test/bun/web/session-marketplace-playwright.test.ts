@@ -14,7 +14,12 @@ let harness: SessionUiHarness | undefined
 
 const openMemberSignIn = async (page: Page): Promise<void> => {
   if (!await page.locator("[data-auth-gate]").isVisible()) {
-    await page.getByTestId("request-access-button").click()
+    const requestAccess = page.getByTestId("request-access-button")
+    if (!await requestAccess.isVisible()) {
+      await page.locator("[data-nav-menu-toggle]").click()
+      await requestAccess.waitFor({ state: "visible" })
+    }
+    await requestAccess.click()
   }
   await page.locator("[data-auth-mode=login]").click()
 }
@@ -535,6 +540,38 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(labelTop).toBeGreaterThanOrEqual(navBottom)
     expect(await page.locator("html").evaluate(
       (element) => element.scrollWidth > element.clientWidth,
+    )).toBe(false)
+  })
+
+  test("opens and closes the mobile navigation without hiding buyer access", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(mobile)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    const menuButton = page.locator("[data-nav-menu-toggle]")
+    expect(await menuButton.isVisible()).toBe(true)
+    expect(await menuButton.getAttribute("aria-expanded")).toBe("false")
+
+    await menuButton.click()
+    expect(await menuButton.getAttribute("aria-expanded")).toBe("true")
+    expect(await page.locator("body").evaluate((element) =>
+      element.classList.contains("is-nav-open"),
+    )).toBe(true)
+    expect(await page.locator(".nav-links").isVisible()).toBe(true)
+    expect(await page.getByTestId("request-access-button").isVisible()).toBe(true)
+
+    await page.keyboard.press("Escape")
+    expect(await menuButton.getAttribute("aria-expanded")).toBe("false")
+    expect(await page.evaluate<boolean>(
+      "document.activeElement?.dataset.navMenuToggle !== undefined",
+    )).toBe(true)
+
+    await menuButton.click()
+    await page.getByTestId("request-access-button").click()
+    expect(await page.getByRole("dialog").isVisible()).toBe(true)
+    expect(await page.locator("body").evaluate((element) =>
+      element.classList.contains("is-nav-open"),
     )).toBe(false)
   })
 
