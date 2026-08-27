@@ -5,33 +5,48 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ATM — Agent Trajectory Marketplace</title>
   <meta name="description" content="Turn credential-redacted coding-agent sessions into sellable data supply and revenue with ATM." />
-  <meta name="theme-color" content="#030608" />
+  <meta name="theme-color" content="#fefcf5" />
   <link rel="canonical" href="https://getatm.io/" />
   <link rel="preconnect" href="https://gateway.getatm.io" />
-  <link rel="stylesheet" href="marketplace.3f5838dad014d8bdf9418aa441c57924e4bbc402c508d82204370ee9b7c590e4.css" />
+  <link rel="stylesheet" href="marketplace.154fffe2cf7aa075c4e9c5e5aae29be15ad2af1598fae972b0f07f579cffe57b.css" />
   <link rel="stylesheet" href="console.bd67792915d43acf445e74c0336154fd2391dc6cabae85fbc0a0e5dbb4e6a895.css" />
 </head>
 <body class="marketplace-page no-js">
   <a class="skip-link" href="#main-content" data-testid="session-skip-link">Skip to live corpus</a>
 
+  <div class="announcement-bar">
+    <a href="#supply">
+      <span>Real coding-agent sessions, prepared for licensed AI data use</span>
+      <span class="announcement-link">view live supply</span>
+    </a>
+  </div>
+
   <header class="marketplace-nav" data-marketplace-nav>
     <div class="wide-shell nav-shell">
       <a class="brand" href="#top" aria-label="ATM Marketplace home">
-        <span class="brand-mark">ATM</span>
+        <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="brand-mark">atm</span>
         <span class="brand-name">agent trajectory marketplace</span>
       </a>
-      <nav class="nav-links" aria-label="Marketplace navigation">
-        <a href="#supply">Live supply</a>
-        <a href="#provenance">How it grows</a>
-      </nav>
-      <div class="nav-account-actions">
-        <a class="nav-auth-button" href="#console" data-console-link data-testid="seller-console-link" hidden>Seller console</a>
-        <span class="live-badge" role="status" data-registry-status data-testid="aggregate-status" hidden>
-          <span class="live-dot" aria-hidden="true"></span>
-          <span data-status-label></span>
-        </span>
-        <button class="nav-auth-button" type="button" data-auth-open data-testid="request-access-button">Request buyer access</button>
-        <button class="nav-auth-button nav-logout-button" type="button" data-auth-logout data-testid="auth-logout-button" hidden>Log out</button>
+      <button class="nav-menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="marketplace-nav-panel" data-nav-menu-toggle>
+        <span></span>
+        <span></span>
+      </button>
+      <div class="nav-panel" id="marketplace-nav-panel" data-nav-panel>
+        <nav class="nav-links" aria-label="Marketplace navigation">
+          <a href="#top">For sellers</a>
+          <a href="#supply">Live supply</a>
+          <a href="#provenance">How it works</a>
+        </nav>
+        <div class="nav-account-actions">
+          <a class="nav-auth-button nav-console-button" href="#console" data-console-link data-testid="seller-console-link" hidden>Seller console</a>
+          <span class="live-badge" role="status" data-registry-status data-testid="aggregate-status" hidden>
+            <span class="live-dot" aria-hidden="true"></span>
+            <span data-status-label></span>
+          </span>
+          <button class="nav-auth-button" type="button" data-auth-open data-testid="request-access-button">Request buyer access</button>
+          <button class="nav-auth-button nav-logout-button" type="button" data-auth-logout data-testid="auth-logout-button" hidden>Log out</button>
+        </div>
       </div>
     </div>
   </header>
@@ -105,28 +120,24 @@
     </section>
 
     <section id="top" class="hero-cinematic" data-landing-view>
-      <div class="terrain-stage" aria-hidden="true">
-        <div class="terrain-grid"></div>
-        <i class="terrain-ridge ridge-far"></i>
-        <i class="terrain-ridge ridge-mid"></i>
-        <i class="terrain-ridge ridge-near"></i>
-        <span class="signal-node node-a"></span>
-        <span class="signal-node node-b"></span>
-        <span class="signal-node node-c"></span>
-        <span class="signal-node node-d"></span>
-      </div>
-
-      <div class="content-shell hero-copy">
-        <p class="kicker">Monetize real agent work</p>
-        <h1><span>Turn agent sessions</span><em>into revenue.</em></h1>
-        <p class="hero-lead">Publish credential-redacted coding-agent sessions as sellable data supply. Every accepted session preserves real requests, decisions, tool use, and recoveries without exposing credentials. <span data-testid="seller-onboarding-note">No approval required to install the CLI, create a seller account, and submit sessions.</span></p>
-        <div class="hero-actions">
-          <a class="signal-button" href="#install-command">
-            <span>Start selling sessions</span>
-            <span aria-hidden="true">↓</span>
-          </a>
-          <a class="text-action" href="#supply">View live supply <span aria-hidden="true">→</span></a>
+      <div class="hero-frame">
+        <div class="hero-aurora" aria-hidden="true">
+          <i></i>
+          <i></i>
+          <i></i>
         </div>
+        <div class="hero-copy">
+          <p class="kicker">monetize real agent work</p>
+          <h1><span>Turn agent sessions</span><em>into revenue.</em></h1>
+          <p class="hero-lead">Publish credential-redacted coding-agent sessions as sellable data supply.</p>
+          <div class="hero-actions">
+            <a class="signal-button" href="#install-command">
+              <span>Start selling sessions</span>
+            </a>
+            <a class="text-action" href="#supply">View live supply <span aria-hidden="true">↓</span></a>
+          </div>
+        </div>
+
         <div class="hero-install">
           <div class="command-block">
             <span aria-hidden="true">$</span>
@@ -134,15 +145,39 @@
             <button class="copy-button" type="button" data-copy-target="install-command">Copy</button>
             <span class="sr-only" aria-live="polite" data-copy-status></span>
           </div>
+          <div class="hero-tool-footer">
+            <div class="hero-tool-tabs" aria-label="Local session publishing sequence">
+              <span class="is-active">collect</span>
+              <span>redact</span>
+              <span>review</span>
+              <span>publish</span>
+            </div>
+            <a class="hero-tool-run" href="#provenance" aria-label="See the publishing path">↑</a>
+          </div>
         </div>
+      </div>
+    </section>
+
+    <section class="runtime-strip" aria-labelledby="runtime-strip-title" data-landing-view>
+      <div class="content-shell">
+        <h2 id="runtime-strip-title">Built for real coding-agent sessions</h2>
+        <p>Every accepted session preserves real requests, decisions, tool use, and recoveries without exposing credentials. <span data-testid="seller-onboarding-note">No approval required to install the CLI, create a seller account, and submit sessions.</span></p>
+        <ul aria-label="Supported native session sources">
+          <li>Claude Code</li>
+          <li>Codex</li>
+          <li>OpenCode</li>
+          <li>Senpi</li>
+          <li>Hermes</li>
+        </ul>
       </div>
     </section>
 
     <section id="supply" class="supply-chapter" aria-labelledby="supply-title" data-landing-view>
       <div class="content-shell">
         <div class="chapter-heading reveal" data-reveal>
-          <p class="kicker">Live aggregate supply</p>
+          <p class="kicker">/ live aggregate supply</p>
           <h2 id="supply-title">A corpus with<br /><em>compounding depth.</em></h2>
+          <p>Real requests, tool calls, decisions, and recoveries become more useful together — while individual supply stays member-gated.</p>
         </div>
 
         <div class="noscript-supply" role="status">
@@ -200,8 +235,8 @@
     <section class="corpus-thesis" aria-labelledby="thesis-title" data-landing-view>
       <div class="wide-shell thesis-stage reveal" data-reveal>
         <div class="orbit-lines" aria-hidden="true"><i></i><i></i><i></i></div>
-        <p class="kicker">Useful data is behavioral</p>
-        <h2 id="thesis-title">“The request matters.<br />The recovery teaches.”</h2>
+        <p class="kicker">/ useful data is behavioral</p>
+        <h2 id="thesis-title">The request matters.<br /><em>The recovery teaches.</em></h2>
         <p>Volume is only valuable when every token preserves what the agent tried, why it changed course, and how it reached a working result.</p>
         <div class="thesis-signal" aria-label="Trajectory layers">
           <span>request</span>
@@ -218,7 +253,7 @@
     <section id="provenance" class="process-chapter" aria-labelledby="process-title" data-landing-view>
       <div class="content-shell process-layout">
         <div class="process-intro reveal" data-reveal>
-          <p class="kicker">From local session to corpus</p>
+          <p class="kicker">/ from local session to corpus</p>
           <h2 id="process-title">Three steps.<br /><em>One trusted path.</em></h2>
           <p>The public number is simple because the collection boundary is not.</p>
         </div>
@@ -256,7 +291,8 @@
   <footer class="marketplace-footer">
     <div class="wide-shell footer-shell">
       <a class="brand" href="#top">
-        <span class="brand-mark">ATM</span>
+        <span class="brand-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="brand-mark">atm</span>
         <span class="brand-name">agent trajectory marketplace</span>
       </a>
       <p>Aggregate trajectory supply</p>
@@ -264,6 +300,6 @@
     </div>
   </footer>
 
-  <script type="module" src="marketplace.70fc06bdc5f781d2cf9407ac3e75438a22cd4e08c180e0067278421ff52f29f0.js"></script>
+  <script type="module" src="marketplace.0f411486639fcc6cf480f6b82982a058a54f25c658bb646319f3d16cbdd65a01.js"></script>
 </body>
 </html>

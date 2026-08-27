@@ -1,6 +1,11 @@
 import { mountSellerConsole } from "./console.0058fc69cdec16891c61cee7689ffccdcbf9d9560910d5eec55921d5290e8972.js";
 
 const registry = "https://gateway.getatm.io";
+const localPreview = location.hostname === "127.0.0.1" || location.hostname === "localhost" ||
+  location.hostname === "[::1]";
+const publicStatsEndpoint = localPreview
+  ? "/api/public-stats"
+  : `${registry}/v1/marketplace/public-stats`;
 const waitlistAcknowledgmentKey = "atm.marketplace.waitlist-ack-v1";
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -99,6 +104,31 @@ const revealObserver = "IntersectionObserver" in window
   : null;
 
 const nav = document.querySelector("[data-marketplace-nav]");
+const navMenuToggle = document.querySelector("[data-nav-menu-toggle]");
+const navMobile = window.matchMedia("(max-width: 960px)");
+const closeNavigation = (restoreFocus = false) => {
+  document.body.classList.remove("is-nav-open");
+  navMenuToggle?.setAttribute("aria-expanded", "false");
+  navMenuToggle?.setAttribute("aria-label", "Open navigation");
+  if (restoreFocus) navMenuToggle?.focus({ preventScroll: true });
+};
+navMenuToggle?.addEventListener("click", () => {
+  const open = !document.body.classList.contains("is-nav-open");
+  document.body.classList.toggle("is-nav-open", open);
+  navMenuToggle.setAttribute("aria-expanded", String(open));
+  navMenuToggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+});
+for (const link of document.querySelectorAll(".nav-links a")) {
+  link.addEventListener("click", () => closeNavigation());
+}
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !document.body.classList.contains("is-nav-open")) return;
+  event.preventDefault();
+  closeNavigation(true);
+});
+navMobile.addEventListener("change", (event) => {
+  if (!event.matches) closeNavigation();
+});
 const updateNavigation = () => nav?.classList.toggle("is-compact", window.scrollY > 24);
 updateNavigation();
 window.addEventListener("scroll", updateNavigation, { passive: true });
@@ -312,7 +342,7 @@ const renderAuthenticated = (session) => {
 const loadPublicTokenTotal = async () => {
   if (!publicTokenRegion || !publicTokenCount || !publicTokenSkeleton) return;
   try {
-    const response = await fetch(`${registry}/v1/marketplace/public-stats`, {
+    const response = await fetch(publicStatsEndpoint, {
       headers: { accept: "application/json" },
       redirect: "error",
       signal: AbortSignal.timeout(10_000),
@@ -690,6 +720,7 @@ document.querySelector("[data-auth-restart]").addEventListener("click", () => {
 });
 for (const button of authOpenButtons) {
   button.addEventListener("click", () => {
+    closeNavigation();
     setAuthMode("waitlist");
     openAuthDialog(button);
   });
@@ -712,8 +743,12 @@ authGate.addEventListener("close", () => {
 });
 authLogoutButton.addEventListener("click", () => void logout());
 window.addEventListener("hashchange", () => {
-  if (window.location.hash === "#console" && activeSession !== undefined) void showConsole();
-  else closeConsole();
+  if (window.location.hash === "#console" && activeSession !== undefined) {
+    closeNavigation();
+    void showConsole();
+  } else {
+    closeConsole();
+  }
 });
 
 for (const element of document.querySelectorAll("[data-reveal]")) {
