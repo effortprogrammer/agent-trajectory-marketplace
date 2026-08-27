@@ -554,16 +554,19 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
 
     const menuButton = page.locator("[data-nav-menu-toggle]")
+    const navLinks = page.locator(".nav-links")
+    const requestAccess = page.getByTestId("request-access-button")
     expect(await menuButton.isVisible()).toBe(true)
     expect(await menuButton.getAttribute("aria-expanded")).toBe("false")
 
+    const navLinksVisible = navLinks.waitFor({ state: "visible" })
+    const requestAccessVisible = requestAccess.waitFor({ state: "visible" })
     await menuButton.click()
+    await Promise.all([navLinksVisible, requestAccessVisible])
     expect(await menuButton.getAttribute("aria-expanded")).toBe("true")
     expect(await page.locator("body").evaluate((element) =>
       element.classList.contains("is-nav-open"),
     )).toBe(true)
-    expect(await page.locator(".nav-links").isVisible()).toBe(true)
-    expect(await page.getByTestId("request-access-button").isVisible()).toBe(true)
 
     await page.keyboard.press("Escape")
     expect(await menuButton.getAttribute("aria-expanded")).toBe("false")
@@ -572,7 +575,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     )).toBe(true)
 
     await menuButton.click()
-    await page.getByTestId("request-access-button").click()
+    await requestAccess.click()
     expect(await page.getByRole("dialog").isVisible()).toBe(true)
     expect(await page.locator("body").evaluate((element) =>
       element.classList.contains("is-nav-open"),
