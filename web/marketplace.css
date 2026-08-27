@@ -1269,7 +1269,7 @@ button {
 .process-card {
   min-height: 20rem;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: var(--space-8);
   align-items: start;
   border: 1px solid var(--border);
@@ -1280,18 +1280,11 @@ button {
   padding: var(--space-8);
 }
 
-.process-card > span,
-.process-card > strong {
+.process-card > span {
   color: var(--accent-bright);
   font-family: var(--font-mono);
   font-size: var(--type-mono-sm);
   font-weight: 400;
-}
-
-.process-card > strong {
-  border: 1px solid var(--accent-ring);
-  border-radius: var(--radius-pill);
-  padding: var(--space-1) var(--space-3);
 }
 
 .process-card div {
@@ -1318,9 +1311,8 @@ button {
 .footer-shell {
   min-height: 7rem;
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr;
   align-items: center;
-  gap: var(--space-8);
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: var(--type-mono-sm);
@@ -1563,12 +1555,6 @@ button {
     padding: var(--space-6);
   }
 
-  .process-card > strong {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
-  }
-
   .process-card div {
     grid-column: 1 / -1;
   }
@@ -1674,61 +1660,6 @@ body {
 .brand {
   gap: var(--space-2);
   color: var(--text-primary);
-}
-
-.brand-symbol {
-  position: relative;
-  width: 2.125rem;
-  height: 2.125rem;
-  flex: 0 0 auto;
-  border-radius: 0.5rem;
-  background: var(--ink-strong, #1f1e1e);
-}
-
-.brand-symbol i {
-  position: absolute;
-  width: 0.36rem;
-  height: 0.36rem;
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-}
-
-.brand-symbol i:first-child {
-  top: 0.48rem;
-  left: 0.88rem;
-}
-
-.brand-symbol i:nth-child(2) {
-  right: 0.48rem;
-  bottom: 0.48rem;
-}
-
-.brand-symbol i:last-child {
-  bottom: 0.48rem;
-  left: 0.48rem;
-}
-
-.brand-symbol::before,
-.brand-symbol::after {
-  position: absolute;
-  height: 1px;
-  background: var(--surface);
-  content: "";
-  transform-origin: left center;
-}
-
-.brand-symbol::before {
-  width: 0.8rem;
-  top: 1rem;
-  left: 0.76rem;
-  transform: rotate(45deg);
-}
-
-.brand-symbol::after {
-  width: 0.8rem;
-  top: 1.38rem;
-  left: 0.64rem;
-  transform: rotate(-21deg);
 }
 
 .brand-mark {
@@ -1962,24 +1893,10 @@ body {
   backdrop-filter: blur(14px);
 }
 
-.hero-tool-heading,
 .hero-tool-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-4);
-}
-
-.hero-tool-heading {
-  padding: 0 var(--space-1) var(--space-3);
-  color: var(--text-secondary);
-  font-size: var(--type-body-sm);
-}
-
-.hero-tool-heading span:last-child {
-  color: var(--accent-deep);
-  font-family: var(--font-mono);
-  font-size: var(--type-mono-sm);
 }
 
 .hero-install .command-block {
@@ -2017,28 +1934,8 @@ body {
 }
 
 .hero-tool-footer {
+  justify-content: flex-end;
   margin-top: var(--space-3);
-}
-
-.hero-tool-tabs {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  border-radius: var(--radius-pill);
-  background: rgba(11, 9, 7, 0.05);
-  padding: var(--space-1);
-}
-
-.hero-tool-tabs span {
-  border-radius: var(--radius-pill);
-  padding: var(--space-1) var(--space-4);
-  color: var(--text-muted);
-  font-size: var(--type-mono-sm);
-}
-
-.hero-tool-tabs .is-active {
-  background: var(--text-primary);
-  color: var(--surface);
 }
 
 .hero-tool-run {
@@ -2293,14 +2190,8 @@ body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
-.process-card > span,
-.process-card > strong {
+.process-card > span {
   color: var(--accent-deep);
-}
-
-.process-card > strong {
-  border-color: var(--accent-ring);
-  background: var(--accent-glass);
 }
 
 .process-card p {
@@ -2618,11 +2509,6 @@ body {
     padding: var(--space-2) var(--space-3);
   }
 
-  .hero-tool-heading {
-    padding-bottom: var(--space-2);
-    font-size: 0.8125rem;
-  }
-
   .hero-install .command-block {
     grid-template-columns: auto minmax(0, 1fr) auto;
     min-height: 3rem;
@@ -2633,16 +2519,8 @@ body {
     grid-column: auto;
   }
 
-  .hero-tool-tabs {
-    gap: 0;
-  }
-
   .hero-tool-footer {
     margin-top: var(--space-2);
-  }
-
-  .hero-tool-tabs span {
-    padding-inline: var(--space-2);
   }
 
   .runtime-strip {
