@@ -6,6 +6,7 @@ import {
   type SessionUiHarness,
 } from "./session-marketplace-playwright.fixture"
 
+// allow: SIZE_OK - one serial browser contract shares a Chromium lifecycle to avoid CI contention.
 setDefaultTimeout(30_000)
 
 const desktop = { height: 900, width: 1_280 } as const
@@ -197,6 +198,9 @@ describe("authenticated aggregate marketplace browser contract", () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage({ height: 844, width: 375 })
 
+    expect(await page.evaluate<boolean>(
+      "window.matchMedia('(prefers-reduced-motion: reduce)').matches",
+    )).toBe(true)
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
     await page.getByTestId("seller-console-link").click()

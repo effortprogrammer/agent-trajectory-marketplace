@@ -221,7 +221,11 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
     setLogoutStatus: registry.setLogoutStatus,
     setPublicTokenTotal: registry.setPublicTokenTotal,
     newPage: async (viewport, options = {}) => {
-      const context = await browser.newContext({ ...options, viewport })
+      const context = await browser.newContext({
+        ...options,
+        reducedMotion: "reduce",
+        viewport,
+      })
       await context.route("https://gateway.getatm.io/**", async (route) => {
         const requested = new URL(route.request().url())
         const response = await route.fetch({
