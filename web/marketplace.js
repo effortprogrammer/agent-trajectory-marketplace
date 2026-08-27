@@ -743,8 +743,12 @@ authGate.addEventListener("close", () => {
 });
 authLogoutButton.addEventListener("click", () => void logout());
 window.addEventListener("hashchange", () => {
-  if (window.location.hash === "#console" && activeSession !== undefined) void showConsole();
-  else closeConsole();
+  if (window.location.hash === "#console" && activeSession !== undefined) {
+    closeNavigation();
+    void showConsole();
+  } else {
+    closeConsole();
+  }
 });
 
 for (const element of document.querySelectorAll("[data-reveal]")) {
