@@ -203,9 +203,22 @@ describe("authenticated aggregate marketplace browser contract", () => {
     )).toBe(true)
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
-    await page.getByTestId("seller-console-link").click()
-    await page.locator("[data-console-chart] svg").waitFor({ state: "visible" })
+    const menuButton = page.locator("[data-nav-menu-toggle]")
+    const sellerConsoleLink = page.getByTestId("seller-console-link")
+    const sellerConsoleLinkVisible = sellerConsoleLink.waitFor({ state: "visible" })
+    await menuButton.click()
+    await sellerConsoleLinkVisible
+    const navigationHidden = page.locator(".nav-links").waitFor({ state: "hidden" })
+    await sellerConsoleLink.click()
+    await Promise.all([
+      navigationHidden,
+      page.locator("[data-console-chart] svg").waitFor({ state: "visible" }),
+    ])
 
+    expect(await menuButton.getAttribute("aria-expanded")).toBe("false")
+    expect(await page.locator("body").evaluate((element) =>
+      element.classList.contains("is-nav-open"),
+    )).toBe(false)
     expect(await page.locator("html").evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(false)
   })
 
