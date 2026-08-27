@@ -4,6 +4,17 @@ const port = Number(Bun.env.PORT ?? 4173);
 const canonicalOrigin = "https://getatm.io";
 const legacyMarketplaceHost = "marketplace.getatm.io";
 const originRevisionPattern = /^[a-f0-9]{40}$/;
+const localPublicStatsUpstream = (() => {
+  const configured = Bun.env.ATM_LOCAL_PUBLIC_STATS_URL;
+  if (configured === undefined || configured === "") return undefined;
+  const url = new URL(configured);
+  const isLoopback = url.hostname === "127.0.0.1" || url.hostname === "localhost" ||
+    url.hostname === "[::1]";
+  if (url.protocol !== "https:" && !isLoopback) {
+    throw new Error("ATM_LOCAL_PUBLIC_STATS_URL must use HTTPS or a loopback host");
+  }
+  return url;
+})();
 const securityHeaders = {
   "content-security-policy": [
     "default-src 'self'",
@@ -126,6 +137,44 @@ Bun.serve({
     }
     if (pathname === "/favicon.ico") {
       return new Response(null, { headers: securityHeaders, status: 204 });
+    }
+    if (pathname === "/api/public-stats" && localPublicStatsUpstream !== undefined) {
+      if (request.method !== "GET") {
+        return Response.json(
+          { error: "method_not_allowed" },
+          {
+            headers: {
+              ...securityHeaders,
+              allow: "GET",
+              "cache-control": "no-store",
+            },
+            status: 405,
+          },
+        );
+      }
+      try {
+        const upstream = await fetch(localPublicStatsUpstream, {
+          headers: { accept: "application/json" },
+          redirect: "error",
+          signal: AbortSignal.timeout(5_000),
+        });
+        return new Response(await upstream.arrayBuffer(), {
+          headers: {
+            ...securityHeaders,
+            "cache-control": "no-store",
+            "content-type": "application/json; charset=utf-8",
+          },
+          status: upstream.status,
+        });
+      } catch {
+        return Response.json(
+          { error: "unavailable" },
+          {
+            headers: { ...securityHeaders, "cache-control": "no-store" },
+            status: 502,
+          },
+        );
+      }
     }
     const redirect = compatibilityRedirect(url);
     if (redirect) return redirect;

@@ -190,7 +190,11 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
   const port = reservePort()
   const web = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
-    env: { ...Bun.env, PORT: String(port) },
+    env: {
+      ...Bun.env,
+      ATM_LOCAL_PUBLIC_STATS_URL: `${registry.url}/v1/marketplace/public-stats`,
+      PORT: String(port),
+    },
     stderr: "pipe",
     stdout: "pipe",
   })
@@ -217,7 +221,11 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
     setLogoutStatus: registry.setLogoutStatus,
     setPublicTokenTotal: registry.setPublicTokenTotal,
     newPage: async (viewport, options = {}) => {
-      const context = await browser.newContext({ ...options, viewport })
+      const context = await browser.newContext({
+        ...options,
+        reducedMotion: "reduce",
+        viewport,
+      })
       await context.route("https://gateway.getatm.io/**", async (route) => {
         const requested = new URL(route.request().url())
         const response = await route.fetch({

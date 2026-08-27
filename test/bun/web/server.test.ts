@@ -85,6 +85,43 @@ test("binds every public asset URL to fingerprinted paths so releases cannot reu
   )
 })
 
+test("proxies public stats for an explicitly configured local preview", async () => {
+  const upstream = Bun.serve({
+    fetch(request) {
+      expect(new URL(request.url).pathname).toBe("/v1/marketplace/public-stats")
+      return Response.json({ tradeableTokens: "39048328" })
+    },
+    hostname: "127.0.0.1",
+    port: 0,
+  })
+  const port = reservePort()
+  const server = Bun.spawn(["bun", "web/server.ts"], {
+    cwd: publicRoot,
+    env: {
+      ...Bun.env,
+      ATM_LOCAL_PUBLIC_STATS_URL:
+        `http://127.0.0.1:${upstream.port}/v1/marketplace/public-stats`,
+      ATM_ORIGIN_REVISION: testRevision,
+      PORT: String(port),
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  try {
+    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/public-stats`)
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("cache-control")).toBe("no-store")
+    expect(await response.json()).toEqual({ tradeableTokens: "39048328" })
+  } finally {
+    server.kill()
+    await server.exited
+    upstream.stop(true)
+  }
+})
+
 test("serves session-only public pages without World UI artifacts", async () => {
   const port = reservePort()
   const baseUrl = `http://127.0.0.1:${port}`

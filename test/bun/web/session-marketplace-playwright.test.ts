@@ -6,6 +6,7 @@ import {
   type SessionUiHarness,
 } from "./session-marketplace-playwright.fixture"
 
+// allow: SIZE_OK - one serial browser contract shares a Chromium lifecycle to avoid CI contention.
 setDefaultTimeout(30_000)
 
 const desktop = { height: 900, width: 1_280 } as const
@@ -14,7 +15,12 @@ let harness: SessionUiHarness | undefined
 
 const openMemberSignIn = async (page: Page): Promise<void> => {
   if (!await page.locator("[data-auth-gate]").isVisible()) {
-    await page.getByTestId("request-access-button").click()
+    const requestAccess = page.getByTestId("request-access-button")
+    if (!await requestAccess.isVisible()) {
+      await page.locator("[data-nav-menu-toggle]").click()
+      await requestAccess.waitFor({ state: "visible" })
+    }
+    await requestAccess.click()
   }
   await page.locator("[data-auth-mode=login]").click()
 }
@@ -192,6 +198,9 @@ describe("authenticated aggregate marketplace browser contract", () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage({ height: 844, width: 375 })
 
+    expect(await page.evaluate<boolean>(
+      "window.matchMedia('(prefers-reduced-motion: reduce)').matches",
+    )).toBe(true)
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
     await page.getByTestId("seller-console-link").click()
@@ -535,6 +544,41 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(labelTop).toBeGreaterThanOrEqual(navBottom)
     expect(await page.locator("html").evaluate(
       (element) => element.scrollWidth > element.clientWidth,
+    )).toBe(false)
+  })
+
+  test("opens and closes the mobile navigation without hiding buyer access", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(mobile)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    const menuButton = page.locator("[data-nav-menu-toggle]")
+    const navLinks = page.locator(".nav-links")
+    const requestAccess = page.getByTestId("request-access-button")
+    expect(await menuButton.isVisible()).toBe(true)
+    expect(await menuButton.getAttribute("aria-expanded")).toBe("false")
+
+    const navLinksVisible = navLinks.waitFor({ state: "visible" })
+    const requestAccessVisible = requestAccess.waitFor({ state: "visible" })
+    await menuButton.click()
+    await Promise.all([navLinksVisible, requestAccessVisible])
+    expect(await menuButton.getAttribute("aria-expanded")).toBe("true")
+    expect(await page.locator("body").evaluate((element) =>
+      element.classList.contains("is-nav-open"),
+    )).toBe(true)
+
+    await page.keyboard.press("Escape")
+    expect(await menuButton.getAttribute("aria-expanded")).toBe("false")
+    expect(await page.evaluate<boolean>(
+      "document.activeElement?.dataset.navMenuToggle !== undefined",
+    )).toBe(true)
+
+    await menuButton.click()
+    await requestAccess.click()
+    expect(await page.getByRole("dialog").isVisible()).toBe(true)
+    expect(await page.locator("body").evaluate((element) =>
+      element.classList.contains("is-nav-open"),
     )).toBe(false)
   })
 
