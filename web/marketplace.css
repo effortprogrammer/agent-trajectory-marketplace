@@ -1958,7 +1958,7 @@ body {
     inset 0 1px 0 rgba(255, 255, 255, 0.62);
   padding: var(--space-4);
   color: var(--text-primary);
-  transform: translateX(50%);
+  transform: translate(50%, var(--space-6));
   backdrop-filter: blur(14px);
 }
 
