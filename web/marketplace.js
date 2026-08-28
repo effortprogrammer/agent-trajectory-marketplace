@@ -279,8 +279,15 @@ const rememberWaitlistAcknowledgment = () => {
   }
 };
 
+const invalidateAuthRequest = () => {
+  authRequestVersion += 1;
+  authRequestForm.querySelector("button[type=submit]").disabled = false;
+  authVerifyForm.querySelector("button[type=submit]").disabled = false;
+};
+
 const closeAuthDialog = (restoreFocus = true) => {
   restoreAuthTrigger = restoreFocus;
+  if (restoreFocus) invalidateAuthRequest();
   if (authGate.open) {
     authGate.close();
     return;
@@ -801,6 +808,7 @@ authGate.addEventListener("click", (event) => {
 });
 authGate.addEventListener("cancel", () => {
   restoreAuthTrigger = true;
+  invalidateAuthRequest();
 });
 authGate.addEventListener("close", () => {
   document.body.classList.remove("is-auth-open");

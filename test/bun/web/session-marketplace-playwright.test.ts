@@ -819,6 +819,44 @@ describe("authenticated aggregate marketplace browser contract", () => {
     )).toEqual([])
   })
 
+  for (const dismissal of ["close-button", "escape"] as const) {
+    test(`ignores verification responses after ${dismissal} dismissal`, async () => {
+      harness = await startSessionUiHarness()
+      const page = await harness.newPage(desktop)
+      const releaseVerify = harness.holdVerify()
+      await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+      await openMemberSignIn(page)
+      await page.locator("[data-auth-email]").fill("owner@example.test")
+      await page.locator("[data-auth-request-submit]").click()
+      await page.locator("[data-auth-code]").waitFor({ state: "visible" })
+      await page.locator("[data-auth-code]").fill("654321")
+      const verifyRequest = page.waitForRequest((request) =>
+        new URL(request.url()).pathname === "/api/registry/v1/auth/verify",
+      )
+      const verifyResponse = page.waitForResponse((response) =>
+        new URL(response.url()).pathname === "/api/registry/v1/auth/verify",
+      )
+      await page.locator("[data-auth-verify-submit]").click()
+      await verifyRequest
+
+      if (dismissal === "close-button") {
+        await page.getByTestId("auth-close-button").click()
+      } else {
+        await page.keyboard.press("Escape")
+      }
+      await page.locator("[data-auth-gate]").waitFor({ state: "hidden" })
+      releaseVerify()
+      await verifyResponse
+
+      expect(await page.locator("body").getAttribute("data-auth-state"))
+        .not.toBe("authenticated")
+      expect(await page.locator("[data-authenticated-content]:visible").count()).toBe(0)
+      expect(harness.registryRequests.filter(
+        (request) => request.path === "/v1/marketplace/stats",
+      )).toEqual([])
+    })
+  }
+
   test("keeps mobile supply labels below the fixed navigation", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(mobile)
