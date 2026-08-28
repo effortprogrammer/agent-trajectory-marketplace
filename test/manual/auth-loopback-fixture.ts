@@ -2,6 +2,12 @@ import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { accountPolicyCliNotice } from "../../src/auth/account-policies";
+import {
+  officialGatewayProcessArguments,
+  officialGatewayProcessEnvironment,
+} from "../bun/fixtures/gateway-process";
+
 type CliResult = Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>;
 type RequestReceipt = Readonly<{ readonly authorization: boolean; readonly body: string; readonly method: string; readonly path: string }>;
 
@@ -22,11 +28,20 @@ const challengeId = "chal-fedcba9876543210";
 const accountId = "acct-fedcba9876543210";
 const expiresAt = "2099-07-25T00:00:00.000Z";
 const requests: RequestReceipt[] = [];
+let gatewayTarget: string | undefined;
 
 const runCli = async (argumentsList: readonly string[], input?: string): Promise<CliResult> => {
-  const child = Bun.spawn([process.execPath, "dist/collector.js", ...argumentsList], {
+  const invocation = officialGatewayProcessArguments(
+    [process.execPath, "dist/collector.js", ...argumentsList],
+    gatewayTarget,
+  );
+  const child = Bun.spawn(invocation.argumentsList, {
     cwd: process.cwd(),
-    env: { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: configRoot },
+    env: {
+      ...process.env,
+      ...officialGatewayProcessEnvironment(invocation.target),
+      TRAJECTORY_MARKETPLACE_CONFIG_HOME: configRoot,
+    },
     stderr: "pipe",
     stdin: input === undefined ? "ignore" : "pipe",
     stdout: "pipe",
@@ -66,11 +81,12 @@ try {
   if (listeningPort === undefined) throw new FixtureError("missing_listener_port");
   port = listeningPort;
   const origin = `http://127.0.0.1:${port}`;
+  gatewayTarget = origin;
   const results = [
-    await runCli(["auth", "signup", "--server", origin, "--email", "MANUAL@example.test", "--accept-terms"]),
-    await runCli(["auth", "login", "--server", origin, "--email", "manual@example.test"]),
-    await runCli(["auth", "verify", "--server", origin, "--challenge", challengeId, "--code-stdin"], `${otp}\nignored-second-line\n`),
-    await runCli(["auth", "status", "--server", origin]),
+    await runCli(["auth", "signup", "--email", "MANUAL@example.test", "--accept-terms"]),
+    await runCli(["auth", "login", "--email", "manual@example.test"]),
+    await runCli(["auth", "verify", "--challenge", challengeId, "--code-stdin"], `${otp}\nignored-second-line\n`),
+    await runCli(["auth", "status"]),
   ];
   const directory = join(configRoot, "agent-trajectory-marketplace");
   const authPath = join(directory, "auth.json");
@@ -78,8 +94,14 @@ try {
   const fileMode = lstatSync(authPath).mode & 0o777;
   requireFixture(directoryMode === 0o700 && fileMode === 0o600, "unsafe_permissions");
   requireFixture(readFileSync(authPath, "utf8").includes(token), "token_not_stored");
-  results.push(await runCli(["auth", "logout", "--server", origin]));
-  requireFixture(results.every((result) => result.exitCode === 0 && result.stderr === ""), "cli_lifecycle_failed");
+  results.push(await runCli(["auth", "logout"]));
+  requireFixture(
+    results.every((result, index) =>
+      result.exitCode === 0
+      && result.stderr === (index === 0 ? accountPolicyCliNotice : "")
+    ),
+    "cli_lifecycle_failed",
+  );
   const output = results.map((result) => result.stdout).join("");
   requireFixture(!output.includes(token) && !output.includes(otp) && !output.includes("ignored-second-line"), "secret_output");
   requireFixture(!readFileSync(authPath, "utf8").includes(token), "logout_did_not_remove_token");

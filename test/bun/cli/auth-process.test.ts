@@ -354,15 +354,28 @@ describe("auth real CLI process boundary", () => {
     const root = fixtureRoot();
     const origin = hostileAuthOrigin();
     const cases = [
+      await runCli(root, [
+        "auth",
+        "signup",
+        "--server",
+        origin,
+        "--email",
+        "redirect@example.test",
+        "--accept-terms",
+      ]),
       await runCli(root, ["auth", "login", "--server", origin, "--email", "redirect@example.test"]),
       await runCli(root, ["auth", "login", "--server", origin, "--email", "oversize@example.test"]),
       await runCli(root, ["auth", "login", "--server", origin, "--email", "limited@example.test"]),
       await runCli(root, ["auth", "login", "--server", origin, "--email", "malformed@example.test"]),
     ];
-    expect(cases.map(({ exitCode }) => exitCode)).toEqual([1, 1, 1, 1]);
-    expect(cases.map(({ stdout }) => stdout)).toEqual(["", "", "", ""]);
+    expect(cases.map(({ exitCode }) => exitCode)).toEqual([1, 1, 1, 1, 1]);
+    expect(cases.map(({ stdout }) => stdout)).toEqual(["", "", "", "", ""]);
     expect(cases.map(({ stderr }) => stderr)).toEqual([
-      "auth_redirect_rejected", "invalid_auth_response", "rate_limited", "invalid_auth_response",
+      "auth_redirect_rejected",
+      "auth_redirect_rejected",
+      "invalid_auth_response",
+      "rate_limited",
+      "invalid_auth_response",
     ].map((error) => `${JSON.stringify({ error })}\n`));
     expect(cases.map(({ stderr }) => stderr).join("")).not.toContain("secret detail");
   });
