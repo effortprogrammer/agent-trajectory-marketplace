@@ -59,6 +59,13 @@ jobs:
           git merge-base --is-ancestor refs/remotes/origin/dev "$GITHUB_SHA"
           git merge-base --is-ancestor refs/remotes/origin/production "$GITHUB_SHA"
 
+      - name: Require Registry account policy readiness
+        run: |
+          set -euo pipefail
+          source scripts/release-network.sh
+          atm_release_require_registry_policy_ready \
+            https://gateway.getatm.io 2026-08-28 2026-08-28
+
       - name: Build source archive and bound manifest
         env:
           TAG: ${{ github.ref_name }}
@@ -129,6 +136,9 @@ jobs:
           marketplace_js_path="$(
             atm_release_fingerprinted_asset_path "$PWD" marketplace.js
           )"
+          account_terms_path=/legal/account-terms/2026-08-28
+          account_privacy_path=/legal/account-privacy/2026-08-28
+          account_policy_css_path=/legal/assets/2026-08-28.css
           attested=false
           for attempt in $(seq 1 24); do
             if ! deployed_ref="$(
@@ -165,9 +175,27 @@ jobs:
                 --header 'cache-control: no-cache' \
                 "https://getatm.io$marketplace_js_path" \
                 --output "$RUNNER_TEMP/marketplace.js" \
+              && atm_release_curl --fail --silent --show-error \
+                --header 'cache-control: no-cache' \
+                "https://getatm.io$account_terms_path" \
+                --output "$RUNNER_TEMP/account-terms.html" \
+              && atm_release_curl --fail --silent --show-error \
+                --header 'cache-control: no-cache' \
+                "https://getatm.io$account_privacy_path" \
+                --output "$RUNNER_TEMP/account-privacy.html" \
+              && atm_release_curl --fail --silent --show-error \
+                --header 'cache-control: no-cache' \
+                "https://getatm.io$account_policy_css_path" \
+                --output "$RUNNER_TEMP/account-policy.css" \
               && cmp web/index.html "$RUNNER_TEMP/index.html" \
               && cmp web/marketplace.css "$RUNNER_TEMP/marketplace.css" \
-              && cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js"; then
+              && cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js" \
+              && cmp web/legal-account-terms-2026-08-28.html \
+                "$RUNNER_TEMP/account-terms.html" \
+              && cmp web/legal-account-privacy-2026-08-28.html \
+                "$RUNNER_TEMP/account-privacy.html" \
+              && cmp web/legal-2026-08-28.css \
+                "$RUNNER_TEMP/account-policy.css"; then
               attested=true
               break
             fi
@@ -225,6 +253,9 @@ jobs:
           marketplace_js_path="$(
             atm_release_fingerprinted_asset_path "$PWD" marketplace.js
           )"
+          account_terms_path=/legal/account-terms/2026-08-28
+          account_privacy_path=/legal/account-privacy/2026-08-28
+          account_policy_css_path=/legal/assets/2026-08-28.css
           attested=false
           for attempt in $(seq 1 6); do
             if ! deployed_ref="$(
@@ -261,9 +292,27 @@ jobs:
                 --header 'cache-control: no-cache' \
                 "https://getatm.io$marketplace_js_path" \
                 --output "$RUNNER_TEMP/final-marketplace.js" \
+              && atm_release_curl --fail --silent --show-error \
+                --header 'cache-control: no-cache' \
+                "https://getatm.io$account_terms_path" \
+                --output "$RUNNER_TEMP/final-account-terms.html" \
+              && atm_release_curl --fail --silent --show-error \
+                --header 'cache-control: no-cache' \
+                "https://getatm.io$account_privacy_path" \
+                --output "$RUNNER_TEMP/final-account-privacy.html" \
+              && atm_release_curl --fail --silent --show-error \
+                --header 'cache-control: no-cache' \
+                "https://getatm.io$account_policy_css_path" \
+                --output "$RUNNER_TEMP/final-account-policy.css" \
               && cmp web/index.html "$RUNNER_TEMP/final-index.html" \
               && cmp web/marketplace.css "$RUNNER_TEMP/final-marketplace.css" \
-              && cmp web/marketplace.js "$RUNNER_TEMP/final-marketplace.js"; then
+              && cmp web/marketplace.js "$RUNNER_TEMP/final-marketplace.js" \
+              && cmp web/legal-account-terms-2026-08-28.html \
+                "$RUNNER_TEMP/final-account-terms.html" \
+              && cmp web/legal-account-privacy-2026-08-28.html \
+                "$RUNNER_TEMP/final-account-privacy.html" \
+              && cmp web/legal-2026-08-28.css \
+                "$RUNNER_TEMP/final-account-policy.css"; then
               attested=true
               break
             fi

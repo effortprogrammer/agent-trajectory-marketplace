@@ -85,6 +85,60 @@ test("binds every public asset URL to fingerprinted paths so releases cannot reu
   )
 })
 
+test("serves immutable versioned account policy documents linked from signup", async () => {
+  const version = "2026-08-28"
+  const termsPath = `/legal/account-terms/${version}`
+  const privacyPath = `/legal/account-privacy/${version}`
+  const stylesheetPath = `/legal/assets/${version}.css`
+  const port = reservePort()
+  const server = Bun.spawn(["bun", "web/server.ts"], {
+    cwd: publicRoot,
+    env: { ...Bun.env, PORT: String(port) },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  try {
+    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+
+    const [index, terms, privacy, stylesheet] = await Promise.all([
+      fetch(`http://127.0.0.1:${port}/`),
+      fetch(`http://127.0.0.1:${port}${termsPath}`),
+      fetch(`http://127.0.0.1:${port}${privacyPath}`),
+      fetch(`http://127.0.0.1:${port}${stylesheetPath}`),
+    ])
+    const indexHtml = await index.text()
+    const termsHtml = await terms.text()
+    const privacyHtml = await privacy.text()
+
+    expect(indexHtml).toContain(`href="${termsPath}"`)
+    expect(indexHtml).toContain(`href="${privacyPath}"`)
+    for (const response of [terms, privacy, stylesheet]) {
+      expect(response.status).toBe(200)
+      expect(response.headers.get("cache-control")).toBe(
+        "public, max-age=31536000, immutable",
+      )
+    }
+    expect(terms.headers.get("content-type")).toBe("text/html; charset=utf-8")
+    expect(privacy.headers.get("content-type")).toBe("text/html; charset=utf-8")
+    expect(stylesheet.headers.get("content-type")).toBe("text/css; charset=utf-8")
+    expect(termsHtml).toContain(
+      `<meta name="atm-policy-kind" content="account-terms">`,
+    )
+    expect(termsHtml).toContain(
+      `<meta name="atm-policy-version" content="${version}">`,
+    )
+    expect(privacyHtml).toContain(
+      `<meta name="atm-policy-kind" content="account-privacy">`,
+    )
+    expect(privacyHtml).toContain(
+      `<meta name="atm-policy-version" content="${version}">`,
+    )
+  } finally {
+    server.kill()
+    await server.exited
+  }
+})
+
 test("proxies public stats for an explicitly configured local preview", async () => {
   const upstream = Bun.serve({
     fetch(request) {
@@ -171,13 +225,17 @@ test("proxies approved Registry auth requests for an explicitly configured local
         method: "POST",
       },
     )
-    const rejected = await fetch(
+    const signup = await fetch(
       `http://127.0.0.1:${port}/api/registry/v1/auth/signup`,
       {
-        body: JSON.stringify({ email: "owner@example.test" }),
+        body: JSON.stringify({ email: "owner@example.test", acceptTerms: true }),
         headers: { "content-type": "application/json" },
         method: "POST",
       },
+    )
+    const rejected = await fetch(
+      `http://127.0.0.1:${port}/api/registry/v1/auth/signup`,
+      { method: "GET" },
     )
 
     expect(response.status).toBe(200)
@@ -187,14 +245,26 @@ test("proxies approved Registry auth requests for an explicitly configured local
       expiresAt: "2030-01-01T00:00:00.000Z",
       ok: true,
     })
-    expect(received).toEqual([{
-      authorization: null,
-      body: { email: "owner@example.test" },
-      contentType: "application/json",
-      method: "POST",
-      path: "/v1/auth/login",
-    }])
+    expect(signup.status).toBe(200)
+    expect(signup.headers.get("cache-control")).toBe("no-store")
+    expect(received).toEqual([
+      {
+        authorization: null,
+        body: { email: "owner@example.test" },
+        contentType: "application/json",
+        method: "POST",
+        path: "/v1/auth/login",
+      },
+      {
+        authorization: null,
+        body: { email: "owner@example.test", acceptTerms: true },
+        contentType: "application/json",
+        method: "POST",
+        path: "/v1/auth/signup",
+      },
+    ])
     expect(rejected.status).toBe(404)
+    expect(received).toHaveLength(2)
   } finally {
     server.kill()
     await server.exited

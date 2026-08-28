@@ -12,6 +12,7 @@ const publicRoot = resolve(import.meta.dir, "../../..")
 const accessToken = "marketplace-browser-session-token"
 const accountId = "acct-0123456789abcdef"
 const challengeId = "chal-0123456789abcdef"
+const signupChallengeId = "chal-fedcba9876543210"
 const expiresAt = "2030-01-01T00:00:00.000Z"
 const sellerSessions = {
   asOf: "2026-08-20T12:00:00Z",
@@ -43,6 +44,7 @@ export type RegistryRequest = Readonly<{
 
 export interface SessionUiHarness {
   readonly appUrl: string
+  readonly holdChallenge: () => () => void
   readonly holdVerify: () => () => void
   readonly registryRequests: RegistryRequest[]
   readonly setLogoutStatus: (status: number) => void
@@ -106,6 +108,8 @@ const startRegistry = () => {
   let logoutStatus = 200
   let publicTokenTotal: number | string = "39048328"
   let verifyAccountRequired = false
+  let challengeGate: Promise<void> | undefined
+  let challengeRelease: (() => void) | undefined
   let verifyGate: Promise<void> | undefined
   let verifyRelease: (() => void) | undefined
   const server = Bun.serve({
@@ -120,7 +124,12 @@ const startRegistry = () => {
       })
       if (request.method === "OPTIONS") return json({}, 204)
       if (url.pathname === "/v1/auth/signup" || url.pathname === "/v1/auth/login") {
-        return json({ challengeId, expiresAt, ok: true })
+        if (challengeGate !== undefined) await challengeGate
+        return json({
+          challengeId: url.pathname === "/v1/auth/signup" ? signupChallengeId : challengeId,
+          expiresAt,
+          ok: true,
+        })
       }
       if (url.pathname === "/v1/auth/verify") {
         if (verifyGate !== undefined) await verifyGate
@@ -173,6 +182,18 @@ const startRegistry = () => {
   })
   return {
     requests,
+    holdChallenge: () => {
+      if (challengeGate !== undefined) throw new Error("challenge request is already held")
+      challengeGate = new Promise((resolve) => {
+        challengeRelease = resolve
+      })
+      return () => {
+        const release = challengeRelease
+        challengeGate = undefined
+        challengeRelease = undefined
+        release?.()
+      }
+    },
     holdVerify: () => {
       if (verifyGate !== undefined) throw new Error("verify request is already held")
       verifyGate = new Promise((resolve) => {
@@ -231,6 +252,7 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
   if (browser === undefined) throw new Error("Playwright Chromium did not launch")
   return {
     appUrl: `http://127.0.0.1:${port}`,
+    holdChallenge: registry.holdChallenge,
     holdVerify: registry.holdVerify,
     registryRequests: registry.requests,
     setLogoutStatus: registry.setLogoutStatus,

@@ -3,6 +3,7 @@ import {
   authEmailSchema,
   authOtpCodeSchema,
 } from "../auth/contract";
+import { accountPolicyCliNotice } from "../auth/account-policies";
 import { AuthClientError, createAuthClient } from "../auth/client";
 import { officialRegistryOrigin } from "../auth/official-origin";
 import {
@@ -148,6 +149,7 @@ export const runAuthCli = async (argumentsList: readonly string[], signal: Abort
       const challenge = command.command === "auth-signup"
         ? await client.signup({ email: email.data, acceptTerms: true })
         : await client.login({ email: email.data });
+      if (command.command === "auth-signup") process.stderr.write(accountPolicyCliNotice);
       printJson({ challengeId: challenge.challengeId, expiresAt: challenge.expiresAt, server });
       return;
     }
