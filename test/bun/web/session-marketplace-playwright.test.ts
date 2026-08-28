@@ -14,21 +14,24 @@ const mobile = { height: 844, width: 390 } as const
 let harness: SessionUiHarness | undefined
 
 const openMemberSignIn = async (page: Page): Promise<void> => {
-  if (!await page.locator("[data-auth-gate]").isVisible()) {
-    const requestAccess = page.getByTestId("request-access-button")
-    if (!await requestAccess.isVisible()) {
-      await page.locator("[data-nav-menu-toggle]").click()
-      await requestAccess.waitFor({ state: "visible" })
-    }
-    await requestAccess.click()
+  const gate = page.locator("[data-auth-gate]")
+  if (await gate.isVisible()) {
+    if (await page.locator("body").getAttribute("data-auth-state") === "login") return
+    await page.getByTestId("auth-close-button").click()
+    await gate.waitFor({ state: "hidden" })
   }
-  await page.locator("[data-auth-mode=login]").click()
+  const signIn = page.getByTestId("sign-in-button")
+  if (!await signIn.isVisible()) {
+    await page.locator("[data-nav-menu-toggle]").click()
+    await signIn.waitFor({ state: "visible" })
+  }
+  await signIn.click()
 }
 
 const authenticate = async (page: Page): Promise<void> => {
   await openMemberSignIn(page)
   const challengeRequest = page.waitForRequest((request) =>
-    new URL(request.url()).pathname === "/v1/auth/login",
+    new URL(request.url()).pathname === "/api/registry/v1/auth/login",
   )
   await page.locator("[data-auth-email]").fill("owner@example.test")
   await page.locator("[data-auth-request-submit]").click()
@@ -37,10 +40,10 @@ const authenticate = async (page: Page): Promise<void> => {
   await page.locator("[data-auth-code]").waitFor({ state: "visible" })
 
   const verifyRequest = page.waitForRequest((request) =>
-    new URL(request.url()).pathname === "/v1/auth/verify",
+    new URL(request.url()).pathname === "/api/registry/v1/auth/verify",
   )
   const statsResponse = page.waitForResponse((response) =>
-    new URL(response.url()).pathname === "/v1/marketplace/stats",
+    new URL(response.url()).pathname === "/api/registry/v1/marketplace/stats",
   )
   await page.locator("[data-auth-code]").fill("654321")
   await page.locator("[data-auth-verify-submit]").click()
@@ -160,7 +163,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     const page = await harness.newPage(desktop)
     const emptySessions = { asOf: "2026-08-20T12:00:00Z", ok: true, page: { nextCursor: null }, sessions: [] }
     const emptyEarnings = { asOf: "2026-08-20T12:00:00Z", currency: "USD", interval: "day", ok: true, openingCumulativeCredits: 0, points: [], window: { from: "2026-07-21", to: "2026-08-20" } }
-    await page.route("https://gateway.getatm.io/v1/marketplace/seller/sales/**", async (route) => {
+    await page.route("**/api/registry/v1/marketplace/seller/sales/**", async (route) => {
       const pathname = new URL(route.request().url()).pathname
       await route.fulfill({
         body: JSON.stringify(pathname.endsWith("sessions") ? emptySessions : emptyEarnings),
@@ -181,7 +184,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
   test("returns to the sign-in gate when a seller sales endpoint rejects the session", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
-    await page.route("https://gateway.getatm.io/v1/marketplace/seller/sales/sessions", async (route) => {
+    await page.route("**/api/registry/v1/marketplace/seller/sales/sessions", async (route) => {
       await route.fulfill({ body: JSON.stringify({ error: { code: "unauthorized" }, ok: false }), contentType: "application/json", status: 401 })
     })
 
@@ -245,35 +248,40 @@ describe("authenticated aggregate marketplace browser contract", () => {
     )
   })
 
-  test("separates buyer access from approval-free seller onboarding", async () => {
+  test("keeps buyer access and member sign-in as separate entry points", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
 
-    expect(await page.getByTestId("request-access-button").innerText()).toBe(
-      "Request buyer access",
-    )
-    expect(await page.getByTestId("seller-onboarding-note").innerText()).toContain(
-      "No approval required",
-    )
     await page.getByTestId("request-access-button").click()
-    expect(await page.locator("[data-auth-mode=waitlist]").innerText()).toBe(
-      "Buyer access",
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("waitlist")
+    expect(await page.locator("[data-auth-mode]").count()).toBe(0)
+    expect(await page.locator("[data-auth-accept-contact]").isVisible()).toBe(true)
+
+    await page.getByTestId("auth-close-button").click()
+    await page.getByTestId("sign-in-button").click()
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("login")
+    expect(await page.locator("[data-auth-mode]").count()).toBe(0)
+    expect(await page.locator("[data-auth-accept-contact]").isVisible()).toBe(false)
+  })
+
+  test("routes local member sign-in through the same-origin preview proxy", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+    const challengeRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname.endsWith("/v1/auth/login"),
     )
-    expect(await page.locator("[data-auth-description]").innerText()).toContain(
-      "license agent-session datasets",
-    )
-    expect(await page.locator("[data-auth-mode=login]").innerText()).toBe(
-      "Member sign in",
-    )
-    await page.locator("[data-auth-mode=login]").click()
-    expect(await page.locator("[data-auth-console-path]").innerText()).toBe(
-      "ATM / member-sign-in",
-    )
-    expect(await page.locator("[data-auth-kicker]").innerText()).toBe(
-      "Existing member",
-    )
+    await page.locator("[data-auth-email]").fill("owner@example.test")
+    await page.locator("[data-auth-request-submit]").click()
+    const challenge = await challengeRequest
+
+    expect(new URL(challenge.url()).origin).toBe(harness.appUrl)
+    expect(new URL(challenge.url()).pathname).toBe("/api/registry/v1/auth/login")
+    expect(await challenge.postDataJSON()).toEqual({ email: "owner@example.test" })
   })
 
   test("opens a dismissible auth dialog only after an explicit supply action", async () => {
@@ -337,7 +345,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     })
   })
 
-  test("posts a waitlist request, preserves its acknowledgment, and keeps member login available", async () => {
+  test("posts a waitlist request and keeps sign-in independently available", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
     await page.route("**/api/waitlist", async (route) => {
@@ -375,7 +383,8 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.reload({ waitUntil: "networkidle" })
     await page.getByTestId("request-access-button").click()
     expect(await page.locator("[data-auth-waitlist-success]").isVisible()).toBe(true)
-    await page.locator("[data-auth-mode=login]").click()
+    await page.getByTestId("auth-close-button").click()
+    await page.getByTestId("sign-in-button").click()
     expect(await page.locator("[data-auth-request-form]").isVisible()).toBe(true)
     expect(await page.locator("[data-auth-accept-contact]").isVisible()).toBe(false)
   })
@@ -384,7 +393,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
     let statsAttempts = 0
-    await page.route("https://gateway.getatm.io/v1/marketplace/stats", async (route) => {
+    await page.route("**/api/registry/v1/marketplace/stats", async (route) => {
       statsAttempts += 1
       if (statsAttempts === 1) {
         await route.fulfill({
@@ -423,10 +432,10 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
     const logoutRequest = page.waitForRequest((request) =>
-      new URL(request.url()).pathname === "/v1/auth/logout",
+      new URL(request.url()).pathname === "/api/registry/v1/auth/logout",
     )
     const logoutResponse = page.waitForResponse((response) =>
-      new URL(response.url()).pathname === "/v1/auth/logout",
+      new URL(response.url()).pathname === "/api/registry/v1/auth/logout",
     )
     await page.getByTestId("auth-logout-button").click()
     const logout = await logoutRequest
@@ -446,7 +455,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
     const logoutResponse = page.waitForResponse((response) =>
-      new URL(response.url()).pathname === "/v1/auth/logout",
+      new URL(response.url()).pathname === "/api/registry/v1/auth/logout",
     )
     await page.getByTestId("auth-logout-button").click()
     expect((await logoutResponse).status()).toBe(503)
@@ -486,7 +495,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
         redirectedRequests.push(request.url())
       }
     })
-    await page.route("https://gateway.getatm.io/v1/auth/login", async (route) => {
+    await page.route("**/api/registry/v1/auth/login", async (route) => {
       await route.fulfill({
         headers: { location: "https://evil.example/otp" },
         status: 307,
@@ -518,10 +527,10 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.locator("[data-auth-code]").waitFor({ state: "visible" })
     await page.locator("[data-auth-code]").fill("654321")
     const verifyRequest = page.waitForRequest((request) =>
-      new URL(request.url()).pathname === "/v1/auth/verify",
+      new URL(request.url()).pathname === "/api/registry/v1/auth/verify",
     )
     const verifyResponse = page.waitForResponse((response) =>
-      new URL(response.url()).pathname === "/v1/auth/verify",
+      new URL(response.url()).pathname === "/api/registry/v1/auth/verify",
     )
     await page.locator("[data-auth-verify-submit]").click()
     await verifyRequest
@@ -569,13 +578,15 @@ describe("authenticated aggregate marketplace browser contract", () => {
     const menuButton = page.locator("[data-nav-menu-toggle]")
     const navLinks = page.locator(".nav-links")
     const requestAccess = page.getByTestId("request-access-button")
+    const signIn = page.getByTestId("sign-in-button")
     expect(await menuButton.isVisible()).toBe(true)
     expect(await menuButton.getAttribute("aria-expanded")).toBe("false")
 
     const navLinksVisible = navLinks.waitFor({ state: "visible" })
     const requestAccessVisible = requestAccess.waitFor({ state: "visible" })
+    const signInVisible = signIn.waitFor({ state: "visible" })
     await menuButton.click()
-    await Promise.all([navLinksVisible, requestAccessVisible])
+    await Promise.all([navLinksVisible, requestAccessVisible, signInVisible])
     expect(await menuButton.getAttribute("aria-expanded")).toBe("true")
     expect(await page.locator("body").evaluate((element) =>
       element.classList.contains("is-nav-open"),
