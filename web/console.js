@@ -66,7 +66,12 @@ const renderSessions = (root, sessions) => {
   }
 };
 
-export const mountSellerConsole = async ({ requestJson, session, showLogin }) => {
+export const mountSellerConsole = async ({
+  isCurrent,
+  requestJson,
+  session,
+  showLogin,
+}) => {
   const view = document.querySelector("[data-console-view]");
   if (!view) return;
   const announcement = view.querySelector("[data-console-announcement]");
@@ -86,12 +91,14 @@ export const mountSellerConsole = async ({ requestJson, session, showLogin }) =>
       requestJson("/v1/marketplace/seller/sales/sessions", { headers }),
       requestJson(`/v1/marketplace/seller/sales/earnings?from=${day(from)}&to=${day(today)}&interval=day`, { headers }),
     ]);
+    if (!isCurrent()) return;
     if (me?.ok !== true || typeof me.account?.accountId !== "string") throw new TypeError("Invalid Registry account response");
     const validatedSessions = parseSessionsResponse(sessionsBody); const earnings = parseEarningsResponse(earningsBody);
     seller.textContent = me.account.accountId; total.textContent = `${formatCredits(earnings.points.at(-1)?.cumulativeNetCredits ?? earnings.openingCumulativeCredits)} cumulative`;
     renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
     state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;
   } catch (error) {
+    if (!isCurrent()) return;
     if (error?.status === 401) { showLogin(); return; }
     state.hidden = false; state.dataset.state = "error"; state.textContent = "Seller sales are unavailable. Try again shortly."; announcement.textContent = "Seller console could not load.";
   }

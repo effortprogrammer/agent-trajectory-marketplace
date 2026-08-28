@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, setDefaultTimeout, test } from "bun:test"
-import type { Page } from "playwright"
+import type { Page, Route } from "playwright"
 import {
   closeSessionUiBrowser,
   startSessionUiHarness,
@@ -156,6 +156,157 @@ describe("authenticated aggregate marketplace browser contract", () => {
       expect.objectContaining({ authorization: "Bearer marketplace-browser-session-token", body: undefined, method: "GET", path: "/v1/marketplace/seller/sales/sessions" }),
     ]))
     expect(harness.registryRequests.filter((request) => request.path.endsWith("/sales/ledger"))).toEqual([])
+  })
+
+  test("ignores seller console responses from a previous account session", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    const firstToken = "marketplace-browser-session-token"
+    const secondToken = "second-marketplace-session-token"
+    const firstAccount = "acct-aaaaaaaaaaaaaaaa"
+    const secondAccount = "acct-bbbbbbbbbbbbbbbb"
+    const emptySessions = {
+      asOf: "2026-08-20T12:00:00Z",
+      ok: true,
+      page: { nextCursor: null },
+      sessions: [],
+    }
+    const emptyEarnings = {
+      asOf: "2026-08-20T12:00:00Z",
+      currency: "USD",
+      interval: "day",
+      ok: true,
+      openingCumulativeCredits: 0,
+      points: [],
+      window: { from: "2026-07-21", to: "2026-08-20" },
+    }
+    let releaseFirstRequests = (): void => {
+      throw new Error("first seller requests were not held")
+    }
+    const firstRequestGate = new Promise<void>((resolve) => {
+      releaseFirstRequests = resolve
+    })
+    let verificationCount = 0
+
+    await page.route("**/api/registry/v1/auth/verify", async (route) => {
+      verificationCount += 1
+      const second = verificationCount === 2
+      await route.fulfill({
+        body: JSON.stringify({
+          accessToken: second ? secondToken : firstToken,
+          accountId: second ? secondAccount : firstAccount,
+          expiresAt: "2099-08-20T12:00:00Z",
+          ok: true,
+          tokenType: "Bearer",
+        }),
+        contentType: "application/json",
+        status: 200,
+      })
+    })
+    await page.route("**/api/registry/v1/marketplace/stats", async (route) => {
+      await route.fulfill({
+        body: JSON.stringify({
+          activeRuntimes: 1,
+          paidOutCredits: null,
+          totalSessions: 2,
+          tradeableTokens: 940_635,
+        }),
+        contentType: "application/json",
+        status: 200,
+      })
+    })
+    const fulfillConsoleRequest = async (route: Route): Promise<void> => {
+      const request = route.request()
+      const pathname = new URL(request.url()).pathname
+      const first = request.headers().authorization === `Bearer ${firstToken}`
+      if (first) await firstRequestGate
+      const accountId = first ? firstAccount : secondAccount
+      const body = pathname.endsWith("/auth/me")
+        ? { account: { accountId, email: `${accountId}@example.test` }, ok: true }
+        : pathname.endsWith("/sessions") ? emptySessions : emptyEarnings
+      await route.fulfill({
+        body: JSON.stringify(body),
+        contentType: "application/json",
+        status: 200,
+      })
+    }
+    await page.route("**/api/registry/v1/auth/me", fulfillConsoleRequest)
+    await page.route(
+      "**/api/registry/v1/marketplace/seller/sales/**",
+      fulfillConsoleRequest,
+    )
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    const firstRequestsStarted = Promise.all([
+      page.waitForRequest((request) =>
+        request.headers().authorization === `Bearer ${firstToken}`
+        && new URL(request.url()).pathname.endsWith("/sales/sessions"),
+      ),
+      page.waitForRequest((request) =>
+        request.headers().authorization === `Bearer ${firstToken}`
+        && new URL(request.url()).pathname.endsWith("/sales/earnings"),
+      ),
+    ])
+    await page.getByTestId("seller-console-link").click()
+    await firstRequestsStarted
+    const logoutResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith("/auth/logout"),
+    )
+    await page.getByTestId("auth-logout-button").evaluate((element) => element.click())
+    await logoutResponse
+    await page.locator("[data-auth-gate]").waitFor({ state: "visible" })
+    await page.locator("[data-auth-email]").fill("second@example.test")
+    await page.locator("[data-auth-request-submit]").click()
+    await page.locator("[data-auth-code]").waitFor({ state: "visible" })
+    await page.locator("[data-auth-code]").fill("654321")
+    const secondConsoleRendered = page.locator("[data-console-seller]").evaluate(
+      (element, expected) => new Promise<void>((resolve) => {
+        if (element.textContent === expected) {
+          resolve()
+          return
+        }
+        const MutationObserverConstructor =
+          element.ownerDocument.defaultView?.MutationObserver
+        if (MutationObserverConstructor === undefined) {
+          throw new Error("MutationObserver is unavailable")
+        }
+        const observer = new MutationObserverConstructor(() => {
+          if (element.textContent !== expected) return
+          observer.disconnect()
+          resolve()
+        })
+        observer.observe(element, { childList: true, subtree: true })
+      }),
+      secondAccount,
+    )
+    await page.locator("[data-auth-verify-submit]").click()
+    await secondConsoleRendered
+
+    const staleResponses = Promise.all([
+      page.waitForResponse((response) =>
+        response.request().headers().authorization === `Bearer ${firstToken}`
+        && new URL(response.url()).pathname.endsWith("/auth/me"),
+      ),
+      page.waitForResponse((response) =>
+        response.request().headers().authorization === `Bearer ${firstToken}`
+        && new URL(response.url()).pathname.endsWith("/sales/sessions"),
+      ),
+      page.waitForResponse((response) =>
+        response.request().headers().authorization === `Bearer ${firstToken}`
+        && new URL(response.url()).pathname.endsWith("/sales/earnings"),
+      ),
+    ])
+    releaseFirstRequests()
+    await staleResponses
+
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe(
+      "authenticated",
+    )
+    expect(await page.locator("[data-console-seller]").innerText()).toBe(
+      secondAccount,
+    )
+    expect(await page.locator("[data-console-view]:visible").count()).toBe(1)
   })
 
   test("shows empty seller sales states when the account has no sales activity", async () => {

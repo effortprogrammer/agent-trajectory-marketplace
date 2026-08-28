@@ -734,6 +734,10 @@ button {
   cursor: pointer;
 }
 
+.auth-gate .text-button {
+  color: #746f68;
+}
+
 .auth-form {
   display: grid;
   gap: var(--space-4);
@@ -781,8 +785,10 @@ button {
 }
 
 .auth-terms a {
-  color: var(--text-primary);
+  color: #547464;
   text-decoration-color: var(--accent);
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.08em;
   text-underline-offset: 0.18em;
 }
 
@@ -792,7 +798,7 @@ button {
 
 .auth-terms a:focus-visible {
   border-radius: 0.15rem;
-  outline: 0.16rem solid var(--accent);
+  outline: 0.16rem solid #547464;
   outline-offset: 0.14rem;
 }
 
@@ -2554,6 +2560,10 @@ body {
 
   .chapter-heading {
     gap: var(--space-6);
+  }
+
+  .chapter-heading h2 {
+    font-size: 2rem;
   }
 
   .supply-locked {

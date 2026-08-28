@@ -1,4 +1,4 @@
-import { mountSellerConsole } from "./console.0058fc69cdec16891c61cee7689ffccdcbf9d9560910d5eec55921d5290e8972.js";
+import { mountSellerConsole } from "./console.879a0bc7c9072b3a8a92d7a4636d83c2f94bcbc9cb83a5aa080884732706d1aa.js";
 
 const localPreview = location.hostname === "127.0.0.1" || location.hostname === "localhost" ||
   location.hostname === "[::1]";
@@ -194,6 +194,7 @@ let expiryTimer;
 let dataRequest;
 let dataRequestVersion = 0;
 let authRequestVersion = 0;
+let sellerConsoleRequestVersion = 0;
 let activeSession;
 let authTrigger;
 let restoreAuthTrigger = false;
@@ -475,16 +476,24 @@ const requestJson = async (endpoint, options = {}) => {
 
 const showConsole = async (session = activeSession) => {
   if (session === undefined) return;
+  const requestVersion = ++sellerConsoleRequestVersion;
+  const isCurrent = () => (
+    sellerConsoleRequestVersion === requestVersion
+    && activeSession === session
+    && window.location.hash === "#console"
+  );
   document.body.classList.add("is-console-view");
   consoleView.hidden = false;
   try {
-    if (activeSession !== session || window.location.hash !== "#console") return;
+    if (!isCurrent()) return;
     await mountSellerConsole({
+      isCurrent,
       requestJson,
       session,
       showLogin: () => showSignIn("Your session is no longer valid. Sign in to continue."),
     });
   } catch {
+    if (!isCurrent()) return;
     const state = consoleView.querySelector("[data-console-state]");
     if (state) {
       state.hidden = false;
@@ -495,6 +504,7 @@ const showConsole = async (session = activeSession) => {
 };
 
 const closeConsole = () => {
+  sellerConsoleRequestVersion += 1;
   document.body.classList.remove("is-console-view");
   consoleView.hidden = true;
 };
