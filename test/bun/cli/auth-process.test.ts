@@ -256,6 +256,37 @@ describe("auth real CLI process boundary", () => {
     ]);
   });
 
+  test("reports a missing member account without writing a session", async () => {
+    const root = fixtureRoot();
+    const requests: CapturedRequest[] = [];
+    const server = Bun.serve({ port: 0, async fetch(request) {
+      const url = new URL(request.url);
+      requests.push({ body: await parseBody(request), method: request.method, path: url.pathname });
+      return json({
+        ok: false,
+        error: { code: "account_required", message: "no member account exists for this email" },
+      }, 401);
+    } });
+    servers.push(server);
+    const origin = `http://127.0.0.1:${server.port}`;
+
+    const result = await runCli(
+      root,
+      ["auth", "verify", "--server", origin, "--challenge", challengeId, "--code-stdin"],
+      "654321\n",
+    );
+
+    expect(result).toEqual({
+      exitCode: 1,
+      stderr: `${JSON.stringify({ error: "account_required" })}\n`,
+      stdout: "",
+    });
+    expect(existsSync(storePath(root))).toBe(false);
+    expect(requests).toEqual([
+      { body: { challengeId, code: "654321" }, method: "POST", path: "/v1/auth/verify" },
+    ]);
+  });
+
   test("runs status and remote-first logout with a stored session", async () => {
     const root = fixtureRoot();
     const requests: CapturedRequest[] = [];

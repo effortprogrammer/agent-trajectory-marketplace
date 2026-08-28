@@ -137,8 +137,9 @@ describe("bounded passwordless auth client", () => {
   test.each([
     [401, "unauthorized", { ok: false, error: { code: "anything", message: "ignore me" } }],
     [429, "rate_limited", { ok: false, error: { code: "anything", message: "ignore me" } }],
-    [400, "challenge_expired", { ok: false, error: { code: "challenge_expired", message: "expired" } }],
-    [400, "challenge_invalid", { ok: false, error: { code: "challenge_invalid", message: "invalid" } }],
+    [401, "account_required", { ok: false, error: { code: "account_required", message: "account required" } }],
+    [401, "challenge_expired", { ok: false, error: { code: "challenge_expired", message: "expired" } }],
+    [401, "challenge_invalid", { ok: false, error: { code: "challenge_invalid", message: "invalid" } }],
   ] as const)("maps HTTP %i responses to %s", async (status, expectedCode, body) => {
     // Given: a real auth endpoint returning one mapped failure.
     let hits = 0

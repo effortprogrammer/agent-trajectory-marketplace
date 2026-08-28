@@ -27,6 +27,7 @@ export const authClientErrorCodes = [
   "invalid_auth_response",
   "unauthorized",
   "rate_limited",
+  "account_required",
   "challenge_expired",
   "challenge_invalid",
 ] as const
@@ -106,14 +107,17 @@ const parseJson = (body: Uint8Array, status: number): unknown => {
 const mappedError = (status: number, body: unknown): AuthClientError => {
   const parsed = authErrorResponseSchema.safeParse(body)
   if (!parsed.success) return new AuthClientError("invalid_auth_response", status)
-  if (status === 401) return new AuthClientError("unauthorized", status)
-  if (status === 429) return new AuthClientError("rate_limited", status)
+  if (parsed.data.error.code === "account_required") {
+    return new AuthClientError("account_required", status)
+  }
   if (parsed.data.error.code === "challenge_expired") {
     return new AuthClientError("challenge_expired", status)
   }
   if (parsed.data.error.code === "challenge_invalid") {
     return new AuthClientError("challenge_invalid", status)
   }
+  if (status === 401) return new AuthClientError("unauthorized", status)
+  if (status === 429) return new AuthClientError("rate_limited", status)
   return new AuthClientError("invalid_auth_response", status)
 }
 

@@ -534,6 +534,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect((await verifyResponse).status()).toBe(401)
     expect(await page.locator("[data-auth-feedback]").getAttribute("data-error-code"))
       .toBe("account_required")
+    expect((await page.locator("[data-auth-feedback]").innerText()).length).toBeGreaterThan(0)
     expect(await page.locator("[data-auth-code]").isVisible()).toBe(true)
   })
 
