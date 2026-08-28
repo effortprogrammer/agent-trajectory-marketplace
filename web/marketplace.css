@@ -734,6 +734,10 @@ button {
   cursor: pointer;
 }
 
+.auth-gate .text-button {
+  color: #746f68;
+}
+
 .auth-form {
   display: grid;
   gap: var(--space-4);
@@ -778,6 +782,24 @@ button {
   flex: 0 0 auto;
   margin-top: 0;
   accent-color: var(--accent);
+}
+
+.auth-terms a {
+  color: #547464;
+  text-decoration-color: var(--accent);
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.18em;
+}
+
+.auth-terms a:hover {
+  color: var(--accent-deep);
+}
+
+.auth-terms a:focus-visible {
+  border-radius: 0.15rem;
+  outline: 0.16rem solid #547464;
+  outline-offset: 0.14rem;
 }
 
 .auth-form .signal-button {
@@ -1805,7 +1827,7 @@ body {
 }
 
 .hero-copy h1 em {
-  color: var(--accent);
+  color: var(--accent-deep);
   font-style: normal;
 }
 
@@ -2076,7 +2098,7 @@ body {
 .chapter-heading h2 em,
 .process-intro h2 em,
 .thesis-stage h2 em {
-  color: var(--accent);
+  color: var(--accent-deep);
   font-style: normal;
 }
 
@@ -2248,7 +2270,7 @@ body {
 }
 
 .auth-gate h1 em {
-  color: var(--accent);
+  color: var(--accent-deep);
   font-style: normal;
 }
 
@@ -2538,6 +2560,10 @@ body {
 
   .chapter-heading {
     gap: var(--space-6);
+  }
+
+  .chapter-heading h2 {
+    font-size: 2rem;
   }
 
   .supply-locked {

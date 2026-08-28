@@ -209,7 +209,16 @@ describe("auth real CLI process boundary", () => {
     ];
 
     expect(results.map(({ exitCode }) => exitCode)).toEqual([0, 0]);
-    expect(results.map(({ stderr }) => stderr)).toEqual(["", ""]);
+    expect(results.map(({ stderr }) => stderr)).toEqual([
+      [
+        "ATM Account Terms (2026-08-28):",
+        "https://getatm.io/legal/account-terms/2026-08-28",
+        "ATM Account Privacy Notice (2026-08-28):",
+        "https://getatm.io/legal/account-privacy/2026-08-28",
+        "",
+      ].join("\n"),
+      "",
+    ]);
     const combinedOutput = results.map(({ stdout }) => stdout).join("");
     expect(combinedOutput).not.toContain(token);
     expect(results.map(({ stdout }) => JSON.parse(stdout))).toEqual([
@@ -345,15 +354,28 @@ describe("auth real CLI process boundary", () => {
     const root = fixtureRoot();
     const origin = hostileAuthOrigin();
     const cases = [
+      await runCli(root, [
+        "auth",
+        "signup",
+        "--server",
+        origin,
+        "--email",
+        "redirect@example.test",
+        "--accept-terms",
+      ]),
       await runCli(root, ["auth", "login", "--server", origin, "--email", "redirect@example.test"]),
       await runCli(root, ["auth", "login", "--server", origin, "--email", "oversize@example.test"]),
       await runCli(root, ["auth", "login", "--server", origin, "--email", "limited@example.test"]),
       await runCli(root, ["auth", "login", "--server", origin, "--email", "malformed@example.test"]),
     ];
-    expect(cases.map(({ exitCode }) => exitCode)).toEqual([1, 1, 1, 1]);
-    expect(cases.map(({ stdout }) => stdout)).toEqual(["", "", "", ""]);
+    expect(cases.map(({ exitCode }) => exitCode)).toEqual([1, 1, 1, 1, 1]);
+    expect(cases.map(({ stdout }) => stdout)).toEqual(["", "", "", "", ""]);
     expect(cases.map(({ stderr }) => stderr)).toEqual([
-      "auth_redirect_rejected", "invalid_auth_response", "rate_limited", "invalid_auth_response",
+      "auth_redirect_rejected",
+      "auth_redirect_rejected",
+      "invalid_auth_response",
+      "rate_limited",
+      "invalid_auth_response",
     ].map((error) => `${JSON.stringify({ error })}\n`));
     expect(cases.map(({ stderr }) => stderr).join("")).not.toContain("secret detail");
   });

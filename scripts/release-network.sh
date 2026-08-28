@@ -9,6 +9,42 @@ atm_release_curl() {
   command curl --connect-timeout 3 --max-time 8 "$@"
 }
 
+atm_release_require_registry_policy_ready() (
+  set -euo pipefail
+  test "$#" -eq 3 || return 1
+
+  local origin="$1"
+  local terms_version="$2"
+  local privacy_version="$3"
+  test "$origin" = "https://gateway.getatm.io" || return 1
+  [[ "$terms_version" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+  [[ "$privacy_version" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+
+  local headers body
+  headers="$(mktemp)" || return 1
+  body="$(mktemp)" || return 1
+  trap 'rm -f "$headers" "$body"' EXIT
+
+  atm_release_curl --fail --silent --show-error \
+    --header 'cache-control: no-cache' \
+    --dump-header "$headers" \
+    "$origin/health" \
+    --output "$body" || return 1
+  jq -e '.status == "ok" and (keys == ["status"])' "$body" >/dev/null \
+    || return 1
+  tr -d '\r' <"$headers" \
+    | grep --ignore-case --fixed-strings --line-regexp \
+      "cache-control: no-store" >/dev/null \
+    || return 1
+  tr -d '\r' <"$headers" \
+    | grep --ignore-case --fixed-strings --line-regexp \
+      "x-atm-account-terms-version: $terms_version" >/dev/null \
+    || return 1
+  tr -d '\r' <"$headers" \
+    | grep --ignore-case --fixed-strings --line-regexp \
+      "x-atm-account-privacy-version: $privacy_version" >/dev/null
+)
+
 atm_release_gh_api() {
   command timeout --signal=TERM 20s gh api "$@"
 }

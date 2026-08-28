@@ -1,4 +1,4 @@
-import { mountSellerConsole } from "./console.0058fc69cdec16891c61cee7689ffccdcbf9d9560910d5eec55921d5290e8972.js";
+import { mountSellerConsole } from "./console.d07324de468c7305fada99fa834f151224fdf5ae4d5f4c7aeda3179d2738d751.js";
 
 const localPreview = location.hostname === "127.0.0.1" || location.hostname === "localhost" ||
   location.hostname === "[::1]";
@@ -162,6 +162,10 @@ const authEmail = document.querySelector("[data-auth-email]");
 const authCode = document.querySelector("[data-auth-code]");
 const authContactConsent = document.querySelector("[data-auth-contact-consent]");
 const authAcceptContact = document.querySelector("[data-auth-accept-contact]");
+const authSignupTerms = document.querySelector("[data-auth-signup-terms]");
+const authAcceptTerms = document.querySelector("[data-auth-accept-terms]");
+const authModeSignup = document.querySelector("[data-auth-mode-signup]");
+const authModeLogin = document.querySelector("[data-auth-mode-login]");
 const authWaitlistSuccess = document.querySelector("[data-auth-waitlist-success]");
 const authFeedback = document.querySelector("[data-auth-feedback]");
 const authChallengeEmail = document.querySelector("[data-auth-challenge-email]");
@@ -190,6 +194,7 @@ let expiryTimer;
 let dataRequest;
 let dataRequestVersion = 0;
 let authRequestVersion = 0;
+let sellerConsoleRequestVersion = 0;
 let activeSession;
 let authTrigger;
 let restoreAuthTrigger = false;
@@ -275,8 +280,15 @@ const rememberWaitlistAcknowledgment = () => {
   }
 };
 
+const invalidateAuthRequest = () => {
+  authRequestVersion += 1;
+  authRequestForm.querySelector("button[type=submit]").disabled = false;
+  authVerifyForm.querySelector("button[type=submit]").disabled = false;
+};
+
 const closeAuthDialog = (restoreFocus = true) => {
   restoreAuthTrigger = restoreFocus;
+  if (restoreFocus) invalidateAuthRequest();
   if (authGate.open) {
     authGate.close();
     return;
@@ -400,22 +412,35 @@ const setAuthMode = (mode) => {
     authRequestVersion += 1;
     challenge = undefined;
   }
+  if (mode === "login" || mode === "signup") {
+    authEmail.value = authEmail.value.trim().toLowerCase();
+  }
   authMode = mode;
   document.body.dataset.authState = mode;
   authRequestForm.hidden = false;
   authVerifyForm.hidden = true;
   authWaitlistSuccess.hidden = true;
   const isWaitlist = mode === "waitlist";
+  const isSignup = mode === "signup";
   authContactConsent.hidden = !isWaitlist;
   authAcceptContact.required = isWaitlist;
-  authConsolePath.textContent = isWaitlist ? "ATM / buyer-access" : "ATM / member-sign-in";
-  authKicker.textContent = isWaitlist ? "Buyer access" : "Existing member";
-  authTitlePrefix.textContent = isWaitlist ? "Request" : "Member sign in to";
-  authTitleAccent.textContent = isWaitlist ? "buyer access." : "live supply.";
+  authSignupTerms.hidden = !isSignup;
+  authAcceptTerms.required = isSignup;
+  if (isSignup) authAcceptTerms.checked = false;
+  authModeSignup.hidden = mode !== "login";
+  authModeLogin.hidden = !isSignup;
+  authConsolePath.textContent = isWaitlist
+    ? "ATM / buyer-access"
+    : isSignup ? "ATM / member-sign-up" : "ATM / member-sign-in";
+  authKicker.textContent = isWaitlist ? "Buyer access" : isSignup ? "New member" : "Existing member";
+  authTitlePrefix.textContent = isWaitlist ? "Request" : isSignup ? "Create your" : "Member sign in to";
+  authTitleAccent.textContent = isWaitlist ? "buyer access." : isSignup ? "ATM account." : "live supply.";
   authDescription.textContent = isWaitlist
     ? "For teams looking to license agent-session datasets. We will only contact you about this buyer access request."
-    : "We will email a six-digit code. No password and no browser-stored session.";
-  authRequestLabel.textContent = isWaitlist ? "Request buyer access" : "Send one-time code";
+    : isSignup
+      ? "Enter your email to receive a six-digit code. No password and no browser-stored session."
+      : "We will email a six-digit code. No password and no browser-stored session.";
+  authRequestLabel.textContent = isWaitlist ? "Request buyer access" : isSignup ? "Create account" : "Send one-time code";
   authRequestForm.querySelector("button[type=submit]").disabled = false;
   if (isWaitlist && hasWaitlistAcknowledgment()) {
     authRequestForm.hidden = true;
@@ -451,16 +476,24 @@ const requestJson = async (endpoint, options = {}) => {
 
 const showConsole = async (session = activeSession) => {
   if (session === undefined) return;
+  const requestVersion = ++sellerConsoleRequestVersion;
+  const isCurrent = () => (
+    sellerConsoleRequestVersion === requestVersion
+    && activeSession === session
+    && window.location.hash === "#console"
+  );
   document.body.classList.add("is-console-view");
   consoleView.hidden = false;
   try {
-    if (activeSession !== session || window.location.hash !== "#console") return;
+    if (!isCurrent()) return;
     await mountSellerConsole({
+      isCurrent,
       requestJson,
       session,
       showLogin: () => showSignIn("Your session is no longer valid. Sign in to continue."),
     });
   } catch {
+    if (!isCurrent()) return;
     const state = consoleView.querySelector("[data-console-state]");
     if (state) {
       state.hidden = false;
@@ -471,6 +504,7 @@ const showConsole = async (session = activeSession) => {
 };
 
 const closeConsole = () => {
+  sellerConsoleRequestVersion += 1;
   document.body.classList.remove("is-console-view");
   consoleView.hidden = true;
 };
@@ -535,16 +569,21 @@ const requestChallenge = async (event) => {
   const requestVersion = ++authRequestVersion;
   const email = authEmail.value.trim().toLowerCase();
   if (email.length > 320 || !validEmail(email)) {
-    setFeedback("Enter a valid email address.");
+    setFeedback("Enter a valid email address.", "invalid_email");
     authEmail.focus();
+    return;
+  }
+  if (authMode === "signup" && !authAcceptTerms.checked) {
+    setFeedback("Accept the terms to create an account.", "terms_required");
+    authAcceptTerms.focus();
     return;
   }
   const submit = authRequestForm.querySelector("button[type=submit]");
   submit.disabled = true;
   setFeedback("");
   try {
-    const body = await requestJson("/v1/auth/login", {
-      body: JSON.stringify({ email }),
+    const body = await requestJson(authMode === "signup" ? "/v1/auth/signup" : "/v1/auth/login", {
+      body: JSON.stringify(authMode === "signup" ? { email, acceptTerms: true } : { email }),
       headers: { "content-type": "application/json" },
       method: "POST",
     });
@@ -613,7 +652,7 @@ const verifyChallenge = async (event) => {
     if (requestVersion === authRequestVersion) {
       if (error instanceof Error && error.code === "account_required") {
         setFeedback(
-          "No member account exists for this email. Request buyer access or use your member email.",
+          "No member account exists for this email. Sign up to create one, request buyer access, or use your member email.",
           "account_required",
         );
       } else {
@@ -731,6 +770,14 @@ document.querySelector("[data-auth-restart]").addEventListener("click", () => {
   setFeedback("");
   authEmail.focus();
 });
+authModeSignup.addEventListener("click", () => {
+  setAuthMode("signup");
+  authEmail.focus();
+});
+authModeLogin.addEventListener("click", () => {
+  setAuthMode("login");
+  authEmail.focus();
+});
 for (const button of authOpenButtons) {
   button.addEventListener("click", () => {
     closeNavigation();
@@ -746,11 +793,32 @@ for (const button of authLoginButtons) {
   });
 }
 authCloseButton.addEventListener("click", () => closeAuthDialog());
+authGate.addEventListener("keydown", (event) => {
+  if (event.key !== "Tab") return;
+  const focusable = [...authGate.querySelectorAll(
+    'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])',
+  )].filter((element) =>
+    !element.hasAttribute("disabled")
+    && !element.closest("[hidden]")
+    && element.getClientRects().length > 0,
+  );
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (!first || !last) return;
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
 authGate.addEventListener("click", (event) => {
   if (event.target === authGate) closeAuthDialog();
 });
 authGate.addEventListener("cancel", () => {
   restoreAuthTrigger = true;
+  invalidateAuthRequest();
 });
 authGate.addEventListener("close", () => {
   document.body.classList.remove("is-auth-open");

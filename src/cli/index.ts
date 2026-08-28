@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import packageJson from "../../package.json";
+import { accountPolicies } from "@/auth/account-policies";
 import {
   captureCollectorError,
   captureCollectorInstalled,
@@ -34,7 +35,11 @@ Commands:
   doctor
   update
 
-Run a command with --help for command-specific usage.`;
+Run a command with --help for command-specific usage.
+
+Account signup policies:
+  ${accountPolicies.terms.url}
+  ${accountPolicies.privacy.url}`;
 
 const doctorHelp = `Usage: trajectory doctor
 

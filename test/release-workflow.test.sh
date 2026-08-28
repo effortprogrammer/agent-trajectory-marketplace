@@ -99,6 +99,38 @@ atm_release_require_attested true "unexpected failure" \
 if atm_release_require_attested false "expected exhaustion" >/dev/null 2>&1; then
   fail "release attestation exhaustion is not fatal"
 fi
+READY_TERMS_VERSION=2026-08-28
+READY_PRIVACY_VERSION=2026-08-28
+atm_release_curl() {
+  local headers=""
+  local body=""
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --dump-header)
+        headers="$2"
+        shift 2
+        ;;
+      --output)
+        body="$2"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  printf 'HTTP/2 200\r\ncache-control: no-store\r\nx-atm-account-terms-version: %s\r\nx-atm-account-privacy-version: %s\r\n\r\n' \
+    "$READY_TERMS_VERSION" "$READY_PRIVACY_VERSION" >"$headers"
+  printf '%s\n' '{"status":"ok"}' >"$body"
+}
+atm_release_require_registry_policy_ready \
+  https://gateway.getatm.io 2026-08-28 2026-08-28 \
+  || fail "matching Registry policy readiness is rejected"
+READY_PRIVACY_VERSION=legacy-unversioned
+if atm_release_require_registry_policy_ready \
+    https://gateway.getatm.io 2026-08-28 2026-08-28; then
+  fail "mismatched Registry privacy readiness is accepted"
+fi
 jq -e '
   .projectId == "ac736878-3095-4c1d-b8c4-e0a184c06ece" and
   .staging.environment == "staging" and
@@ -124,6 +156,16 @@ grep -Fq 'group: marketplace-production-release' "$WORKFLOW" || fail "production
 grep -Fq 'cancel-in-progress: false' "$WORKFLOW" || fail "a newer release can cancel an active production deployment"
 grep -Fq 'timeout-minutes: 120' "$WORKFLOW" || fail "release timeout cannot cover deploy, attestation, and rollback bounds"
 grep -Fq 'source scripts/release-network.sh' "$WORKFLOW" || fail "release workflow does not load bounded network helpers"
+grep -Fq 'atm_release_require_registry_policy_ready' "$RELEASE_NETWORK" \
+  || fail "release helpers do not verify Registry account policy readiness"
+grep -Fq 'x-atm-account-terms-version:' "$RELEASE_NETWORK" \
+  || fail "Registry readiness omits the account terms version"
+grep -Fq 'x-atm-account-privacy-version:' "$RELEASE_NETWORK" \
+  || fail "Registry readiness omits the account privacy version"
+grep -Fq 'atm_release_require_registry_policy_ready \' "$WORKFLOW" \
+  || fail "release does not require Registry account policy readiness"
+grep -Fq 'https://gateway.getatm.io 2026-08-28 2026-08-28' "$WORKFLOW" \
+  || fail "release is not bound to the required Registry policy versions"
 if grep -Eq '(^|[[:space:]])(curl|gh api|gh release create|bun run wrangler deploy|git fetch)([[:space:]]|$)' "$WORKFLOW"; then
   fail "release workflow contains an unbounded external command"
 fi
@@ -164,6 +206,7 @@ grep -Fq 'for attempt in $(seq 1 24)' "$WORKFLOW" || fail "production attestatio
 grep -Fq 'for attempt in $(seq 1 18)' "$WORKFLOW" || fail "rollback attestation wait is not bounded"
 grep -Fq 'for attempt in $(seq 1 6)' "$WORKFLOW" || fail "post-Worker attestation wait is not bounded"
 validation_line="$(grep -nF 'Validate stable protected tag' "$WORKFLOW" | cut -d: -f1)"
+registry_line="$(grep -nF 'Require Registry account policy readiness' "$WORKFLOW" | cut -d: -f1)"
 build_line="$(grep -nF 'Build source archive and bound manifest' "$WORKFLOW" | cut -d: -f1)"
 promotion_line="$(grep -nF 'Promote protected tag to production branch' "$WORKFLOW" | cut -d: -f1)"
 deployment_line="$(grep -nF 'Deploy protected tag to Railway production' "$WORKFLOW" | cut -d: -f1)"
@@ -171,9 +214,10 @@ attestation_line="$(grep -nF 'Attest tagged Marketplace production bytes' "$WORK
 worker_line="$(grep -nF 'Deploy and attest Marketplace apex Worker revision' "$WORKFLOW" | cut -d: -f1)"
 post_worker_line="$(grep -nF 'Re-attest Marketplace production after Worker deployment' "$WORKFLOW" | cut -d: -f1)"
 release_line="$(grep -nF 'Create immutable release assets' "$WORKFLOW" | cut -d: -f1)"
-[[ -n "$validation_line" && -n "$build_line" && -n "$promotion_line" && -n "$deployment_line" && -n "$attestation_line" \
+[[ -n "$validation_line" && -n "$registry_line" && -n "$build_line" && -n "$promotion_line" && -n "$deployment_line" && -n "$attestation_line" \
   && -n "$worker_line" && -n "$post_worker_line" && -n "$release_line" \
-  && "$validation_line" -lt "$build_line" \
+  && "$validation_line" -lt "$registry_line" \
+  && "$registry_line" -lt "$build_line" \
   && "$build_line" -lt "$promotion_line" \
   && "$promotion_line" -lt "$deployment_line" \
   && "$deployment_line" -lt "$attestation_line" \
@@ -197,6 +241,11 @@ grep -Fq 'sha256sum --check web/assets.sha256' "$WORKFLOW" || fail "release does
 (cd "$ROOT" && sha256sum --check web/assets.sha256 >/dev/null) || fail "Marketplace web asset manifest is stale"
 grep -Fq '"https://getatm.io$marketplace_js_path"' "$WORKFLOW" || fail "release does not fetch deployed fingerprinted Marketplace assets"
 grep -Fq 'cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js"' "$WORKFLOW" || fail "release does not attest deployed Marketplace bytes"
+grep -Fq '/legal/account-terms/2026-08-28' "$WORKFLOW" || fail "release does not fetch account terms"
+grep -Fq '/legal/account-privacy/2026-08-28' "$WORKFLOW" || fail "release does not fetch account privacy"
+grep -Fq 'cmp web/legal-account-terms-2026-08-28.html' "$WORKFLOW" || fail "release does not attest account terms bytes"
+grep -Fq 'cmp web/legal-account-privacy-2026-08-28.html' "$WORKFLOW" || fail "release does not attest account privacy bytes"
+grep -Fq 'cmp web/legal-2026-08-28.css' "$WORKFLOW" || fail "release does not attest account policy CSS bytes"
 grep -Fq 'atm_release_require_attested' "$WORKFLOW" || fail "release attestation does not fail closed"
 if grep -Fq '[ "$attempt" -eq 60 ]' "$WORKFLOW"; then
   fail "release attestation contains an unreachable exhaustion check"

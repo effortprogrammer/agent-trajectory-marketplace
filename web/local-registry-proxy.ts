@@ -12,6 +12,7 @@ const routePrefix = "/api/registry"
 const maxRequestBytes = 64 * 1024
 const allowedMethods = new Map<string, string>([
   ["/v1/auth/login", "POST"],
+  ["/v1/auth/signup", "POST"],
   ["/v1/auth/verify", "POST"],
   ["/v1/auth/logout", "POST"],
   ["/v1/auth/me", "GET"],

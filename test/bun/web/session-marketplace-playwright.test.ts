@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, setDefaultTimeout, test } from "bun:test"
-import type { Page } from "playwright"
+import type { Page, Route } from "playwright"
 import {
   closeSessionUiBrowser,
   startSessionUiHarness,
@@ -158,6 +158,220 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(harness.registryRequests.filter((request) => request.path.endsWith("/sales/ledger"))).toEqual([])
   })
 
+  test("keeps the legacy Seller Console module call shape compatible", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    const result = await page.evaluate<{
+      readonly error: string | null
+      readonly seller: string | null
+    }>(`(async () => {
+      const module = await import("/console.js")
+      try {
+        await module.mountSellerConsole({
+          requestJson: async (path) => {
+            if (path === "/v1/auth/me") {
+              return {
+                account: {
+                  accountId: "acct-legacy0123456789",
+                  email: "legacy@example.test",
+                },
+                ok: true,
+              }
+            }
+            if (path === "/v1/marketplace/seller/sales/sessions") {
+              return {
+                asOf: "2026-08-20T12:00:00Z",
+                ok: true,
+                page: { nextCursor: null },
+                sessions: [],
+              }
+            }
+            return {
+              asOf: "2026-08-20T12:00:00Z",
+              currency: "USD",
+              interval: "day",
+              ok: true,
+              openingCumulativeCredits: 0,
+              points: [],
+              window: { from: "2026-07-21", to: "2026-08-20" },
+            }
+          },
+          session: { accessToken: "legacy-session-token" },
+          showLogin: () => {
+            throw new Error("legacy session unexpectedly rejected")
+          },
+        })
+        return {
+          error: null,
+          seller: document.querySelector("[data-console-seller]")?.textContent,
+        }
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : String(error),
+          seller: null,
+        }
+      }
+    })()`)
+
+    expect(result).toEqual({
+      error: null,
+      seller: "acct-legacy0123456789",
+    })
+  })
+
+  test("ignores seller console responses from a previous account session", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    const firstToken = "marketplace-browser-session-token"
+    const secondToken = "second-marketplace-session-token"
+    const firstAccount = "acct-aaaaaaaaaaaaaaaa"
+    const secondAccount = "acct-bbbbbbbbbbbbbbbb"
+    const emptySessions = {
+      asOf: "2026-08-20T12:00:00Z",
+      ok: true,
+      page: { nextCursor: null },
+      sessions: [],
+    }
+    const emptyEarnings = {
+      asOf: "2026-08-20T12:00:00Z",
+      currency: "USD",
+      interval: "day",
+      ok: true,
+      openingCumulativeCredits: 0,
+      points: [],
+      window: { from: "2026-07-21", to: "2026-08-20" },
+    }
+    let releaseFirstRequests = (): void => {
+      throw new Error("first seller requests were not held")
+    }
+    const firstRequestGate = new Promise<void>((resolve) => {
+      releaseFirstRequests = resolve
+    })
+    let verificationCount = 0
+
+    await page.route("**/api/registry/v1/auth/verify", async (route) => {
+      verificationCount += 1
+      const second = verificationCount === 2
+      await route.fulfill({
+        body: JSON.stringify({
+          accessToken: second ? secondToken : firstToken,
+          accountId: second ? secondAccount : firstAccount,
+          expiresAt: "2099-08-20T12:00:00Z",
+          ok: true,
+          tokenType: "Bearer",
+        }),
+        contentType: "application/json",
+        status: 200,
+      })
+    })
+    await page.route("**/api/registry/v1/marketplace/stats", async (route) => {
+      await route.fulfill({
+        body: JSON.stringify({
+          activeRuntimes: 1,
+          paidOutCredits: null,
+          totalSessions: 2,
+          tradeableTokens: 940_635,
+        }),
+        contentType: "application/json",
+        status: 200,
+      })
+    })
+    const fulfillConsoleRequest = async (route: Route): Promise<void> => {
+      const request = route.request()
+      const pathname = new URL(request.url()).pathname
+      const first = request.headers().authorization === `Bearer ${firstToken}`
+      if (first) await firstRequestGate
+      const accountId = first ? firstAccount : secondAccount
+      const body = pathname.endsWith("/auth/me")
+        ? { account: { accountId, email: `${accountId}@example.test` }, ok: true }
+        : pathname.endsWith("/sessions") ? emptySessions : emptyEarnings
+      await route.fulfill({
+        body: JSON.stringify(body),
+        contentType: "application/json",
+        status: 200,
+      })
+    }
+    await page.route("**/api/registry/v1/auth/me", fulfillConsoleRequest)
+    await page.route(
+      "**/api/registry/v1/marketplace/seller/sales/**",
+      fulfillConsoleRequest,
+    )
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    const firstRequestsStarted = Promise.all([
+      page.waitForRequest((request) =>
+        request.headers().authorization === `Bearer ${firstToken}`
+        && new URL(request.url()).pathname.endsWith("/sales/sessions"),
+      ),
+      page.waitForRequest((request) =>
+        request.headers().authorization === `Bearer ${firstToken}`
+        && new URL(request.url()).pathname.endsWith("/sales/earnings"),
+      ),
+    ])
+    await page.getByTestId("seller-console-link").click()
+    await firstRequestsStarted
+    const logoutResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith("/auth/logout"),
+    )
+    await page.getByTestId("auth-logout-button").evaluate((element) => element.click())
+    await logoutResponse
+    await page.locator("[data-auth-gate]").waitFor({ state: "visible" })
+    await page.locator("[data-auth-email]").fill("second@example.test")
+    await page.locator("[data-auth-request-submit]").click()
+    await page.locator("[data-auth-code]").waitFor({ state: "visible" })
+    await page.locator("[data-auth-code]").fill("654321")
+    const secondConsoleRendered = page.locator("[data-console-seller]").evaluate(
+      (element, expected) => new Promise<void>((resolve) => {
+        if (element.textContent === expected) {
+          resolve()
+          return
+        }
+        const MutationObserverConstructor =
+          element.ownerDocument.defaultView?.MutationObserver
+        if (MutationObserverConstructor === undefined) {
+          throw new Error("MutationObserver is unavailable")
+        }
+        const observer = new MutationObserverConstructor(() => {
+          if (element.textContent !== expected) return
+          observer.disconnect()
+          resolve()
+        })
+        observer.observe(element, { childList: true, subtree: true })
+      }),
+      secondAccount,
+    )
+    await page.locator("[data-auth-verify-submit]").click()
+    await secondConsoleRendered
+
+    const staleResponses = Promise.all([
+      page.waitForResponse((response) =>
+        response.request().headers().authorization === `Bearer ${firstToken}`
+        && new URL(response.url()).pathname.endsWith("/auth/me"),
+      ),
+      page.waitForResponse((response) =>
+        response.request().headers().authorization === `Bearer ${firstToken}`
+        && new URL(response.url()).pathname.endsWith("/sales/sessions"),
+      ),
+      page.waitForResponse((response) =>
+        response.request().headers().authorization === `Bearer ${firstToken}`
+        && new URL(response.url()).pathname.endsWith("/sales/earnings"),
+      ),
+    ])
+    releaseFirstRequests()
+    await staleResponses
+
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe(
+      "authenticated",
+    )
+    expect(await page.locator("[data-console-seller]").innerText()).toBe(
+      secondAccount,
+    )
+    expect(await page.locator("[data-console-view]:visible").count()).toBe(1)
+  })
+
   test("shows empty seller sales states when the account has no sales activity", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
@@ -264,6 +478,234 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("body").getAttribute("data-auth-state")).toBe("login")
     expect(await page.locator("[data-auth-mode]").count()).toBe(0)
     expect(await page.locator("[data-auth-accept-contact]").isVisible()).toBe(false)
+  })
+
+  test("member sign-in entry supports account signup", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+
+    const signup = page.locator("[data-auth-mode-signup]")
+    await signup.waitFor({ state: "visible", timeout: 1_000 })
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("login")
+    expect(await signup.innerText()).toBe("New member? Sign up")
+    await signup.click()
+
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("signup")
+    expect(await page.locator("[data-auth-console-path]").innerText()).toBe("ATM / member-sign-up")
+    expect(await page.locator("[data-auth-kicker]").innerText()).toBe("New member")
+    expect(await page.locator("[data-auth-title-prefix]").innerText()).toBe("Create your")
+    expect(await page.locator("[data-auth-title-accent]").innerText()).toBe("ATM account.")
+    expect(await page.locator("[data-auth-description]").innerText()).toBe(
+      "Enter your email to receive a six-digit code. No password and no browser-stored session.",
+    )
+    expect(await page.locator("[data-auth-request-label]").innerText()).toBe("Create account")
+    expect(await page.locator("[data-auth-signup-terms]").isVisible()).toBe(true)
+    expect(await page.locator("[data-auth-accept-terms]").isChecked()).toBe(false)
+    expect(await page.locator("[data-auth-mode-login]").innerText()).toBe("Already a member? Sign in")
+
+    await page.locator("[data-auth-email]").fill("NEW-MEMBER@getatm.io")
+    await page.locator("[data-auth-request-submit]").click()
+    expect(await page.locator("[data-auth-feedback]").getAttribute("data-error-code")).toBe("terms_required")
+    expect(await page.locator("[data-auth-accept-terms]").evaluate((element) =>
+      element.ownerDocument.activeElement === element,
+    )).toBe(true)
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/auth/signup",
+    )).toEqual([])
+
+    await page.locator("[data-auth-accept-terms]").check()
+    const signupRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/registry/v1/auth/signup",
+    )
+    await page.locator("[data-auth-request-submit]").click()
+    const signupRequestValue = await signupRequest
+    expect(new URL(signupRequestValue.url()).origin).toBe(harness.appUrl)
+    expect(await signupRequestValue.postDataJSON()).toEqual({
+      acceptTerms: true,
+      email: "new-member@getatm.io",
+    })
+    await page.locator("[data-auth-code]").waitFor({ state: "visible" })
+    const verifyRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/registry/v1/auth/verify",
+    )
+    const statsResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/registry/v1/marketplace/stats",
+    )
+    await page.locator("[data-auth-code]").fill("654321")
+    await page.locator("[data-auth-verify-submit]").click()
+    expect(await (await verifyRequest).postDataJSON()).toEqual({
+      challengeId: "chal-fedcba9876543210",
+      code: "654321",
+    })
+    await statsResponse
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("authenticated")
+    expect(await page.evaluate<number>("sessionStorage.length")).toBe(0)
+    expect(await page.context().cookies()).toEqual([])
+    expect(new URL(page.url()).search).toBe("")
+  })
+
+  test("member sign-in keeps existing-member login behavior", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+    const challengeRequest = page.waitForRequest((request) => {
+      const pathname = new URL(request.url()).pathname
+      return pathname === "/api/registry/v1/auth/login" || pathname === "/api/registry/v1/auth/signup"
+    })
+    await page.locator("[data-auth-email]").fill("EXISTING-MEMBER@getatm.io")
+    await page.locator("[data-auth-request-submit]").click()
+    const challenge = await challengeRequest
+
+    expect({
+      body: await challenge.postDataJSON(),
+      pathname: new URL(challenge.url()).pathname,
+    }).toEqual({
+      body: { email: "existing-member@getatm.io" },
+      pathname: "/api/registry/v1/auth/login",
+    })
+    expect(await page.locator("[data-auth-signup-terms]:visible").count()).toBe(0)
+    await page.locator("[data-auth-code]").waitFor({ state: "visible" })
+    const verifyRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/registry/v1/auth/verify",
+    )
+    const statsResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/registry/v1/marketplace/stats",
+    )
+    await page.locator("[data-auth-code]").fill("654321")
+    await page.locator("[data-auth-verify-submit]").click()
+
+    expect(await (await verifyRequest).postDataJSON()).toEqual({
+      challengeId: "chal-0123456789abcdef",
+      code: "654321",
+    })
+    await statsResponse
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("authenticated")
+  })
+
+  test("member signup rejects invalid email without a request", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+    const signup = page.locator("[data-auth-mode-signup]")
+    await signup.waitFor({ state: "visible", timeout: 1_000 })
+    await signup.click()
+    await page.locator("[data-auth-email]").fill("not-an-email")
+    await page.locator("[data-auth-request-submit]").click()
+
+    expect(await page.locator("[data-auth-feedback]").getAttribute("data-error-code")).toBe("invalid_email")
+    expect(await page.locator("[data-auth-email]").evaluate((element) =>
+      element.ownerDocument.activeElement === element,
+    )).toBe(true)
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/auth/login" || request.path === "/v1/auth/signup",
+    )).toEqual([])
+  })
+
+  test("member signup dialog is keyboard reachable and mobile safe", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(mobile)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+    const signup = page.locator("[data-auth-mode-signup]")
+    await signup.waitFor({ state: "visible", timeout: 1_000 })
+    await signup.focus()
+    await page.keyboard.press("Enter")
+
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("signup")
+    expect(await page.locator("[data-auth-accept-terms]").isVisible()).toBe(true)
+    expect(await page.locator("[data-auth-accept-terms]").evaluate((element) =>
+      element.closest(".auth-terms")?.getBoundingClientRect().height ?? 0,
+    )).toBeGreaterThanOrEqual(44)
+    expect(await page.evaluate<boolean>(`
+      (() => {
+        const dialog = document.querySelector("[data-auth-gate]")?.getBoundingClientRect()
+        const title = document.querySelector("#auth-title")?.getBoundingClientRect()
+        return dialog !== undefined && title !== undefined &&
+          dialog.top >= 0 && dialog.bottom <= window.innerHeight &&
+          title.top >= dialog.top && title.bottom <= dialog.bottom
+      })()
+    `)).toBe(true)
+    expect(await page.locator("html").evaluate((element) =>
+      element.scrollWidth <= element.clientWidth,
+    )).toBe(true)
+
+    const email = page.locator("[data-auth-email]")
+    const terms = page.locator("[data-auth-accept-terms]")
+    const termsPolicy = page.locator(
+      'a[href="/legal/account-terms/2026-08-28"]',
+    )
+    const privacyPolicy = page.locator(
+      'a[href="/legal/account-privacy/2026-08-28"]',
+    )
+    const createAccount = page.locator("[data-auth-request-submit]")
+    const signIn = page.locator("[data-auth-mode-login]")
+    const close = page.getByTestId("auth-close-button")
+    await email.focus()
+    await page.keyboard.press("Tab")
+    expect(await terms.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
+    await page.keyboard.press("Tab")
+    expect(await termsPolicy.evaluate(
+      (element) => element.ownerDocument.activeElement === element,
+    )).toBe(true)
+    await page.keyboard.press("Tab")
+    expect(await privacyPolicy.evaluate(
+      (element) => element.ownerDocument.activeElement === element,
+    )).toBe(true)
+    await page.keyboard.press("Tab")
+    expect(await createAccount.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
+    await page.keyboard.press("Tab")
+    expect(await signIn.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
+    await page.keyboard.press("Tab")
+    expect(await page.locator("[data-auth-gate]").evaluate((element) =>
+      element.contains(element.ownerDocument.activeElement),
+    )).toBe(true)
+    expect(await close.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
+    await page.keyboard.press("Shift+Tab")
+    expect(await signIn.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
+
+    await close.click()
+    expect(await page.evaluate<boolean>(
+      "document.activeElement?.dataset.testid === 'sign-in-button'",
+    )).toBe(true)
+  })
+
+  test("member mode switch ignores stale challenge responses", async () => {
+    harness = await startSessionUiHarness()
+    const releaseChallenge = harness.holdChallenge()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+    await page.locator("[data-auth-email]").fill("existing-member@getatm.io")
+    const challengeRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/registry/v1/auth/login",
+    )
+    await page.locator("[data-auth-request-submit]").click()
+    await challengeRequest
+    const signup = page.locator("[data-auth-mode-signup]")
+    await signup.waitFor({ state: "visible", timeout: 1_000 })
+    await signup.click()
+    const challengeResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/registry/v1/auth/login",
+    )
+    releaseChallenge()
+    await challengeResponse
+
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("signup")
+    expect(await page.locator("[data-auth-request-form]").isVisible()).toBe(true)
+    expect(await page.locator("[data-auth-verify-form]:visible").count()).toBe(0)
+    expect(await page.locator("[data-authenticated-content]:visible").count()).toBe(0)
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/marketplace/stats",
+    )).toEqual([])
   })
 
   test("routes local member sign-in through the same-origin preview proxy", async () => {
@@ -559,6 +1001,20 @@ describe("authenticated aggregate marketplace browser contract", () => {
       .toBe("account_required")
     expect((await page.locator("[data-auth-feedback]").innerText()).length).toBeGreaterThan(0)
     expect(await page.locator("[data-auth-code]").isVisible()).toBe(true)
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/auth/signup",
+    )).toEqual([])
+
+    const signup = page.locator("[data-auth-mode-signup]")
+    await signup.waitFor({ state: "visible", timeout: 1_000 })
+    await signup.click()
+
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("signup")
+    expect(await page.locator("[data-auth-email]").inputValue()).toBe("owner@example.test")
+    expect(await page.locator("[data-auth-accept-terms]").isChecked()).toBe(false)
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/auth/signup",
+    )).toEqual([])
   })
 
   test("ignores a verification response after the user restarts login", async () => {
@@ -590,6 +1046,44 @@ describe("authenticated aggregate marketplace browser contract", () => {
       (request) => request.path === "/v1/marketplace/stats",
     )).toEqual([])
   })
+
+  for (const dismissal of ["close-button", "escape"] as const) {
+    test(`ignores verification responses after ${dismissal} dismissal`, async () => {
+      harness = await startSessionUiHarness()
+      const page = await harness.newPage(desktop)
+      const releaseVerify = harness.holdVerify()
+      await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+      await openMemberSignIn(page)
+      await page.locator("[data-auth-email]").fill("owner@example.test")
+      await page.locator("[data-auth-request-submit]").click()
+      await page.locator("[data-auth-code]").waitFor({ state: "visible" })
+      await page.locator("[data-auth-code]").fill("654321")
+      const verifyRequest = page.waitForRequest((request) =>
+        new URL(request.url()).pathname === "/api/registry/v1/auth/verify",
+      )
+      const verifyResponse = page.waitForResponse((response) =>
+        new URL(response.url()).pathname === "/api/registry/v1/auth/verify",
+      )
+      await page.locator("[data-auth-verify-submit]").click()
+      await verifyRequest
+
+      if (dismissal === "close-button") {
+        await page.getByTestId("auth-close-button").click()
+      } else {
+        await page.keyboard.press("Escape")
+      }
+      await page.locator("[data-auth-gate]").waitFor({ state: "hidden" })
+      releaseVerify()
+      await verifyResponse
+
+      expect(await page.locator("body").getAttribute("data-auth-state"))
+        .not.toBe("authenticated")
+      expect(await page.locator("[data-authenticated-content]:visible").count()).toBe(0)
+      expect(harness.registryRequests.filter(
+        (request) => request.path === "/v1/marketplace/stats",
+      )).toEqual([])
+    })
+  }
 
   test("keeps mobile supply labels below the fixed navigation", async () => {
     harness = await startSessionUiHarness()

@@ -50,6 +50,21 @@ type Asset = Readonly<{
 const assets = new Map<string, Asset>([
   ["/", { cacheControl: "no-store", file: "index.html", type: "text/html; charset=utf-8" }],
   ["/index.html", { cacheControl: "no-store", file: "index.html", type: "text/html; charset=utf-8" }],
+  ["/legal/account-terms/2026-08-28", {
+    cacheControl: "public, max-age=31536000, immutable",
+    file: "legal-account-terms-2026-08-28.html",
+    type: "text/html; charset=utf-8",
+  }],
+  ["/legal/account-privacy/2026-08-28", {
+    cacheControl: "public, max-age=31536000, immutable",
+    file: "legal-account-privacy-2026-08-28.html",
+    type: "text/html; charset=utf-8",
+  }],
+  ["/legal/assets/2026-08-28.css", {
+    cacheControl: "public, max-age=31536000, immutable",
+    file: "legal-2026-08-28.css",
+    type: "text/css; charset=utf-8",
+  }],
   // v1.0.12 deferred this module by its stable path. Keep one non-cacheable
   // transition alias so already-open tabs can finish loading the seller console.
   ["/console.js", { cacheControl: "no-store", file: "console.js", type: "text/javascript; charset=utf-8" }],
