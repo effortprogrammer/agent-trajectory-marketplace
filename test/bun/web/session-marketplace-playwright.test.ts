@@ -515,6 +515,28 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("[data-auth-verify-form]:visible").count()).toBe(0)
   })
 
+  test("explains when a verified mailbox has no member account", async () => {
+    harness = await startSessionUiHarness()
+    harness.setVerifyAccountRequired()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+    await page.locator("[data-auth-email]").fill("owner@example.test")
+    await page.locator("[data-auth-request-submit]").click()
+    await page.locator("[data-auth-code]").waitFor({ state: "visible" })
+    await page.locator("[data-auth-code]").fill("654321")
+    const verifyResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/registry/v1/auth/verify",
+    )
+    await page.locator("[data-auth-verify-submit]").click()
+
+    expect((await verifyResponse).status()).toBe(401)
+    expect(await page.locator("[data-auth-feedback]").getAttribute("data-error-code"))
+      .toBe("account_required")
+    expect(await page.locator("[data-auth-code]").isVisible()).toBe(true)
+  })
+
   test("ignores a verification response after the user restarts login", async () => {
     harness = await startSessionUiHarness()
     const releaseVerify = harness.holdVerify()
