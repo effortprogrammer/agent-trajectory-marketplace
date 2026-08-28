@@ -610,7 +610,10 @@ describe("authenticated aggregate marketplace browser contract", () => {
 
   test("member signup dialog is keyboard reachable and mobile safe", async () => {
     harness = await startSessionUiHarness()
-    const page = await harness.newPage(mobile)
+    const page = await harness.newPage(mobile, {
+      hasTouch: true,
+      isMobile: true,
+    })
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await openMemberSignIn(page)
@@ -671,9 +674,15 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.keyboard.press("Shift+Tab")
     expect(await signIn.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
 
+    const dialogClosed = page.locator("[data-auth-gate]").evaluate((dialog) =>
+      new Promise<void>((resolve) => {
+        dialog.addEventListener("close", () => resolve(), { once: true })
+      })
+    )
     await close.click()
+    await dialogClosed
     expect(await page.evaluate<boolean>(
-      "document.activeElement?.dataset.testid === 'sign-in-button'",
+      "document.activeElement?.matches('[data-nav-menu-toggle]') === true",
     )).toBe(true)
   })
 

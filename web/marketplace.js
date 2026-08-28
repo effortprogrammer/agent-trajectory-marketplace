@@ -824,8 +824,15 @@ authGate.addEventListener("close", () => {
   document.body.classList.remove("is-auth-open");
   const trigger = authTrigger;
   authTrigger = undefined;
-  if (restoreAuthTrigger && trigger?.isConnected && !trigger.hidden) {
-    trigger.focus({ preventScroll: true });
+  const mobileNavigationTrigger = navMobile.matches && trigger?.closest("[data-marketplace-nav]");
+  const focusTarget = mobileNavigationTrigger ? navMenuToggle : trigger;
+  if (
+    restoreAuthTrigger
+    && focusTarget?.isConnected
+    && !focusTarget.hidden
+    && focusTarget.getClientRects().length > 0
+  ) {
+    focusTarget.focus({ preventScroll: true });
   }
   restoreAuthTrigger = false;
 });
