@@ -266,6 +266,199 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("[data-auth-accept-contact]").isVisible()).toBe(false)
   })
 
+  test("member sign-in entry supports account signup", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+
+    const signup = page.locator("[data-auth-mode-signup]")
+    await signup.waitFor({ state: "visible", timeout: 1_000 })
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("login")
+    expect(await signup.innerText()).toBe("New member? Sign up")
+    await signup.click()
+
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("signup")
+    expect(await page.locator("[data-auth-console-path]").innerText()).toBe("ATM / member-sign-up")
+    expect(await page.locator("[data-auth-kicker]").innerText()).toBe("New member")
+    expect(await page.locator("[data-auth-title-prefix]").innerText()).toBe("Create your")
+    expect(await page.locator("[data-auth-title-accent]").innerText()).toBe("ATM account.")
+    expect(await page.locator("[data-auth-description]").innerText()).toBe(
+      "Enter your email to receive a six-digit code. No password and no browser-stored session.",
+    )
+    expect(await page.locator("[data-auth-request-label]").innerText()).toBe("Create account")
+    expect(await page.locator("[data-auth-signup-terms]").isVisible()).toBe(true)
+    expect(await page.locator("[data-auth-accept-terms]").isChecked()).toBe(false)
+    expect(await page.locator("[data-auth-mode-login]").innerText()).toBe("Already a member? Sign in")
+
+    await page.locator("[data-auth-email]").fill("NEW-MEMBER@getatm.io")
+    await page.locator("[data-auth-request-submit]").click()
+    expect(await page.locator("[data-auth-feedback]").getAttribute("data-error-code")).toBe("terms_required")
+    expect(await page.locator("[data-auth-accept-terms]").evaluate((element) =>
+      element.ownerDocument.activeElement === element,
+    )).toBe(true)
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/auth/signup",
+    )).toEqual([])
+
+    await page.locator("[data-auth-accept-terms]").check()
+    const signupRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/registry/v1/auth/signup",
+    )
+    await page.locator("[data-auth-request-submit]").click()
+    const signupRequestValue = await signupRequest
+    expect(new URL(signupRequestValue.url()).origin).toBe(harness.appUrl)
+    expect(await signupRequestValue.postDataJSON()).toEqual({
+      acceptTerms: true,
+      email: "new-member@getatm.io",
+    })
+    await page.locator("[data-auth-code]").waitFor({ state: "visible" })
+    const verifyRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/registry/v1/auth/verify",
+    )
+    const statsResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/registry/v1/marketplace/stats",
+    )
+    await page.locator("[data-auth-code]").fill("654321")
+    await page.locator("[data-auth-verify-submit]").click()
+    expect(await (await verifyRequest).postDataJSON()).toEqual({
+      challengeId: "chal-fedcba9876543210",
+      code: "654321",
+    })
+    await statsResponse
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("authenticated")
+    expect(await page.evaluate<number>("sessionStorage.length")).toBe(0)
+    expect(await page.context().cookies()).toEqual([])
+    expect(new URL(page.url()).search).toBe("")
+  })
+
+  test("member sign-in keeps existing-member login behavior", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+    const challengeRequest = page.waitForRequest((request) => {
+      const pathname = new URL(request.url()).pathname
+      return pathname === "/api/registry/v1/auth/login" || pathname === "/api/registry/v1/auth/signup"
+    })
+    await page.locator("[data-auth-email]").fill("EXISTING-MEMBER@getatm.io")
+    await page.locator("[data-auth-request-submit]").click()
+    const challenge = await challengeRequest
+
+    expect({
+      body: await challenge.postDataJSON(),
+      pathname: new URL(challenge.url()).pathname,
+    }).toEqual({
+      body: { email: "existing-member@getatm.io" },
+      pathname: "/api/registry/v1/auth/login",
+    })
+    expect(await page.locator("[data-auth-signup-terms]:visible").count()).toBe(0)
+    await page.locator("[data-auth-code]").waitFor({ state: "visible" })
+    const verifyRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/registry/v1/auth/verify",
+    )
+    const statsResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/registry/v1/marketplace/stats",
+    )
+    await page.locator("[data-auth-code]").fill("654321")
+    await page.locator("[data-auth-verify-submit]").click()
+
+    expect(await (await verifyRequest).postDataJSON()).toEqual({
+      challengeId: "chal-0123456789abcdef",
+      code: "654321",
+    })
+    await statsResponse
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("authenticated")
+  })
+
+  test("member signup rejects invalid email without a request", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+    const signup = page.locator("[data-auth-mode-signup]")
+    await signup.waitFor({ state: "visible", timeout: 1_000 })
+    await signup.click()
+    await page.locator("[data-auth-email]").fill("not-an-email")
+    await page.locator("[data-auth-request-submit]").click()
+
+    expect(await page.locator("[data-auth-feedback]").getAttribute("data-error-code")).toBe("invalid_email")
+    expect(await page.locator("[data-auth-email]").evaluate((element) =>
+      element.ownerDocument.activeElement === element,
+    )).toBe(true)
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/auth/login" || request.path === "/v1/auth/signup",
+    )).toEqual([])
+  })
+
+  test("member signup dialog is keyboard reachable and mobile safe", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(mobile)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+    const signup = page.locator("[data-auth-mode-signup]")
+    await signup.waitFor({ state: "visible", timeout: 1_000 })
+    await signup.focus()
+    await page.keyboard.press("Enter")
+
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("signup")
+    expect(await page.locator("[data-auth-accept-terms]").isVisible()).toBe(true)
+    expect(await page.locator("[data-auth-accept-terms]").evaluate((element) =>
+      element.closest(".auth-terms")?.getBoundingClientRect().height ?? 0,
+    )).toBeGreaterThanOrEqual(44)
+    expect(await page.evaluate<boolean>(`
+      (() => {
+        const dialog = document.querySelector("[data-auth-gate]")?.getBoundingClientRect()
+        const title = document.querySelector("#auth-title")?.getBoundingClientRect()
+        return dialog !== undefined && title !== undefined &&
+          dialog.top >= 0 && dialog.bottom <= window.innerHeight &&
+          title.top >= dialog.top && title.bottom <= dialog.bottom
+      })()
+    `)).toBe(true)
+    expect(await page.locator("html").evaluate((element) =>
+      element.scrollWidth <= element.clientWidth,
+    )).toBe(true)
+    await page.getByTestId("auth-close-button").click()
+    expect(await page.evaluate<boolean>(
+      "document.activeElement?.dataset.testid === 'sign-in-button'",
+    )).toBe(true)
+  })
+
+  test("member mode switch ignores stale challenge responses", async () => {
+    harness = await startSessionUiHarness()
+    const releaseChallenge = harness.holdChallenge()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await openMemberSignIn(page)
+    await page.locator("[data-auth-email]").fill("existing-member@getatm.io")
+    const challengeRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/registry/v1/auth/login",
+    )
+    await page.locator("[data-auth-request-submit]").click()
+    await challengeRequest
+    const signup = page.locator("[data-auth-mode-signup]")
+    await signup.waitFor({ state: "visible", timeout: 1_000 })
+    await signup.click()
+    const challengeResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/registry/v1/auth/login",
+    )
+    releaseChallenge()
+    await challengeResponse
+
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("signup")
+    expect(await page.locator("[data-auth-request-form]").isVisible()).toBe(true)
+    expect(await page.locator("[data-auth-verify-form]:visible").count()).toBe(0)
+    expect(await page.locator("[data-authenticated-content]:visible").count()).toBe(0)
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/marketplace/stats",
+    )).toEqual([])
+  })
+
   test("routes local member sign-in through the same-origin preview proxy", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
@@ -559,6 +752,20 @@ describe("authenticated aggregate marketplace browser contract", () => {
       .toBe("account_required")
     expect((await page.locator("[data-auth-feedback]").innerText()).length).toBeGreaterThan(0)
     expect(await page.locator("[data-auth-code]").isVisible()).toBe(true)
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/auth/signup",
+    )).toEqual([])
+
+    const signup = page.locator("[data-auth-mode-signup]")
+    await signup.waitFor({ state: "visible", timeout: 1_000 })
+    await signup.click()
+
+    expect(await page.locator("body").getAttribute("data-auth-state")).toBe("signup")
+    expect(await page.locator("[data-auth-email]").inputValue()).toBe("owner@example.test")
+    expect(await page.locator("[data-auth-accept-terms]").isChecked()).toBe(false)
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/auth/signup",
+    )).toEqual([])
   })
 
   test("ignores a verification response after the user restarts login", async () => {

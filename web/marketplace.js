@@ -162,6 +162,10 @@ const authEmail = document.querySelector("[data-auth-email]");
 const authCode = document.querySelector("[data-auth-code]");
 const authContactConsent = document.querySelector("[data-auth-contact-consent]");
 const authAcceptContact = document.querySelector("[data-auth-accept-contact]");
+const authSignupTerms = document.querySelector("[data-auth-signup-terms]");
+const authAcceptTerms = document.querySelector("[data-auth-accept-terms]");
+const authModeSignup = document.querySelector("[data-auth-mode-signup]");
+const authModeLogin = document.querySelector("[data-auth-mode-login]");
 const authWaitlistSuccess = document.querySelector("[data-auth-waitlist-success]");
 const authFeedback = document.querySelector("[data-auth-feedback]");
 const authChallengeEmail = document.querySelector("[data-auth-challenge-email]");
@@ -400,22 +404,35 @@ const setAuthMode = (mode) => {
     authRequestVersion += 1;
     challenge = undefined;
   }
+  if (mode === "login" || mode === "signup") {
+    authEmail.value = authEmail.value.trim().toLowerCase();
+  }
   authMode = mode;
   document.body.dataset.authState = mode;
   authRequestForm.hidden = false;
   authVerifyForm.hidden = true;
   authWaitlistSuccess.hidden = true;
   const isWaitlist = mode === "waitlist";
+  const isSignup = mode === "signup";
   authContactConsent.hidden = !isWaitlist;
   authAcceptContact.required = isWaitlist;
-  authConsolePath.textContent = isWaitlist ? "ATM / buyer-access" : "ATM / member-sign-in";
-  authKicker.textContent = isWaitlist ? "Buyer access" : "Existing member";
-  authTitlePrefix.textContent = isWaitlist ? "Request" : "Member sign in to";
-  authTitleAccent.textContent = isWaitlist ? "buyer access." : "live supply.";
+  authSignupTerms.hidden = !isSignup;
+  authAcceptTerms.required = isSignup;
+  if (isSignup) authAcceptTerms.checked = false;
+  authModeSignup.hidden = mode !== "login";
+  authModeLogin.hidden = !isSignup;
+  authConsolePath.textContent = isWaitlist
+    ? "ATM / buyer-access"
+    : isSignup ? "ATM / member-sign-up" : "ATM / member-sign-in";
+  authKicker.textContent = isWaitlist ? "Buyer access" : isSignup ? "New member" : "Existing member";
+  authTitlePrefix.textContent = isWaitlist ? "Request" : isSignup ? "Create your" : "Member sign in to";
+  authTitleAccent.textContent = isWaitlist ? "buyer access." : isSignup ? "ATM account." : "live supply.";
   authDescription.textContent = isWaitlist
     ? "For teams looking to license agent-session datasets. We will only contact you about this buyer access request."
-    : "We will email a six-digit code. No password and no browser-stored session.";
-  authRequestLabel.textContent = isWaitlist ? "Request buyer access" : "Send one-time code";
+    : isSignup
+      ? "Enter your email to receive a six-digit code. No password and no browser-stored session."
+      : "We will email a six-digit code. No password and no browser-stored session.";
+  authRequestLabel.textContent = isWaitlist ? "Request buyer access" : isSignup ? "Create account" : "Send one-time code";
   authRequestForm.querySelector("button[type=submit]").disabled = false;
   if (isWaitlist && hasWaitlistAcknowledgment()) {
     authRequestForm.hidden = true;
@@ -535,16 +552,21 @@ const requestChallenge = async (event) => {
   const requestVersion = ++authRequestVersion;
   const email = authEmail.value.trim().toLowerCase();
   if (email.length > 320 || !validEmail(email)) {
-    setFeedback("Enter a valid email address.");
+    setFeedback("Enter a valid email address.", "invalid_email");
     authEmail.focus();
+    return;
+  }
+  if (authMode === "signup" && !authAcceptTerms.checked) {
+    setFeedback("Accept the terms to create an account.", "terms_required");
+    authAcceptTerms.focus();
     return;
   }
   const submit = authRequestForm.querySelector("button[type=submit]");
   submit.disabled = true;
   setFeedback("");
   try {
-    const body = await requestJson("/v1/auth/login", {
-      body: JSON.stringify({ email }),
+    const body = await requestJson(authMode === "signup" ? "/v1/auth/signup" : "/v1/auth/login", {
+      body: JSON.stringify(authMode === "signup" ? { email, acceptTerms: true } : { email }),
       headers: { "content-type": "application/json" },
       method: "POST",
     });
@@ -613,7 +635,7 @@ const verifyChallenge = async (event) => {
     if (requestVersion === authRequestVersion) {
       if (error instanceof Error && error.code === "account_required") {
         setFeedback(
-          "No member account exists for this email. Request buyer access or use your member email.",
+          "No member account exists for this email. Sign up to create one, request buyer access, or use your member email.",
           "account_required",
         );
       } else {
@@ -729,6 +751,14 @@ document.querySelector("[data-auth-restart]").addEventListener("click", () => {
   authVerifyForm.hidden = true;
   setAuthMode(authMode);
   setFeedback("");
+  authEmail.focus();
+});
+authModeSignup.addEventListener("click", () => {
+  setAuthMode("signup");
+  authEmail.focus();
+});
+authModeLogin.addEventListener("click", () => {
+  setAuthMode("login");
   authEmail.focus();
 });
 for (const button of authOpenButtons) {
