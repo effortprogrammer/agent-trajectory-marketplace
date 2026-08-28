@@ -1827,7 +1827,7 @@ body {
 }
 
 .hero-copy h1 em {
-  color: var(--accent);
+  color: var(--accent-deep);
   font-style: normal;
 }
 
@@ -2098,7 +2098,7 @@ body {
 .chapter-heading h2 em,
 .process-intro h2 em,
 .thesis-stage h2 em {
-  color: var(--accent);
+  color: var(--accent-deep);
   font-style: normal;
 }
 
@@ -2270,7 +2270,7 @@ body {
 }
 
 .auth-gate h1 em {
-  color: var(--accent);
+  color: var(--accent-deep);
   font-style: normal;
 }
 
