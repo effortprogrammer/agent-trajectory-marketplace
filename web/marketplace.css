@@ -726,37 +726,12 @@ button {
   background: var(--accent-bright);
 }
 
-.auth-mode-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
-  margin-top: var(--space-8);
-  border: 1px solid var(--border-quiet);
-  border-radius: var(--radius-control);
-  background: var(--canvas);
-  padding: var(--space-1);
-}
-
-.auth-mode-tab,
 .text-button {
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-muted);
   font: inherit;
   cursor: pointer;
-}
-
-.auth-mode-tab {
-  min-height: 3rem;
-  border-radius: calc(var(--radius-control) - var(--space-1));
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--type-body-sm);
-}
-
-.auth-mode-tab.is-selected {
-  border-color: var(--accent-ring);
-  background: var(--accent-glass);
-  color: var(--text-primary);
 }
 
 .auth-form {
@@ -1739,6 +1714,18 @@ body {
   transform: scale(0.98);
 }
 
+.nav-sign-in-button {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-primary);
+}
+
+.nav-sign-in-button:hover {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
 .nav-console-button,
 .nav-logout-button {
   border-color: var(--border);
@@ -2234,7 +2221,6 @@ body {
 }
 
 .auth-close-button,
-.auth-mode-tabs,
 .auth-form input[type="email"],
 .auth-form input[type="text"] {
   border-color: var(--border);
@@ -2259,8 +2245,7 @@ body {
   font-style: normal;
 }
 
-.auth-waitlist-success,
-.auth-mode-tab.is-selected {
+.auth-waitlist-success {
   border-color: var(--accent-ring);
   background: var(--accent-glass);
 }

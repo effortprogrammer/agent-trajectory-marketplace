@@ -1,3 +1,5 @@
+import { createLocalRegistryProxy } from "./local-registry-proxy";
+
 // Local preview server for the static marketplace UI. Run: bun web/server.ts
 const root = new URL(".", import.meta.url).pathname;
 const port = Number(Bun.env.PORT ?? 4173);
@@ -34,6 +36,10 @@ const securityHeaders = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
 } as const;
+const localRegistryProxy = createLocalRegistryProxy({
+  configuredUrl: Bun.env.ATM_LOCAL_REGISTRY_URL,
+  responseHeaders: securityHeaders,
+});
 
 type Asset = Readonly<{
   cacheControl: string;
@@ -138,6 +144,8 @@ Bun.serve({
     if (pathname === "/favicon.ico") {
       return new Response(null, { headers: securityHeaders, status: 204 });
     }
+    const registryResponse = await localRegistryProxy?.(request, url);
+    if (registryResponse !== undefined) return registryResponse;
     if (pathname === "/api/public-stats" && localPublicStatsUpstream !== undefined) {
       if (request.method !== "GET") {
         return Response.json(

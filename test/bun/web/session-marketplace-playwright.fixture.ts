@@ -193,6 +193,7 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
     env: {
       ...Bun.env,
       ATM_LOCAL_PUBLIC_STATS_URL: `${registry.url}/v1/marketplace/public-stats`,
+      ATM_LOCAL_REGISTRY_URL: registry.url,
       PORT: String(port),
     },
     stderr: "pipe",
@@ -225,13 +226,6 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
         ...options,
         reducedMotion: "reduce",
         viewport,
-      })
-      await context.route("https://gateway.getatm.io/**", async (route) => {
-        const requested = new URL(route.request().url())
-        const response = await route.fetch({
-          url: `${registry.url}${requested.pathname}${requested.search}`,
-        })
-        await route.fulfill({ response })
       })
       contexts.push(context)
       return context.newPage()
