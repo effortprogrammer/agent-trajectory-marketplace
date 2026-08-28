@@ -197,6 +197,11 @@ grep -Fq 'sha256sum --check web/assets.sha256' "$WORKFLOW" || fail "release does
 (cd "$ROOT" && sha256sum --check web/assets.sha256 >/dev/null) || fail "Marketplace web asset manifest is stale"
 grep -Fq '"https://getatm.io$marketplace_js_path"' "$WORKFLOW" || fail "release does not fetch deployed fingerprinted Marketplace assets"
 grep -Fq 'cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js"' "$WORKFLOW" || fail "release does not attest deployed Marketplace bytes"
+grep -Fq '/legal/account-terms/2026-08-28' "$WORKFLOW" || fail "release does not fetch account terms"
+grep -Fq '/legal/account-privacy/2026-08-28' "$WORKFLOW" || fail "release does not fetch account privacy"
+grep -Fq 'cmp web/legal-account-terms-2026-08-28.html' "$WORKFLOW" || fail "release does not attest account terms bytes"
+grep -Fq 'cmp web/legal-account-privacy-2026-08-28.html' "$WORKFLOW" || fail "release does not attest account privacy bytes"
+grep -Fq 'cmp web/legal-2026-08-28.css' "$WORKFLOW" || fail "release does not attest account policy CSS bytes"
 grep -Fq 'atm_release_require_attested' "$WORKFLOW" || fail "release attestation does not fail closed"
 if grep -Fq '[ "$attempt" -eq 60 ]' "$WORKFLOW"; then
   fail "release attestation contains an unreachable exhaustion check"
