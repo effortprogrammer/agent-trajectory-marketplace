@@ -34,7 +34,11 @@ Commands:
   doctor
   update
 
-Run a command with --help for command-specific usage.`;
+Run a command with --help for command-specific usage.
+
+Account signup policies:
+  https://getatm.io/legal/account-terms/2026-08-28
+  https://getatm.io/legal/account-privacy/2026-08-28`;
 
 const doctorHelp = `Usage: trajectory doctor
 

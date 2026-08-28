@@ -209,7 +209,16 @@ describe("auth real CLI process boundary", () => {
     ];
 
     expect(results.map(({ exitCode }) => exitCode)).toEqual([0, 0]);
-    expect(results.map(({ stderr }) => stderr)).toEqual(["", ""]);
+    expect(results.map(({ stderr }) => stderr)).toEqual([
+      [
+        "ATM Account Terms (2026-08-28):",
+        "https://getatm.io/legal/account-terms/2026-08-28",
+        "ATM Account Privacy Notice (2026-08-28):",
+        "https://getatm.io/legal/account-privacy/2026-08-28",
+        "",
+      ].join("\n"),
+      "",
+    ]);
     const combinedOutput = results.map(({ stdout }) => stdout).join("");
     expect(combinedOutput).not.toContain(token);
     expect(results.map(({ stdout }) => JSON.parse(stdout))).toEqual([
