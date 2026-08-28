@@ -52,7 +52,10 @@ export interface SessionUiHarness {
   readonly setVerifyAccountRequired: () => void
   readonly newPage: (
     viewport: ViewportSize,
-    options?: Pick<BrowserContextOptions, "javaScriptEnabled" | "permissions">,
+    options?: Pick<
+      BrowserContextOptions,
+      "hasTouch" | "isMobile" | "javaScriptEnabled" | "permissions"
+    >,
   ) => Promise<Page>
   readonly close: () => Promise<void>
 }
