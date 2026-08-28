@@ -194,8 +194,14 @@ let activeSession;
 let authTrigger;
 let restoreAuthTrigger = false;
 
-const setFeedback = (message) => {
-  if (authFeedback) authFeedback.textContent = message;
+const setFeedback = (message, errorCode = "") => {
+  if (!authFeedback) return;
+  authFeedback.textContent = message;
+  if (errorCode === "") {
+    delete authFeedback.dataset.errorCode;
+  } else {
+    authFeedback.dataset.errorCode = errorCode;
+  }
 };
 
 const validExpiry = (value) => typeof value === "string" && Number.isFinite(Date.parse(value));
@@ -435,6 +441,9 @@ const requestJson = async (endpoint, options = {}) => {
   if (!response.ok) {
     const error = new Error("Registry request failed");
     error.status = response.status;
+    error.code = body?.ok === false && body?.error?.code === "account_required"
+      ? "account_required"
+      : undefined;
     throw error;
   }
   return body;
@@ -600,9 +609,16 @@ const verifyChallenge = async (event) => {
     renderAuthenticated(session);
     void loadLiveSupply(session);
     document.querySelector("#main-content")?.focus({ preventScroll: true });
-  } catch {
+  } catch (error) {
     if (requestVersion === authRequestVersion) {
-      setFeedback("Unable to verify that code. Try again.");
+      if (error instanceof Error && error.code === "account_required") {
+        setFeedback(
+          "No member account exists for this email. Request buyer access or use your member email.",
+          "account_required",
+        );
+      } else {
+        setFeedback("Unable to verify that code. Try again.");
+      }
     }
   } finally {
     if (requestVersion === authRequestVersion) submit.disabled = false;
