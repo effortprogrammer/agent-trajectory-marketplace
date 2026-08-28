@@ -122,6 +122,86 @@ test("proxies public stats for an explicitly configured local preview", async ()
   }
 })
 
+test("proxies approved Registry auth requests for an explicitly configured local preview", async () => {
+  const received: Array<Readonly<{
+    authorization: string | null
+    body: unknown
+    contentType: string | null
+    method: string
+    path: string
+  }>> = []
+  const upstream = Bun.serve({
+    async fetch(request) {
+      received.push({
+        authorization: request.headers.get("authorization"),
+        body: await request.json(),
+        contentType: request.headers.get("content-type"),
+        method: request.method,
+        path: new URL(request.url).pathname,
+      })
+      return Response.json({
+        challengeId: "chal-0123456789abcdef",
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        ok: true,
+      })
+    },
+    hostname: "127.0.0.1",
+    port: 0,
+  })
+  const port = reservePort()
+  const server = Bun.spawn(["bun", "web/server.ts"], {
+    cwd: publicRoot,
+    env: {
+      ...Bun.env,
+      ATM_LOCAL_REGISTRY_URL: `http://127.0.0.1:${upstream.port}`,
+      ATM_ORIGIN_REVISION: testRevision,
+      PORT: String(port),
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  try {
+    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+
+    const response = await fetch(
+      `http://127.0.0.1:${port}/api/registry/v1/auth/login`,
+      {
+        body: JSON.stringify({ email: "owner@example.test" }),
+        headers: { accept: "application/json", "content-type": "application/json" },
+        method: "POST",
+      },
+    )
+    const rejected = await fetch(
+      `http://127.0.0.1:${port}/api/registry/v1/auth/signup`,
+      {
+        body: JSON.stringify({ email: "owner@example.test" }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("cache-control")).toBe("no-store")
+    expect(await response.json()).toEqual({
+      challengeId: "chal-0123456789abcdef",
+      expiresAt: "2030-01-01T00:00:00.000Z",
+      ok: true,
+    })
+    expect(received).toEqual([{
+      authorization: null,
+      body: { email: "owner@example.test" },
+      contentType: "application/json",
+      method: "POST",
+      path: "/v1/auth/login",
+    }])
+    expect(rejected.status).toBe(404)
+  } finally {
+    server.kill()
+    await server.exited
+    upstream.stop(true)
+  }
+})
+
 test("serves session-only public pages without World UI artifacts", async () => {
   const port = reservePort()
   const baseUrl = `http://127.0.0.1:${port}`

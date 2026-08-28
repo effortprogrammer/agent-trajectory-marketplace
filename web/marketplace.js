@@ -1,8 +1,8 @@
 import { mountSellerConsole } from "./console.0058fc69cdec16891c61cee7689ffccdcbf9d9560910d5eec55921d5290e8972.js";
 
-const registry = "https://gateway.getatm.io";
 const localPreview = location.hostname === "127.0.0.1" || location.hostname === "localhost" ||
   location.hostname === "[::1]";
+const registry = localPreview ? "/api/registry" : "https://gateway.getatm.io";
 const publicStatsEndpoint = localPreview
   ? "/api/public-stats"
   : `${registry}/v1/marketplace/public-stats`;
@@ -165,7 +165,6 @@ const authAcceptContact = document.querySelector("[data-auth-accept-contact]");
 const authWaitlistSuccess = document.querySelector("[data-auth-waitlist-success]");
 const authFeedback = document.querySelector("[data-auth-feedback]");
 const authChallengeEmail = document.querySelector("[data-auth-challenge-email]");
-const authModeTabs = document.querySelector("[data-auth-mode-tabs]");
 const authConsolePath = document.querySelector("[data-auth-console-path]");
 const authKicker = document.querySelector("[data-auth-kicker]");
 const authTitlePrefix = document.querySelector("[data-auth-title-prefix]");
@@ -174,6 +173,7 @@ const authDescription = document.querySelector("[data-auth-description]");
 const authRequestLabel = document.querySelector("[data-auth-request-label]");
 const authAccessButton = document.querySelector("[data-testid=request-access-button]");
 const authOpenButtons = document.querySelectorAll("[data-auth-open]");
+const authLoginButtons = document.querySelectorAll("[data-auth-login-open]");
 const authCloseButton = document.querySelector("[data-auth-close]");
 const authLogoutButton = document.querySelector("[data-auth-logout]");
 const status = document.querySelector("[data-registry-status]");
@@ -291,10 +291,10 @@ const showPublicAccess = (message = "", revealGate = false) => {
   supplyLocked.hidden = false;
   authRequestForm.hidden = false;
   authVerifyForm.hidden = true;
-  authModeTabs.hidden = false;
   authWaitlistSuccess.hidden = true;
   authLogoutButton.hidden = true;
   authAccessButton.hidden = false;
+  for (const button of authLoginButtons) button.hidden = false;
   consoleLink.hidden = true;
   consoleView.hidden = true;
   document.body.classList.remove("is-console-view");
@@ -306,16 +306,23 @@ const showPublicAccess = (message = "", revealGate = false) => {
   setFeedback(message);
 };
 
+const showSignIn = (message) => {
+  showPublicAccess();
+  setAuthMode("login");
+  openAuthDialog();
+  setFeedback(message);
+};
+
 const scheduleExpiry = (session) => {
   if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
   const expiresIn = Date.parse(session.expiresAt) - Date.now();
   if (expiresIn <= 0) {
-    showPublicAccess("Your session has expired. Use Member sign in to continue.", true);
+    showSignIn("Your session has expired. Sign in to continue.");
     return;
   }
   expiryTimer = window.setTimeout(() => {
     if (activeSession === undefined || Date.parse(activeSession.expiresAt) <= Date.now()) {
-      showPublicAccess("Your session has expired. Use Member sign in to continue.", true);
+      showSignIn("Your session has expired. Sign in to continue.");
       return;
     }
     scheduleExpiry(activeSession);
@@ -329,6 +336,7 @@ const renderAuthenticated = (session) => {
   for (const section of authenticatedContent) section.hidden = false;
   supplyLocked.hidden = true;
   authAccessButton.hidden = true;
+  for (const button of authLoginButtons) button.hidden = true;
   authLogoutButton.hidden = false;
   consoleLink.hidden = false;
   status.hidden = false;
@@ -370,7 +378,6 @@ const loadPublicTokenTotal = async () => {
 
 const showVerification = () => {
   document.body.dataset.authState = "verify";
-  authModeTabs.hidden = true;
   authRequestForm.hidden = true;
   authVerifyForm.hidden = false;
   authTitlePrefix.textContent = "Check your";
@@ -389,15 +396,9 @@ const setAuthMode = (mode) => {
   }
   authMode = mode;
   document.body.dataset.authState = mode;
-  authModeTabs.hidden = false;
   authRequestForm.hidden = false;
   authVerifyForm.hidden = true;
   authWaitlistSuccess.hidden = true;
-  for (const button of document.querySelectorAll("[data-auth-mode]")) {
-    const selected = button.dataset.authMode === mode;
-    button.classList.toggle("is-selected", selected);
-    button.setAttribute("aria-pressed", String(selected));
-  }
   const isWaitlist = mode === "waitlist";
   authContactConsent.hidden = !isWaitlist;
   authAcceptContact.required = isWaitlist;
@@ -448,7 +449,7 @@ const showConsole = async (session = activeSession) => {
     await mountSellerConsole({
       requestJson,
       session,
-      showLogin: () => showPublicAccess("Your session is no longer valid. Use Member sign in to continue.", true),
+      showLogin: () => showSignIn("Your session is no longer valid. Sign in to continue."),
     });
   } catch {
     const state = consoleView.querySelector("[data-console-state]");
@@ -622,7 +623,7 @@ const loadLiveSupply = async (session) => {
     });
     if (requestVersion !== dataRequestVersion) return;
     if (response.status === 401) {
-      showPublicAccess("Your session is no longer valid. Use Member sign in to continue.", true);
+      showSignIn("Your session is no longer valid. Sign in to continue.");
       return;
     }
     if (!response.ok) throw new Error("Registry stats unavailable");
@@ -694,7 +695,7 @@ const logout = async () => {
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok && response.status !== 401) throw new Error("Registry logout failed");
-    showPublicAccess("You have been signed out.", true);
+    showSignIn("You have been signed out.");
   } catch {
     setFeedback("Unable to log out. Try again.");
     setStatus("is-unavailable", "Logout failed");
@@ -703,15 +704,11 @@ const logout = async () => {
   }
 };
 
-for (const button of document.querySelectorAll("[data-auth-mode]")) {
-  button.addEventListener("click", () => setAuthMode(button.dataset.authMode));
-}
 authRequestForm.addEventListener("submit", requestAccess);
 authVerifyForm.addEventListener("submit", verifyChallenge);
 document.querySelector("[data-auth-restart]").addEventListener("click", () => {
   authRequestVersion += 1;
   challenge = undefined;
-  authModeTabs.hidden = false;
   authRequestForm.hidden = false;
   authVerifyForm.hidden = true;
   setAuthMode(authMode);
@@ -722,6 +719,13 @@ for (const button of authOpenButtons) {
   button.addEventListener("click", () => {
     closeNavigation();
     setAuthMode("waitlist");
+    openAuthDialog(button);
+  });
+}
+for (const button of authLoginButtons) {
+  button.addEventListener("click", () => {
+    closeNavigation();
+    setAuthMode("login");
     openAuthDialog(button);
   });
 }
