@@ -67,7 +67,7 @@ const renderSessions = (root, sessions) => {
 };
 
 export const mountSellerConsole = async ({
-  isCurrent,
+  isCurrent = () => true,
   requestJson,
   session,
   showLogin,

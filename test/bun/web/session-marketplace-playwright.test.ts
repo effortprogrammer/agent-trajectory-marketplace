@@ -158,6 +158,69 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(harness.registryRequests.filter((request) => request.path.endsWith("/sales/ledger"))).toEqual([])
   })
 
+  test("keeps the legacy Seller Console module call shape compatible", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    const result = await page.evaluate<{
+      readonly error: string | null
+      readonly seller: string | null
+    }>(`(async () => {
+      const module = await import("/console.js")
+      try {
+        await module.mountSellerConsole({
+          requestJson: async (path) => {
+            if (path === "/v1/auth/me") {
+              return {
+                account: {
+                  accountId: "acct-legacy0123456789",
+                  email: "legacy@example.test",
+                },
+                ok: true,
+              }
+            }
+            if (path === "/v1/marketplace/seller/sales/sessions") {
+              return {
+                asOf: "2026-08-20T12:00:00Z",
+                ok: true,
+                page: { nextCursor: null },
+                sessions: [],
+              }
+            }
+            return {
+              asOf: "2026-08-20T12:00:00Z",
+              currency: "USD",
+              interval: "day",
+              ok: true,
+              openingCumulativeCredits: 0,
+              points: [],
+              window: { from: "2026-07-21", to: "2026-08-20" },
+            }
+          },
+          session: { accessToken: "legacy-session-token" },
+          showLogin: () => {
+            throw new Error("legacy session unexpectedly rejected")
+          },
+        })
+        return {
+          error: null,
+          seller: document.querySelector("[data-console-seller]")?.textContent,
+        }
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : String(error),
+          seller: null,
+        }
+      }
+    })()`)
+
+    expect(result).toEqual({
+      error: null,
+      seller: "acct-legacy0123456789",
+    })
+  })
+
   test("ignores seller console responses from a previous account session", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
