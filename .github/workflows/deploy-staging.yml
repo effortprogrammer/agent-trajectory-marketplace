@@ -34,6 +34,13 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git merge-base --is-ancestor "$GITHUB_SHA" "refs/remotes/origin/dev"
 
+      - name: Require Registry account policy readiness
+        run: |
+          set -euo pipefail
+          source scripts/release-network.sh
+          atm_release_require_registry_policy_ready \
+            https://gateway.getatm.io 2026-08-28 2026-08-28
+
       - name: Deploy exact dev commit to Railway staging
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

@@ -37,6 +37,14 @@ grep -Fq "$RAILWAY_CLI_IMAGE" "$RELEASE_NETWORK" \
   || fail "Railway CLI image is not pinned by digest"
 grep -Fq 'atm_release_railway_deploy "$PWD" "$GITHUB_SHA"' "$WORKFLOW" \
   || fail "staging origin revision is not bound to the pushed commit"
+grep -Fq 'atm_release_require_registry_policy_ready \' "$WORKFLOW" \
+  || fail "staging does not require Registry account policy readiness"
+grep -Fq 'https://gateway.getatm.io 2026-08-28 2026-08-28' "$WORKFLOW" \
+  || fail "staging is not bound to the required Registry policy versions"
+registry_line="$(grep -nF 'Require Registry account policy readiness' "$WORKFLOW" | cut -d: -f1)"
+deployment_line="$(grep -nF 'Deploy exact dev commit to Railway staging' "$WORKFLOW" | cut -d: -f1)"
+[[ -n "$registry_line" && -n "$deployment_line" && "$registry_line" -lt "$deployment_line" ]] \
+  || fail "staging deploys before Registry policy readiness is proven"
 grep -Fq 'atm_release_railway_deploy' "$WORKFLOW" \
   || fail "staging workflow does not use the bounded Railway deploy helper"
 grep -Fq '"ATM_ORIGIN_REVISION=$revision"' "$RELEASE_NETWORK" \

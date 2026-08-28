@@ -59,6 +59,13 @@ jobs:
           git merge-base --is-ancestor refs/remotes/origin/dev "$GITHUB_SHA"
           git merge-base --is-ancestor refs/remotes/origin/production "$GITHUB_SHA"
 
+      - name: Require Registry account policy readiness
+        run: |
+          set -euo pipefail
+          source scripts/release-network.sh
+          atm_release_require_registry_policy_ready \
+            https://gateway.getatm.io 2026-08-28 2026-08-28
+
       - name: Build source archive and bound manifest
         env:
           TAG: ${{ github.ref_name }}
