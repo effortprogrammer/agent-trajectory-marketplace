@@ -329,9 +329,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.getByTestId("aggregate-session-count").innerText()).toBe("2")
     expect(await page.getByTestId("aggregate-token-count").innerText()).toBe("940.6K")
     expect(await page.getByTestId("aggregate-runtime-count").innerText()).toBe("1")
-    expect(await page.getByTestId("aggregate-status").evaluate((element) =>
-      element.classList.contains("is-live"),
-    )).toBe(true)
+    expect(await page.getByTestId("aggregate-status").isVisible()).toBe(false)
     expect(await page.evaluate<number>("sessionStorage.length")).toBe(0)
     expect(await page.evaluate<boolean>(
       "document.activeElement?.id === 'main-content'",
@@ -342,6 +340,31 @@ describe("authenticated aggregate marketplace browser contract", () => {
       body: undefined,
       method: "GET",
       path: "/v1/marketplace/stats",
+    })
+  })
+
+  test("centers the authenticated Seller console control", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+
+    expect(await page.getByTestId("seller-console-link").evaluate((element) => {
+      const view = element.ownerDocument.defaultView
+      if (view === null) throw new Error("Seller console control has no browser view")
+      const style = view.getComputedStyle(element)
+      return {
+        alignItems: style.alignItems,
+        display: style.display,
+        height: element.getBoundingClientRect().height,
+        justifyContent: style.justifyContent,
+      }
+    })).toEqual({
+      alignItems: "center",
+      display: "flex",
+      height: 42,
+      justifyContent: "center",
     })
   })
 

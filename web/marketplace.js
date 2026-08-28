@@ -345,7 +345,7 @@ const renderAuthenticated = (session) => {
   for (const button of authLoginButtons) button.hidden = true;
   authLogoutButton.hidden = false;
   consoleLink.hidden = false;
-  status.hidden = false;
+  status.hidden = true;
   setFeedback("");
   setStatus("is-connecting", "Connecting to Registry");
   resetSupply();

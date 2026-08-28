@@ -1733,6 +1733,13 @@ body {
   color: var(--surface);
 }
 
+.nav-console-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 .live-badge {
   border-color: var(--border);
   background: var(--surface-muted, #f7f7f5);
