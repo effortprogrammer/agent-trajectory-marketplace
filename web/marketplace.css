@@ -780,6 +780,22 @@ button {
   accent-color: var(--accent);
 }
 
+.auth-terms a {
+  color: var(--text-primary);
+  text-decoration-color: var(--accent);
+  text-underline-offset: 0.18em;
+}
+
+.auth-terms a:hover {
+  color: var(--accent-deep);
+}
+
+.auth-terms a:focus-visible {
+  border-radius: 0.15rem;
+  outline: 0.16rem solid var(--accent);
+  outline-offset: 0.14rem;
+}
+
 .auth-form .signal-button {
   width: 100%;
   margin-top: var(--space-2);

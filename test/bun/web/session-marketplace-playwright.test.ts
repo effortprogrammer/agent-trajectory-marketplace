@@ -425,12 +425,26 @@ describe("authenticated aggregate marketplace browser contract", () => {
 
     const email = page.locator("[data-auth-email]")
     const terms = page.locator("[data-auth-accept-terms]")
+    const termsPolicy = page.locator(
+      'a[href="/legal/account-terms/2026-08-28"]',
+    )
+    const privacyPolicy = page.locator(
+      'a[href="/legal/account-privacy/2026-08-28"]',
+    )
     const createAccount = page.locator("[data-auth-request-submit]")
     const signIn = page.locator("[data-auth-mode-login]")
     const close = page.getByTestId("auth-close-button")
     await email.focus()
     await page.keyboard.press("Tab")
     expect(await terms.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
+    await page.keyboard.press("Tab")
+    expect(await termsPolicy.evaluate(
+      (element) => element.ownerDocument.activeElement === element,
+    )).toBe(true)
+    await page.keyboard.press("Tab")
+    expect(await privacyPolicy.evaluate(
+      (element) => element.ownerDocument.activeElement === element,
+    )).toBe(true)
     await page.keyboard.press("Tab")
     expect(await createAccount.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
     await page.keyboard.press("Tab")

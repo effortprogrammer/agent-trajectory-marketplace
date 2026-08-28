@@ -85,6 +85,60 @@ test("binds every public asset URL to fingerprinted paths so releases cannot reu
   )
 })
 
+test("serves immutable versioned account policy documents linked from signup", async () => {
+  const version = "2026-08-28"
+  const termsPath = `/legal/account-terms/${version}`
+  const privacyPath = `/legal/account-privacy/${version}`
+  const stylesheetPath = `/legal/assets/${version}.css`
+  const port = reservePort()
+  const server = Bun.spawn(["bun", "web/server.ts"], {
+    cwd: publicRoot,
+    env: { ...Bun.env, PORT: String(port) },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  try {
+    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+
+    const [index, terms, privacy, stylesheet] = await Promise.all([
+      fetch(`http://127.0.0.1:${port}/`),
+      fetch(`http://127.0.0.1:${port}${termsPath}`),
+      fetch(`http://127.0.0.1:${port}${privacyPath}`),
+      fetch(`http://127.0.0.1:${port}${stylesheetPath}`),
+    ])
+    const indexHtml = await index.text()
+    const termsHtml = await terms.text()
+    const privacyHtml = await privacy.text()
+
+    expect(indexHtml).toContain(`href="${termsPath}"`)
+    expect(indexHtml).toContain(`href="${privacyPath}"`)
+    for (const response of [terms, privacy, stylesheet]) {
+      expect(response.status).toBe(200)
+      expect(response.headers.get("cache-control")).toBe(
+        "public, max-age=31536000, immutable",
+      )
+    }
+    expect(terms.headers.get("content-type")).toBe("text/html; charset=utf-8")
+    expect(privacy.headers.get("content-type")).toBe("text/html; charset=utf-8")
+    expect(stylesheet.headers.get("content-type")).toBe("text/css; charset=utf-8")
+    expect(termsHtml).toContain(
+      `<meta name="atm-policy-kind" content="account-terms">`,
+    )
+    expect(termsHtml).toContain(
+      `<meta name="atm-policy-version" content="${version}">`,
+    )
+    expect(privacyHtml).toContain(
+      `<meta name="atm-policy-kind" content="account-privacy">`,
+    )
+    expect(privacyHtml).toContain(
+      `<meta name="atm-policy-version" content="${version}">`,
+    )
+  } finally {
+    server.kill()
+    await server.exited
+  }
+})
+
 test("proxies public stats for an explicitly configured local preview", async () => {
   const upstream = Bun.serve({
     fetch(request) {
