@@ -47,6 +47,7 @@ export interface SessionUiHarness {
   readonly registryRequests: RegistryRequest[]
   readonly setLogoutStatus: (status: number) => void
   readonly setPublicTokenTotal: (value: number | string) => void
+  readonly setVerifyAccountRequired: () => void
   readonly newPage: (
     viewport: ViewportSize,
     options?: Pick<BrowserContextOptions, "javaScriptEnabled" | "permissions">,
@@ -104,6 +105,7 @@ const startRegistry = () => {
   const requests: RegistryRequest[] = []
   let logoutStatus = 200
   let publicTokenTotal: number | string = "39048328"
+  let verifyAccountRequired = false
   let verifyGate: Promise<void> | undefined
   let verifyRelease: (() => void) | undefined
   const server = Bun.serve({
@@ -122,6 +124,15 @@ const startRegistry = () => {
       }
       if (url.pathname === "/v1/auth/verify") {
         if (verifyGate !== undefined) await verifyGate
+        if (verifyAccountRequired) {
+          return json({
+            error: {
+              code: "account_required",
+              message: "no member account exists for this email",
+            },
+            ok: false,
+          }, 401)
+        }
         return json({ accessToken, accountId, expiresAt, ok: true, tokenType: "Bearer" })
       }
       if (url.pathname === "/v1/auth/me") {
@@ -181,6 +192,9 @@ const startRegistry = () => {
     setPublicTokenTotal: (value: number | string) => {
       publicTokenTotal = value
     },
+    setVerifyAccountRequired: () => {
+      verifyAccountRequired = true
+    },
     url: `http://127.0.0.1:${server.port}`,
   }
 }
@@ -221,6 +235,7 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
     registryRequests: registry.requests,
     setLogoutStatus: registry.setLogoutStatus,
     setPublicTokenTotal: registry.setPublicTokenTotal,
+    setVerifyAccountRequired: registry.setVerifyAccountRequired,
     newPage: async (viewport, options = {}) => {
       const context = await browser.newContext({
         ...options,
