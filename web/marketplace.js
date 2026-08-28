@@ -776,6 +776,26 @@ for (const button of authLoginButtons) {
   });
 }
 authCloseButton.addEventListener("click", () => closeAuthDialog());
+authGate.addEventListener("keydown", (event) => {
+  if (event.key !== "Tab") return;
+  const focusable = [...authGate.querySelectorAll(
+    'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])',
+  )].filter((element) =>
+    !element.hasAttribute("disabled")
+    && !element.closest("[hidden]")
+    && element.getClientRects().length > 0,
+  );
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (!first || !last) return;
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
 authGate.addEventListener("click", (event) => {
   if (event.target === authGate) closeAuthDialog();
 });

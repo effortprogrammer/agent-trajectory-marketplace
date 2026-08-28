@@ -422,7 +422,28 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("html").evaluate((element) =>
       element.scrollWidth <= element.clientWidth,
     )).toBe(true)
-    await page.getByTestId("auth-close-button").click()
+
+    const email = page.locator("[data-auth-email]")
+    const terms = page.locator("[data-auth-accept-terms]")
+    const createAccount = page.locator("[data-auth-request-submit]")
+    const signIn = page.locator("[data-auth-mode-login]")
+    const close = page.getByTestId("auth-close-button")
+    await email.focus()
+    await page.keyboard.press("Tab")
+    expect(await terms.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
+    await page.keyboard.press("Tab")
+    expect(await createAccount.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
+    await page.keyboard.press("Tab")
+    expect(await signIn.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
+    await page.keyboard.press("Tab")
+    expect(await page.locator("[data-auth-gate]").evaluate((element) =>
+      element.contains(element.ownerDocument.activeElement),
+    )).toBe(true)
+    expect(await close.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
+    await page.keyboard.press("Shift+Tab")
+    expect(await signIn.evaluate((element) => element.ownerDocument.activeElement === element)).toBe(true)
+
+    await close.click()
     expect(await page.evaluate<boolean>(
       "document.activeElement?.dataset.testid === 'sign-in-button'",
     )).toBe(true)
