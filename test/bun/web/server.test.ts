@@ -171,13 +171,17 @@ test("proxies approved Registry auth requests for an explicitly configured local
         method: "POST",
       },
     )
-    const rejected = await fetch(
+    const signup = await fetch(
       `http://127.0.0.1:${port}/api/registry/v1/auth/signup`,
       {
-        body: JSON.stringify({ email: "owner@example.test" }),
+        body: JSON.stringify({ email: "owner@example.test", acceptTerms: true }),
         headers: { "content-type": "application/json" },
         method: "POST",
       },
+    )
+    const rejected = await fetch(
+      `http://127.0.0.1:${port}/api/registry/v1/auth/signup`,
+      { method: "GET" },
     )
 
     expect(response.status).toBe(200)
@@ -187,14 +191,26 @@ test("proxies approved Registry auth requests for an explicitly configured local
       expiresAt: "2030-01-01T00:00:00.000Z",
       ok: true,
     })
-    expect(received).toEqual([{
-      authorization: null,
-      body: { email: "owner@example.test" },
-      contentType: "application/json",
-      method: "POST",
-      path: "/v1/auth/login",
-    }])
+    expect(signup.status).toBe(200)
+    expect(signup.headers.get("cache-control")).toBe("no-store")
+    expect(received).toEqual([
+      {
+        authorization: null,
+        body: { email: "owner@example.test" },
+        contentType: "application/json",
+        method: "POST",
+        path: "/v1/auth/login",
+      },
+      {
+        authorization: null,
+        body: { email: "owner@example.test", acceptTerms: true },
+        contentType: "application/json",
+        method: "POST",
+        path: "/v1/auth/signup",
+      },
+    ])
     expect(rejected.status).toBe(404)
+    expect(received).toHaveLength(2)
   } finally {
     server.kill()
     await server.exited
