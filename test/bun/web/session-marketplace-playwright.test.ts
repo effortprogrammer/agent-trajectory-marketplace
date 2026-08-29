@@ -6,7 +6,7 @@ import {
   type SessionUiHarness,
 } from "./session-marketplace-playwright.fixture"
 
-// allow: SIZE_OK - one serial browser contract shares a Chromium lifecycle to avoid CI contention.
+// allow: SIZE_OK - one serial browser contract shares Chromium to avoid CI contention.
 setDefaultTimeout(30_000)
 
 const desktop = { height: 900, width: 1_280 } as const

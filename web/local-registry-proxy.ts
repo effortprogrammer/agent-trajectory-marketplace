@@ -3,9 +3,15 @@ import { isValidPayoutOperationId, payoutRequestErrorMessages } from "../src/mar
 type ProxyOptions = Readonly<{
   configuredUrl: string | undefined
   responseHeaders: Readonly<Record<string, string>>
+  upstreamFetch: UpstreamFetch
 }>
 
-type LocalRegistryProxy = (
+export type UpstreamFetch = (
+  url: URL,
+  init: RequestInit,
+) => Promise<Response>
+
+export type LocalRegistryProxy = (
   request: Request,
   requestUrl: URL,
 ) => Promise<Response | undefined>
@@ -165,7 +171,7 @@ export const createLocalRegistryProxy = (
 
     try {
       const upstreamUrl = new URL(`${registryPath}${requestUrl.search}`, registryOrigin)
-      const upstream = await fetch(upstreamUrl, {
+      const upstream = await options.upstreamFetch(upstreamUrl, {
         body,
         headers,
         method: request.method,
