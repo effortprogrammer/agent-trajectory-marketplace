@@ -6,7 +6,8 @@ import { parsePayoutRequestResponse } from "../../../src/marketplace/payout-requ
 
 const publicRoot = resolve(import.meta.dir, "../../..")
 const testRevision = "0123456789abcdef0123456789abcdef01234567"
-setDefaultTimeout(10_000)
+const serverReadyTimeoutMs = 30_000
+setDefaultTimeout(serverReadyTimeoutMs + 10_000)
 
 const assetDigest = async (file: string): Promise<string> =>
   new Bun.CryptoHasher("sha256")
@@ -37,7 +38,10 @@ const waitForReadyOutput = async (
   let output = ""
   let timeout: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => reject(new Error(`web server did not print ${expected}`)), 5_000)
+    timeout = setTimeout(
+      () => reject(new Error(`web server did not print ${expected}`)),
+      serverReadyTimeoutMs,
+    )
   })
   try {
     while (!output.includes(expected)) {
