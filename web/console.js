@@ -1,7 +1,8 @@
 import {
   parseEarningsResponse,
   parseSessionsResponse,
-} from "./console-contract.ee640a577297eee1141972c32b77b3322064aed602702eddd82b863e94c3c478.js";
+} from "./console-contract.19b879da9be9f44653c8d45a3ec7d48d70b20e9a033f2f0fd41caa59781c5837.js";
+import { mountPayoutConsole } from "./payout-console.d4e2484e0049f3da6fc5537a06279091f64a95888b9720412938ee823299e7e4.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const shortId = (id) => id.slice(0, 8);
@@ -80,6 +81,7 @@ export const mountSellerConsole = async ({
   const sessions = view.querySelector("[data-console-sessions]");
   const seller = view.querySelector("[data-console-seller]");
   const total = view.querySelector("[data-console-total]");
+  const payout = view.querySelector("[data-console-payout]");
   const today = new Date(); const from = new Date(today); from.setUTCDate(from.getUTCDate() - 30);
   const day = (value) => value.toISOString().slice(0, 10);
   const headers = { authorization: `Bearer ${session.accessToken}` };
@@ -97,6 +99,13 @@ export const mountSellerConsole = async ({
     seller.textContent = me.account.accountId; total.textContent = `${formatCredits(earnings.points.at(-1)?.cumulativeNetCredits ?? earnings.openingCumulativeCredits)} cumulative`;
     renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
     state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;
+    await mountPayoutConsole({
+      isCurrent,
+      requestJson,
+      root: payout,
+      session,
+      showLogin,
+    });
   } catch (error) {
     if (!isCurrent()) return;
     if (error?.status === 401) { showLogin(); return; }

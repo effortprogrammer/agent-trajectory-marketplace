@@ -3,6 +3,8 @@ const stages = new Set(["not_listed", "listed", "sold", "cleared", "paid", "with
 const exceptions = new Set([null, "clearance_failed", "refunded", "charged_back"]);
 const eventTypes = new Set(["sale", "clearance", "payout", "withdrawal", "relisting", "clearance_failed", "refund", "chargeback"]);
 const intervals = new Set(["day", "week", "month"]);
+const payoutStatuses = new Set(["requested", "pending", "approved", "processing", "cancelled", "rejected", "paid"]);
+const payoutUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const utcTimestamp = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z$/;
 const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -107,4 +109,51 @@ export const parseLedgerResponse = (value) => {
     if (event.relatedSessionCount !== null && (!Number.isSafeInteger(event.relatedSessionCount) || event.relatedSessionCount < 0)) fail("Invalid relatedSessionCount");
   }
   return value;
+};
+
+export const parsePayoutResponse = (value) => {
+  keys(value, ["ok", "payoutRequest"], "payout response");
+  if (value.ok !== true) fail("Invalid payout response");
+  const payout = value.payoutRequest;
+  keys(payout, ["availableMinor", "currency", "heldMinor", "request", "thresholdMinor"], "payout request summary");
+  if (payout.currency !== "USD" || payout.thresholdMinor !== 10_000) fail("Invalid payout request summary");
+  credits(payout.availableMinor, "availableMinor");
+  credits(payout.heldMinor, "heldMinor");
+  if (payout.request === null) return value;
+
+  const request = payout.request;
+  keys(request, [
+    "amountMinor",
+    "approvedAt",
+    "externalReference",
+    "paidAt",
+    "rejectedReason",
+    "requestId",
+    "requestedAt",
+    "status",
+  ], "payout request");
+  if (typeof request.requestId !== "string" || !payoutUuid.test(request.requestId)) fail("Invalid requestId");
+  credits(request.amountMinor, "amountMinor");
+  if (!payoutStatuses.has(request.status)) fail("Invalid payout status");
+  timestamp(request.requestedAt, "requestedAt");
+  nullable(request.approvedAt, timestamp, "approvedAt");
+  nullable(request.rejectedReason, text, "rejectedReason");
+  nullable(request.paidAt, timestamp, "paidAt");
+  nullable(request.externalReference, text, "externalReference");
+  const approved = request.status === "approved" || request.status === "processing" || request.status === "paid";
+  if (approved !== (request.approvedAt !== null)) fail("Invalid approvedAt");
+  if ((request.status === "rejected") !== (request.rejectedReason !== null)) fail("Invalid rejectedReason");
+  if ((request.status === "paid") !== (request.paidAt !== null)) fail("Invalid paidAt");
+  if ((request.status === "paid") !== (request.externalReference !== null)) fail("Invalid externalReference");
+  return value;
+};
+
+export const formatPayoutAmount = (minor) => {
+  credits(minor, "minor");
+  return new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    currencyDisplay: "narrowSymbol",
+    minimumFractionDigits: 2,
+    style: "currency",
+  }).format(minor / 100);
 };

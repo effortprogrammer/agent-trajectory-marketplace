@@ -33,21 +33,39 @@ const sellerEarnings = {
   points: [{ cumulativeNetCredits: 0, periodStart: "2026-08-19T00:00:00Z" }, { cumulativeNetCredits: 100, periodStart: "2026-08-20T00:00:00Z" }],
   window: { from: "2026-07-21", to: "2026-08-20" },
 }
+const eligiblePayout = {
+  ok: true,
+  payoutRequest: {
+    availableMinor: 15_000,
+    currency: "USD",
+    heldMinor: 0,
+    request: null,
+    thresholdMinor: 10_000,
+  },
+}
 let sharedBrowser: Browser | undefined
 
 export type RegistryRequest = Readonly<{
   authorization: string | null
   body: unknown
+  idempotencyKey?: string
   method: string
   path: string
+}>
+
+export type PayoutFixture = Readonly<{
+  body: unknown
+  status: number
 }>
 
 export interface SessionUiHarness {
   readonly appUrl: string
   readonly holdChallenge: () => () => void
+  readonly holdPayout: () => () => void
   readonly holdVerify: () => () => void
   readonly registryRequests: RegistryRequest[]
   readonly setLogoutStatus: (status: number) => void
+  readonly setPayoutResponses: (...responses: PayoutFixture[]) => void
   readonly setPublicTokenTotal: (value: number | string) => void
   readonly setVerifyAccountRequired: () => void
   readonly newPage: (
@@ -113,15 +131,20 @@ const startRegistry = () => {
   let verifyAccountRequired = false
   let challengeGate: Promise<void> | undefined
   let challengeRelease: (() => void) | undefined
+  let payoutGate: Promise<void> | undefined
+  let payoutRelease: (() => void) | undefined
+  let payoutResponses: PayoutFixture[] = [{ body: eligiblePayout, status: 200 }]
   let verifyGate: Promise<void> | undefined
   let verifyRelease: (() => void) | undefined
   const server = Bun.serve({
     async fetch(request) {
       const url = new URL(request.url)
       const body = await parseBody(request)
+      const idempotencyKey = request.headers.get("idempotency-key")
       requests.push({
         authorization: request.headers.get("authorization"),
         body,
+        ...(idempotencyKey === null ? {} : { idempotencyKey }),
         method: request.method,
         path: `${url.pathname}${url.search}`,
       })
@@ -158,6 +181,20 @@ const startRegistry = () => {
       if (url.pathname === "/v1/marketplace/seller/sales/earnings") {
         if (request.headers.get("authorization") !== `Bearer ${accessToken}`) return json({ error: { code: "unauthorized" }, ok: false }, 401)
         return json(sellerEarnings)
+      }
+      if (
+        url.pathname === "/v1/marketplace/seller/payout-request"
+        || url.pathname === "/v1/marketplace/seller/payout-request/withdraw"
+      ) {
+        if (request.headers.get("authorization") !== `Bearer ${accessToken}`) {
+          return json({ error: { code: "unauthorized", message: "Authentication is required." }, ok: false }, 401)
+        }
+        if (payoutGate !== undefined) await payoutGate
+        const fixture = payoutResponses.length > 1
+          ? payoutResponses.shift()
+          : payoutResponses[0]
+        if (fixture === undefined) throw new Error("payout fixture queue is empty")
+        return json(fixture.body, fixture.status)
       }
       if (url.pathname === "/v1/auth/logout") {
         return logoutStatus === 200
@@ -197,6 +234,18 @@ const startRegistry = () => {
         release?.()
       }
     },
+    holdPayout: () => {
+      if (payoutGate !== undefined) throw new Error("payout request is already held")
+      payoutGate = new Promise((resolve) => {
+        payoutRelease = resolve
+      })
+      return () => {
+        const release = payoutRelease
+        payoutGate = undefined
+        payoutRelease = undefined
+        release?.()
+      }
+    },
     holdVerify: () => {
       if (verifyGate !== undefined) throw new Error("verify request is already held")
       verifyGate = new Promise((resolve) => {
@@ -212,6 +261,10 @@ const startRegistry = () => {
     server,
     setLogoutStatus: (status: number) => {
       logoutStatus = status
+    },
+    setPayoutResponses: (...responses: PayoutFixture[]) => {
+      if (responses.length === 0) throw new Error("at least one payout fixture is required")
+      payoutResponses = [...responses]
     },
     setPublicTokenTotal: (value: number | string) => {
       publicTokenTotal = value
@@ -256,9 +309,11 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
   return {
     appUrl: `http://127.0.0.1:${port}`,
     holdChallenge: registry.holdChallenge,
+    holdPayout: registry.holdPayout,
     holdVerify: registry.holdVerify,
     registryRequests: registry.requests,
     setLogoutStatus: registry.setLogoutStatus,
+    setPayoutResponses: registry.setPayoutResponses,
     setPublicTokenTotal: registry.setPublicTokenTotal,
     setVerifyAccountRequired: registry.setVerifyAccountRequired,
     newPage: async (viewport, options = {}) => {
