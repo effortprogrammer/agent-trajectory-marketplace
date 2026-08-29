@@ -42,6 +42,9 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
+      - name: Type check shadcn preview
+        run: bunx tsc -p shadcn-preview/tsconfig.json
+
       - name: Verify publish wire fixtures
         run: bun run verify:publish-wire
 
@@ -69,6 +72,9 @@ jobs:
           ! -name '*process.test.ts'
           -print0
           | xargs -0 bun test
+
+      - name: Test shadcn preview
+        run: bun test shadcn-preview
 
       - name: Build
         run: bun run build:collector

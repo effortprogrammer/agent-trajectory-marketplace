@@ -1,0 +1,133 @@
+.supply-section {
+	background: hsl(var(--muted) / 0.72);
+	border-bottom: 1px solid hsl(var(--border));
+}
+
+.supply-layout {
+	align-items: start;
+	display: grid;
+	gap: 96px;
+	grid-template-columns: 1.15fr 0.85fr;
+}
+
+.supply-copy h2,
+.process-copy h2,
+.faq-layout h2 {
+	font-size: clamp(2.35rem, 4.5vw, 3.25rem);
+	font-weight: 670;
+	letter-spacing: -0.055em;
+	line-height: 1.02;
+	margin: 0.85rem 0 0;
+}
+
+.supply-copy > p:last-child,
+.process-copy > p:last-of-type {
+	color: hsl(var(--muted-foreground));
+	margin: 1.25rem 0 0;
+	max-width: 620px;
+}
+
+.access-ledger {
+	border-top: 1px solid hsl(var(--foreground));
+}
+
+.access-ledger dl {
+	margin: 0 0 1.5rem;
+}
+
+.access-ledger dl > div {
+	border-bottom: 1px solid hsl(var(--border));
+	display: grid;
+	gap: 1rem;
+	grid-template-columns: 5rem 1fr;
+	padding-block: 1rem;
+}
+
+.access-ledger dt {
+	color: hsl(var(--primary));
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.access-ledger dd {
+	font-size: 0.9rem;
+	margin: 0;
+}
+
+.process-section {
+	border-bottom: 1px solid hsl(var(--border));
+}
+
+.process-layout {
+	align-items: start;
+	display: grid;
+	gap: 84px;
+	grid-template-columns: 0.85fr 1.15fr;
+}
+
+.process-tabs {
+	display: grid;
+	margin-top: 2rem;
+}
+
+.process-tab {
+	align-items: center;
+	background: transparent;
+	border: 0;
+	border-bottom: 1px solid hsl(var(--border));
+	color: hsl(var(--muted-foreground));
+	cursor: pointer;
+	display: flex;
+	font-weight: 630;
+	gap: 0.85rem;
+	min-height: 52px;
+	padding: 0.65rem 0;
+	text-align: left;
+}
+
+.process-tab:first-child {
+	border-top: 1px solid hsl(var(--border));
+}
+
+.process-tab span {
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+}
+
+.process-tab.active {
+	color: hsl(var(--primary));
+}
+
+.process-record {
+	border-bottom: 1px solid hsl(var(--foreground));
+	border-top: 1px solid hsl(var(--foreground));
+	min-height: 350px;
+	padding: 2rem 0.25rem;
+}
+
+.record-index {
+	color: hsl(var(--primary));
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.1em;
+	margin: 0;
+	text-transform: uppercase;
+}
+
+.process-record h3 {
+	font-size: 2rem;
+	letter-spacing: -0.045em;
+	margin: 3.2rem 0 0.75rem;
+}
+
+.process-record > p:not(.record-index) {
+	color: hsl(var(--muted-foreground));
+	max-width: 520px;
+}
+
+.process-command {
+	margin-top: 2rem;
+}

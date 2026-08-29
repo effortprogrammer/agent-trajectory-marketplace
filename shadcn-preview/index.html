@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="A local ATM Agent Trajectory Marketplace landing-page concept." />
+    <meta name="theme-color" content="#faf8ef" />
+    <title>ATM - local landing concept</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <div class="site-shell">
+      <header class="nav-wrap">
+        <div class="container nav">
+          <a class="brand" href="#top" aria-label="ATM home"><span class="brand-mark">atm</span><span class="brand-name">agent trajectory marketplace</span></a>
+          <nav class="desktop-nav" aria-label="Primary navigation"><a href="#process">Seller publishing</a><a href="#supply">Access boundary</a></nav>
+          <div class="desktop-actions"><button class="button button-variant-ghost" type="button" data-dialog-mode="signin">Sign in</button><button class="button button-variant-default" type="button" data-dialog-mode="buyer">Request buyer access</button></div>
+          <button class="button button-variant-outline button-size-icon menu-button" type="button" aria-controls="mobile-navigation" aria-label="Open navigation" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button>
+        </div>
+        <div class="mobile-nav" id="mobile-navigation" hidden>
+          <a href="#process">Seller publishing</a><a href="#supply">Access boundary</a>
+          <button class="button button-variant-outline" type="button" data-dialog-mode="signin">Sign in</button>
+          <button class="button button-variant-default" type="button" data-dialog-mode="buyer">Request buyer access</button>
+        </div>
+      </header>
+
+      <main id="main-content">
+        <section class="hero" id="top">
+          <div class="container hero-grid">
+            <div class="hero-copy">
+              <p class="eyebrow">Seller publishing</p><h1>Publish reviewed, credential-redacted agent sessions.</h1>
+              <p class="hero-lead">Review sessions locally, redact credentials locally, and publish only the sessions you select.</p>
+              <div class="hero-actions"><a class="button button-variant-default button-size-lg" href="#install">Install seller CLI</a><button class="button button-variant-outline button-size-lg" type="button" data-dialog-mode="buyer">Request buyer access</button></div>
+            </div>
+            <aside class="boundary-record" aria-labelledby="boundary-title">
+              <div class="record-heading"><p class="eyebrow">Local publishing boundary</p><h2 id="boundary-title">You choose exactly what to publish.</h2></div>
+              <ol class="boundary-steps">
+                <li><span>01</span><div><strong>Discover</strong><small>Supported local sessions</small></div></li>
+                <li><span>02</span><div><strong>Redact</strong><small>Credentials and detected secrets</small></div></li>
+                <li><span>03</span><div><strong>Review</strong><small>The exact selected sessions</small></div></li>
+              </ol>
+              <div class="record-command"><span>$</span><code>trajectory marketplace seller candidate publish</code></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="section supply-section" id="supply">
+          <div class="container supply-layout">
+            <div class="supply-copy"><p class="eyebrow">Public and member access</p><h2>Aggregate totals are public. Individual sessions are not.</h2><p>The public page exposes aggregate token scale only. Authenticated members can review individual supply and detailed metrics.</p></div>
+            <div class="access-ledger">
+              <dl><div><dt>Public</dt><dd>Aggregate token total</dd></div><div><dt>Members</dt><dd>Individual supply and metrics</dd></div><div><dt>Preview</dt><dd>No Registry requests from this page</dd></div></dl>
+              <button class="button button-variant-outline" type="button" data-dialog-mode="buyer">Request buyer access <span aria-hidden="true">-&gt;</span></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="section process-section" id="process">
+          <div class="container process-layout">
+            <div class="process-copy"><p class="eyebrow">Seller workflow</p><h2>Collect, redact, and publish.</h2><p>Each step stays on the seller side until the reviewed candidate is deliberately published.</p>
+              <div class="process-tabs" role="tablist" aria-label="Publishing steps">
+                <button class="process-tab active" type="button" role="tab" aria-selected="true" aria-controls="process-panel" data-step="collect"><span>01</span>Collect locally</button>
+                <button class="process-tab" type="button" role="tab" aria-selected="false" aria-controls="process-panel" data-step="redact" tabindex="-1"><span>02</span>Redact before upload</button>
+                <button class="process-tab" type="button" role="tab" aria-selected="false" aria-controls="process-panel" data-step="publish" tabindex="-1"><span>03</span>Publish</button>
+              </div>
+            </div>
+            <div class="process-record" id="process-panel" role="tabpanel"><p class="record-index">Step 01</p><h3>Collect locally</h3><p class="process-body">ATM finds sessions from supported coding agents on your machine.</p><div class="process-command"><span>$</span><code>trajectory collect sessions codex</code></div></div>
+          </div>
+        </section>
+
+        <section class="section audience-section" id="sellers">
+          <div class="container audience-grid">
+            <article class="card audience-card seller-card"><p class="eyebrow">For sellers</p><h2>Install, review, and publish your sessions.</h2><p>The seller CLI keeps collection and credential redaction on your machine.</p>
+              <div class="command-card" id="install"><span>$</span><code></code><button class="button button-variant-ghost button-size-icon" type="button" aria-label="Copy install command"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9zM5 5h10v4M5 5v10h4" /></svg></button></div>
+              <p class="copy-status" data-copy-state="idle" aria-live="polite">Install the seller CLI</p>
+            </article>
+            <article class="card audience-card buyer-card"><p class="eyebrow">For buyers</p><h2>Request access to reviewed agent-session supply.</h2><p>Individual supply and detailed metrics are available to authenticated members.</p><button class="button button-variant-default button-size-lg" type="button" data-dialog-mode="buyer">Request buyer access <span aria-hidden="true">-&gt;</span></button></article>
+          </div>
+        </section>
+
+        <section class="section faq-section">
+          <div class="container faq-layout"><div><p class="eyebrow">FAQ</p><h2>Privacy and access</h2></div>
+            <div class="accordion">
+              <details class="accordion-item"><summary class="accordion-trigger">Are individual sessions public?</summary><div class="accordion-content">No. The public page exposes aggregate scale only. Individual supply is available to authenticated members.</div></details>
+              <details class="accordion-item"><summary class="accordion-trigger">Where does credential redaction happen?</summary><div class="accordion-content">On the contributor machine. Credentials and detected secrets are removed before upload.</div></details>
+              <details class="accordion-item"><summary class="accordion-trigger">Do sellers review sessions before publishing?</summary><div class="accordion-content">Yes. Sellers inspect the exact selected sessions before publishing a candidate.</div></details>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer><div class="container footer-inner"><a class="brand" href="#top"><span class="brand-mark">atm</span><span class="brand-name">agent trajectory marketplace</span></a><span>Local preview - not connected to the Registry</span></div></footer>
+    </div>
+
+    <dialog class="access-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description">
+      <div class="dialog-content">
+        <div class="dialog-icon" aria-hidden="true">@</div>
+        <h2 class="dialog-title" id="dialog-title">Request buyer access</h2><p class="dialog-description" id="dialog-description">Enter your work email and confirm ATM may contact you about this access request.</p>
+        <form class="dialog-form"><label for="access-email">Work email</label><input id="access-email" type="email" autocomplete="email" required placeholder="you@company.com" />
+          <label class="checkbox-row"><input type="checkbox" /><span>ATM may contact me about licensing agent-session datasets.</span></label>
+          <button class="button button-variant-default dialog-submit" type="submit"></button>
+        </form>
+        <div class="dialog-success" role="status" tabindex="-1" hidden><span aria-hidden="true">OK</span><div><strong></strong><p>No Registry request was made from this local concept.</p></div></div>
+        <button class="button button-variant-ghost dialog-switch" type="button"></button>
+        <button class="dialog-close" type="button" aria-label="Close dialog"><span aria-hidden="true">x</span></button>
+      </div>
+    </dialog>
+    <noscript>This local design preview requires JavaScript.</noscript>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

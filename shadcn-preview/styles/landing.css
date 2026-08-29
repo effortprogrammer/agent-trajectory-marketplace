@@ -1,0 +1,93 @@
+.hero {
+	border-bottom: 1px solid hsl(var(--border));
+	padding-block: 104px 88px;
+}
+
+.hero-grid {
+	align-items: center;
+	display: grid;
+	gap: 76px;
+	grid-template-columns: 1.05fr 0.95fr;
+}
+
+.hero-copy h1 {
+	font-size: clamp(3.4rem, 6vw, 4.5rem);
+	font-weight: 680;
+	letter-spacing: -0.06em;
+	line-height: 0.98;
+	margin: 1rem 0 0;
+	max-width: 690px;
+}
+
+.hero-lead {
+	color: hsl(var(--muted-foreground));
+	font-size: 1.08rem;
+	margin: 1.5rem 0 0;
+	max-width: 600px;
+}
+
+.hero-actions {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	margin-top: 2rem;
+}
+
+.boundary-record {
+	background: hsl(var(--card));
+	border-bottom: 1px solid hsl(var(--foreground));
+	border-top: 1px solid hsl(var(--foreground));
+	padding-block: 1.5rem;
+}
+
+.record-heading {
+	border-bottom: 1px solid hsl(var(--border));
+	padding: 0 0.25rem 1.25rem;
+}
+
+.record-heading h2 {
+	font-size: 1.35rem;
+	letter-spacing: -0.035em;
+	line-height: 1.2;
+	margin: 0.45rem 0 0;
+}
+
+.boundary-steps {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.boundary-steps li {
+	align-items: center;
+	border-bottom: 1px solid hsl(var(--border));
+	display: grid;
+	gap: 1rem;
+	grid-template-columns: 2rem 1fr;
+	min-height: 76px;
+	padding-inline: 0.25rem;
+}
+
+.boundary-steps li > span {
+	color: hsl(var(--muted-foreground));
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+}
+
+.boundary-steps li div {
+	display: grid;
+}
+
+.boundary-steps strong {
+	font-size: 0.94rem;
+}
+
+.boundary-steps small {
+	color: hsl(var(--muted-foreground));
+	font-size: 0.76rem;
+}
+
+.record-command {
+	margin-top: 1.5rem;
+}

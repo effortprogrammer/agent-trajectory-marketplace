@@ -1,0 +1,162 @@
+.access-dialog {
+	background: transparent;
+	border: 0;
+	height: 100%;
+	inset: 0;
+	margin: 0;
+	max-height: none;
+	max-width: none;
+	padding: 0;
+	width: 100%;
+}
+
+.access-dialog::backdrop {
+	animation: fade-in 140ms ease-out;
+	background: hsl(154 30% 7% / 0.58);
+}
+
+.dialog-content {
+	animation: dialog-in 160ms ease-out;
+	background: hsl(var(--card));
+	border: 1px solid hsl(var(--border));
+	border-radius: var(--radius-panel);
+	box-shadow: 0 24px 70px hsl(154 34% 7% / 0.28);
+	left: 50%;
+	max-width: 480px;
+	padding: 2rem;
+	position: absolute;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	width: calc(100% - 2rem);
+}
+
+.dialog-icon {
+	align-items: center;
+	background: hsl(var(--secondary));
+	border-radius: var(--radius);
+	color: hsl(var(--primary));
+	display: flex;
+	height: 3rem;
+	justify-content: center;
+	margin-bottom: 1.25rem;
+	width: 3rem;
+}
+
+.dialog-title {
+	font-size: 1.55rem;
+	font-weight: 680;
+	letter-spacing: -0.035em;
+	margin: 0;
+}
+
+.dialog-description {
+	color: hsl(var(--muted-foreground));
+	font-size: 0.9rem;
+	margin: 0.65rem 0 1.35rem;
+}
+
+.dialog-form {
+	display: grid;
+	gap: 0.65rem;
+}
+
+.dialog-form label {
+	font-size: 0.78rem;
+	font-weight: 650;
+}
+
+.dialog-form input[type="email"] {
+	background: hsl(var(--background));
+	border: 1px solid hsl(var(--input));
+	border-radius: var(--radius);
+	color: hsl(var(--foreground));
+	min-height: 46px;
+	padding: 0.65rem 0.8rem;
+}
+
+.dialog-form .checkbox-row {
+	align-items: start;
+	color: hsl(var(--muted-foreground));
+	display: grid;
+	font-weight: 450;
+	gap: 0.6rem;
+	grid-template-columns: auto 1fr;
+	line-height: 1.45;
+	margin-block: 0.45rem;
+}
+
+.checkbox-row input {
+	accent-color: hsl(var(--primary));
+	height: 1rem;
+	margin-top: 0.14rem;
+	width: 1rem;
+}
+
+.dialog-form .button {
+	margin-top: 0.5rem;
+	width: 100%;
+}
+
+.dialog-switch {
+	margin-top: 0.75rem;
+	width: 100%;
+}
+
+.dialog-close {
+	align-items: center;
+	background: transparent;
+	border: 0;
+	border-radius: var(--radius);
+	color: hsl(var(--muted-foreground));
+	cursor: pointer;
+	display: flex;
+	height: 44px;
+	justify-content: center;
+	position: absolute;
+	right: 0.75rem;
+	top: 0.75rem;
+	width: 44px;
+}
+
+.dialog-success {
+	align-items: flex-start;
+	background: hsl(var(--secondary));
+	border: 1px solid hsl(var(--primary) / 0.15);
+	border-radius: var(--radius);
+	color: hsl(var(--primary));
+	display: flex;
+	gap: 0.8rem;
+	padding: 1rem;
+}
+
+.dialog-form[hidden],
+.dialog-success[hidden] {
+	display: none;
+}
+
+.dialog-success svg {
+	margin-top: 0.2rem;
+}
+
+.dialog-success p {
+	color: hsl(var(--muted-foreground));
+	font-size: 0.78rem;
+	margin: 0.2rem 0 0;
+}
+
+@keyframes fade-in {
+	from {
+		opacity: 0;
+	}
+}
+
+@keyframes dialog-in {
+	from {
+		opacity: 0;
+		transform: translate(-50%, -48%);
+	}
+	to {
+		opacity: 1;
+		transform: translate(-50%, -50%);
+	}
+}

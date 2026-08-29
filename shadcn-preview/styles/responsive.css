@@ -1,0 +1,147 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: Reduced-motion preferences must override component-specific motion rules. */
+@media (max-width: 900px) {
+	.desktop-nav,
+	.desktop-actions {
+		display: none;
+	}
+
+	.menu-button {
+		display: inline-flex;
+		margin-left: auto;
+	}
+
+	.mobile-nav {
+		background: hsl(var(--card));
+		border-bottom: 1px solid hsl(var(--border));
+		display: grid;
+		gap: 0.5rem;
+		padding: 1rem 28px 1.3rem;
+	}
+
+	.mobile-nav[hidden] {
+		display: none;
+	}
+
+	.mobile-nav > a {
+		font-size: 0.95rem;
+		font-weight: 620;
+		padding: 0.65rem 0;
+		text-decoration: none;
+	}
+
+	.hero-grid,
+	.supply-layout,
+	.process-layout,
+	.faq-layout {
+		gap: 3rem;
+		grid-template-columns: 1fr;
+	}
+
+	.audience-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.process-record {
+		min-height: 300px;
+	}
+}
+
+@media (max-width: 680px) {
+	.container {
+		padding-inline: 18px;
+	}
+
+	.nav {
+		min-height: 66px;
+	}
+
+	.brand-name {
+		display: none;
+	}
+
+	.section {
+		padding-block: 64px;
+	}
+
+	.hero {
+		padding-block: 72px 64px;
+	}
+
+	.hero-grid {
+		gap: 3.5rem;
+	}
+
+	.hero-copy h1 {
+		font-size: clamp(2.75rem, 13vw, 3.6rem);
+	}
+
+	.hero-lead {
+		font-size: 1rem;
+	}
+
+	.hero-actions {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.hero-actions .button {
+		width: 100%;
+	}
+
+	.boundary-record {
+		padding-block: 1.1rem;
+	}
+
+	.supply-copy h2,
+	.process-copy h2,
+	.faq-layout h2 {
+		font-size: 2.25rem;
+	}
+
+	.access-ledger dl > div {
+		grid-template-columns: 4.4rem 1fr;
+	}
+
+	.process-record {
+		min-height: 270px;
+	}
+
+	.process-record h3 {
+		font-size: 1.65rem;
+		margin-top: 2.5rem;
+	}
+
+	.audience-card {
+		min-height: auto;
+		padding: 1.5rem;
+	}
+
+	.audience-card h2 {
+		font-size: 2rem;
+	}
+
+	.faq-layout {
+		gap: 2rem;
+	}
+
+	.footer-inner {
+		align-items: flex-start;
+		flex-direction: column;
+		justify-content: center;
+	}
+
+	.dialog-content {
+		padding: 1.5rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+	}
+}
