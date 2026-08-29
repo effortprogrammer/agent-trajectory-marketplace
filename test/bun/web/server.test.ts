@@ -2,6 +2,8 @@ import { expect, setDefaultTimeout, test } from "bun:test"
 import { connect } from "node:net"
 import { resolve } from "node:path"
 
+import { parsePayoutRequestResponse } from "../../../src/marketplace/payout-request-contract"
+
 const publicRoot = resolve(import.meta.dir, "../../..")
 const testRevision = "0123456789abcdef0123456789abcdef01234567"
 setDefaultTimeout(10_000)
@@ -265,6 +267,237 @@ test("proxies approved Registry auth requests for an explicitly configured local
     ])
     expect(rejected.status).toBe(404)
     expect(received).toHaveLength(2)
+  } finally {
+    server.kill()
+    await server.exited
+    upstream.stop(true)
+  }
+})
+
+test("proxies approved payout request routes with exact idempotency forwarding", async () => {
+  const received: Array<Readonly<{
+    authorization: string | null
+    body: string | null
+    idempotencyKey: string | null
+    method: string
+    path: string
+  }>> = []
+  const upstream = Bun.serve({
+    async fetch(request) {
+      received.push({
+        authorization: request.headers.get("authorization"),
+        body: request.method === "GET" ? null : await request.text(),
+        idempotencyKey: request.headers.get("idempotency-key"),
+        method: request.method,
+        path: new URL(request.url).pathname,
+      })
+      if (request.method === "GET") {
+        return new Response(
+          await Bun.file(resolve(publicRoot, "contract/payout-request/v1/get-empty-200.json")).text(),
+          { headers: { "content-type": "application/json" }, status: 200 },
+        )
+      }
+      if (new URL(request.url).pathname.endsWith("/withdraw")) {
+        return new Response(
+          await Bun.file(resolve(publicRoot, "contract/payout-request/v1/withdrawn-200.json")).text(),
+          { headers: { "content-type": "application/json" }, status: 200 },
+        )
+      }
+      return new Response(
+        await Bun.file(resolve(publicRoot, "contract/payout-request/v1/requested-201.json")).text(),
+        { headers: { "content-type": "application/json" }, status: 201 },
+      )
+    },
+    hostname: "127.0.0.1",
+    port: 0,
+  })
+  const port = reservePort()
+  const server = Bun.spawn(["bun", "web/server.ts"], {
+    cwd: publicRoot,
+    env: {
+      ...Bun.env,
+      ATM_LOCAL_REGISTRY_URL: `http://127.0.0.1:${upstream.port}`,
+      ATM_ORIGIN_REVISION: testRevision,
+      PORT: String(port),
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  try {
+    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const operationId = "00000000-0000-4000-8000-000000000301"
+
+    const read = await fetch(
+      `http://127.0.0.1:${port}/api/registry/v1/marketplace/seller/payout-request`,
+      { headers: { accept: "application/json", authorization: "Bearer session-sentinel" }, method: "GET" },
+    )
+    const create = await fetch(
+      `http://127.0.0.1:${port}/api/registry/v1/marketplace/seller/payout-request`,
+      {
+        body: "{}",
+        headers: {
+          accept: "application/json",
+          authorization: "Bearer session-sentinel",
+          "content-type": "application/json",
+          "idempotency-key": operationId,
+        },
+        method: "POST",
+      },
+    )
+    const withdraw = await fetch(
+      `http://127.0.0.1:${port}/api/registry/v1/marketplace/seller/payout-request/withdraw`,
+      {
+        body: "{}",
+        headers: {
+          accept: "application/json",
+          authorization: "Bearer session-sentinel",
+          "content-type": "application/json",
+          "idempotency-key": operationId,
+        },
+        method: "POST",
+      },
+    )
+
+    expect(received).toEqual([
+      { authorization: "Bearer session-sentinel", body: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/payout-request" },
+      { authorization: "Bearer session-sentinel", body: "{}", idempotencyKey: operationId, method: "POST", path: "/v1/marketplace/seller/payout-request" },
+      { authorization: "Bearer session-sentinel", body: "{}", idempotencyKey: operationId, method: "POST", path: "/v1/marketplace/seller/payout-request/withdraw" },
+    ])
+    expect(read.status).toBe(200)
+    expect(create.status).toBe(201)
+    expect(withdraw.status).toBe(200)
+    for (const response of [read, create, withdraw]) {
+      expect(response.headers.get("cache-control")).toBe("no-store")
+      expect(response.headers.get("content-type")).toContain("application/json")
+    }
+    expect(await read.json()).toEqual({
+      ok: true,
+      payoutRequest: {
+        currency: "USD", thresholdMinor: 10000, availableMinor: 15000, heldMinor: 0, request: null,
+      },
+    })
+    const createdEnvelope = parsePayoutRequestResponse(201, Buffer.from(await create.text()))
+    if (!createdEnvelope.ok) throw new Error("expected create envelope")
+    expect(createdEnvelope.payoutRequest.request?.status).toBe("requested")
+  } finally {
+    server.kill()
+    await server.exited
+    upstream.stop(true)
+  }
+})
+
+test("rejects wrong payout request methods locally without forwarding", async () => {
+  let upstreamRequests = 0
+  const upstream = Bun.serve({
+    fetch() { upstreamRequests += 1; return new Response("{}", { status: 200 }) },
+    hostname: "127.0.0.1",
+    port: 0,
+  })
+  const port = reservePort()
+  const server = Bun.spawn(["bun", "web/server.ts"], {
+    cwd: publicRoot,
+    env: {
+      ...Bun.env,
+      ATM_LOCAL_REGISTRY_URL: `http://127.0.0.1:${upstream.port}`,
+      ATM_ORIGIN_REVISION: testRevision,
+      PORT: String(port),
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  try {
+    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const base = `http://127.0.0.1:${port}/api/registry/v1/marketplace/seller/payout-request`
+
+    const put = await fetch(base, { method: "PUT" })
+    const deleted = await fetch(base, { method: "DELETE" })
+    const withdrawGet = await fetch(`${base}/withdraw`, { method: "GET" })
+
+    expect(put.status).toBe(405)
+    expect(put.headers.get("allow")).toBe("GET, POST")
+    expect(deleted.status).toBe(405)
+    expect(withdrawGet.status).toBe(405)
+    expect(withdrawGet.headers.get("allow")).toBe("POST")
+    for (const response of [put, deleted, withdrawGet]) {
+      expect(response.headers.get("cache-control")).toBe("no-store")
+    }
+    expect(upstreamRequests).toBe(0)
+  } finally {
+    server.kill()
+    await server.exited
+    upstream.stop(true)
+  }
+})
+
+test("rejects malformed payout bodies, keys, and duplicate headers locally without forwarding", async () => {
+  let upstreamRequests = 0
+  const upstream = Bun.serve({
+    fetch() { upstreamRequests += 1; return new Response("{}", { status: 200 }) },
+    hostname: "127.0.0.1",
+    port: 0,
+  })
+  const port = reservePort()
+  const server = Bun.spawn(["bun", "web/server.ts"], {
+    cwd: publicRoot,
+    env: {
+      ...Bun.env,
+      ATM_LOCAL_REGISTRY_URL: `http://127.0.0.1:${upstream.port}`,
+      ATM_ORIGIN_REVISION: testRevision,
+      PORT: String(port),
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  try {
+    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const base = `http://127.0.0.1:${port}/api/registry/v1/marketplace/seller/payout-request`
+    const operationId = "00000000-0000-4000-8000-000000000302"
+    const canonicalHeaders = {
+      authorization: "Bearer session-sentinel",
+      "content-type": "application/json",
+      "idempotency-key": operationId,
+    }
+    const duplicateAuthorization = new Headers()
+    duplicateAuthorization.append("authorization", "Bearer one")
+    duplicateAuthorization.append("authorization", "Bearer two")
+    duplicateAuthorization.append("content-type", "application/json")
+    duplicateAuthorization.append("idempotency-key", operationId)
+
+    const nonEmptyBody = await fetch(base, {
+      body: JSON.stringify({ amountMinor: 1 }),
+      headers: canonicalHeaders,
+      method: "POST",
+    })
+    const badKey = await fetch(base, {
+      body: "{}",
+      headers: { ...canonicalHeaders, "idempotency-key": "not-a-uuid" },
+      method: "POST",
+    })
+    const missingKey = await fetch(base, {
+      body: "{}",
+      headers: { authorization: "Bearer session-sentinel", "content-type": "application/json" },
+      method: "POST",
+    })
+    const wrongContentType = await fetch(base, {
+      body: "{}",
+      headers: { ...canonicalHeaders, "content-type": "text/plain" },
+      method: "POST",
+    })
+    const duplicatedHeader = await fetch(base, {
+      body: "{}",
+      headers: duplicateAuthorization,
+      method: "POST",
+    })
+
+    const expectedError = await Bun.file(
+      resolve(publicRoot, "contract/payout-request/v1/error-400-invalid-request.json"),
+    ).text()
+    for (const response of [nonEmptyBody, badKey, missingKey, wrongContentType, duplicatedHeader]) {
+      expect(response.status).toBe(400)
+      expect(response.headers.get("cache-control")).toBe("no-store")
+      expect(await response.text()).toBe(expectedError)
+    }
+    expect(upstreamRequests).toBe(0)
   } finally {
     server.kill()
     await server.exited
