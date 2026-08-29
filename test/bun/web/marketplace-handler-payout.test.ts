@@ -150,3 +150,30 @@ test("Given a payout create When body is nonempty Then it is rejected locally", 
     await fixture("error-400-invalid-request.json"),
   )
 })
+
+test("Given Registry rate limiting When proxied Then integer Retry-After is preserved", async () => {
+  const registryFetch: UpstreamFetch = async () =>
+    new Response(await fixture("error-429-rate-limited.json"), {
+      headers: {
+        "content-type": "application/json",
+        "retry-after": "60",
+      },
+      status: 429,
+    })
+  const handler = await createTestHandler({ registryFetch, registryUrl })
+
+  const response = await handler(new Request(`https://getatm.io${payoutPath}`, {
+    body: "{}",
+    headers: {
+      "content-type": "application/json",
+      "idempotency-key": operationId,
+    },
+    method: "POST",
+  }))
+
+  expect(response.status).toBe(429)
+  expect(response.headers.get("retry-after")).toBe("60")
+  expect(await response.text()).toBe(
+    await fixture("error-429-rate-limited.json"),
+  )
+})

@@ -20,6 +20,7 @@ const routePrefix = "/api/registry"
 const maxRequestBytes = 64 * 1024
 const maxResponseBytes = 64 * 1024
 const upstreamTimeoutMs = 10_000
+const integerRetryAfter = /^(?:0|[1-9][0-9]{0,9})$/
 const allowedRegistryRoutes: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["/v1/auth/login", new Set(["POST"])],
   ["/v1/auth/signup", new Set(["POST"])],
@@ -178,13 +179,24 @@ export const createLocalRegistryProxy = (
         redirect: "error",
         signal: AbortSignal.timeout(upstreamTimeoutMs),
       })
+      const responseHeaders = new Headers(options.responseHeaders)
+      responseHeaders.set("cache-control", "no-store")
+      responseHeaders.set(
+        "content-type",
+        upstream.headers.get("content-type") ??
+          "application/json; charset=utf-8",
+      )
+      const retryAfter = upstream.headers.get("retry-after")
+      if (
+        payoutRequest
+        && upstream.status === 429
+        && retryAfter !== null
+        && integerRetryAfter.test(retryAfter)
+      ) {
+        responseHeaders.set("retry-after", retryAfter)
+      }
       return new Response(await readBoundedUpstream(upstream), {
-        headers: {
-          ...options.responseHeaders,
-          "cache-control": "no-store",
-          "content-type": upstream.headers.get("content-type") ??
-            "application/json; charset=utf-8",
-        },
+        headers: responseHeaders,
         status: upstream.status,
       })
     } catch (error) {
