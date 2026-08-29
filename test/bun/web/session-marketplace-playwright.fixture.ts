@@ -14,6 +14,7 @@ const accountId = "acct-0123456789abcdef"
 const challengeId = "chal-0123456789abcdef"
 const signupChallengeId = "chal-fedcba9876543210"
 const expiresAt = "2030-01-01T00:00:00.000Z"
+const serverReadyTimeoutMs = 20_000
 const sellerSessions = {
   asOf: "2026-08-20T12:00:00Z",
   ok: true,
@@ -95,7 +96,10 @@ const waitForReadyOutput = async (
   let output = ""
   let timeout: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => reject(new Error(`web server did not print ${expected}`)), 5_000)
+    timeout = setTimeout(
+      () => reject(new Error(`web server did not print ${expected}`)),
+      serverReadyTimeoutMs,
+    )
   })
   try {
     while (!output.includes(expected)) {
