@@ -128,7 +128,7 @@ const canonicalHostRedirect = (url: URL): Response | undefined => {
   });
 };
 
-Bun.serve({
+const server = Bun.serve({
   port,
   async fetch(request) {
     const url = new URL(request.url);
@@ -217,4 +217,4 @@ Bun.serve({
   },
 });
 
-console.log(`marketplace ui: http://localhost:${port}/`);
+console.log(`marketplace ui: http://localhost:${server.port}/`);

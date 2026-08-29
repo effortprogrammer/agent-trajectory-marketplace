@@ -21,34 +21,33 @@ const fingerprintedAssetPath = async (file: string): Promise<string> => {
   return `${file.slice(0, extensionOffset)}.${digest}${file.slice(extensionOffset)}`
 }
 
-const reservePort = (): number => {
-  const probe = Bun.serve({ fetch: () => new Response("reserved"), port: 0 })
-  const port = probe.port
-  probe.stop(true)
-  if (port === undefined) throw new Error("port-zero server omitted port")
-  return port
-}
-
 const waitForReadyOutput = async (
   stream: ReadableStream<Uint8Array>,
-  expected: string,
-): Promise<void> => {
+): Promise<number> => {
   const reader = stream.getReader()
   const decoder = new TextDecoder()
+  const readyPattern = /marketplace ui: http:\/\/localhost:(\d+)\//
   let output = ""
   let timeout: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<never>((_, reject) => {
     timeout = setTimeout(
-      () => reject(new Error(`web server did not print ${expected}`)),
+      () => reject(new Error("web server did not print a valid ready URL")),
       serverReadyTimeoutMs,
     )
   })
   try {
-    while (!output.includes(expected)) {
+    let match = output.match(readyPattern)
+    while (match === null) {
       const chunk = await Promise.race([reader.read(), deadline])
-      if (chunk.done) throw new Error(`web server exited before printing ${expected}`)
+      if (chunk.done) throw new Error("web server exited before printing its ready URL")
       output += decoder.decode(chunk.value, { stream: true })
+      match = output.match(readyPattern)
     }
+    const port = Number.parseInt(match[1] ?? "", 10)
+    if (!Number.isInteger(port) || port <= 0) {
+      throw new Error("web server printed an invalid ready port")
+    }
+    return port
   } finally {
     if (timeout !== undefined) clearTimeout(timeout)
     reader.releaseLock()
@@ -96,15 +95,14 @@ test("serves immutable versioned account policy documents linked from signup", a
   const termsPath = `/legal/account-terms/${version}`
   const privacyPath = `/legal/account-privacy/${version}`
   const stylesheetPath = `/legal/assets/${version}.css`
-  const port = reservePort()
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
-    env: { ...Bun.env, PORT: String(port) },
+    env: { ...Bun.env, PORT: "0" },
     stderr: "pipe",
     stdout: "pipe",
   })
   try {
-    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const port = await waitForReadyOutput(server.stdout)
 
     const [index, terms, privacy, stylesheet] = await Promise.all([
       fetch(`http://127.0.0.1:${port}/`),
@@ -154,7 +152,6 @@ test("proxies public stats for an explicitly configured local preview", async ()
     hostname: "127.0.0.1",
     port: 0,
   })
-  const port = reservePort()
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
     env: {
@@ -162,13 +159,13 @@ test("proxies public stats for an explicitly configured local preview", async ()
       ATM_LOCAL_PUBLIC_STATS_URL:
         `http://127.0.0.1:${upstream.port}/v1/marketplace/public-stats`,
       ATM_ORIGIN_REVISION: testRevision,
-      PORT: String(port),
+      PORT: "0",
     },
     stderr: "pipe",
     stdout: "pipe",
   })
   try {
-    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const port = await waitForReadyOutput(server.stdout)
 
     const response = await fetch(`http://127.0.0.1:${port}/api/public-stats`)
 
@@ -208,20 +205,19 @@ test("proxies approved Registry auth requests for an explicitly configured local
     hostname: "127.0.0.1",
     port: 0,
   })
-  const port = reservePort()
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
     env: {
       ...Bun.env,
       ATM_LOCAL_REGISTRY_URL: `http://127.0.0.1:${upstream.port}`,
       ATM_ORIGIN_REVISION: testRevision,
-      PORT: String(port),
+      PORT: "0",
     },
     stderr: "pipe",
     stdout: "pipe",
   })
   try {
-    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const port = await waitForReadyOutput(server.stdout)
 
     const response = await fetch(
       `http://127.0.0.1:${port}/api/registry/v1/auth/login`,
@@ -315,20 +311,19 @@ test("proxies approved payout request routes with exact idempotency forwarding",
     hostname: "127.0.0.1",
     port: 0,
   })
-  const port = reservePort()
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
     env: {
       ...Bun.env,
       ATM_LOCAL_REGISTRY_URL: `http://127.0.0.1:${upstream.port}`,
       ATM_ORIGIN_REVISION: testRevision,
-      PORT: String(port),
+      PORT: "0",
     },
     stderr: "pipe",
     stdout: "pipe",
   })
   try {
-    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const port = await waitForReadyOutput(server.stdout)
     const operationId = "00000000-0000-4000-8000-000000000301"
 
     const read = await fetch(
@@ -397,20 +392,19 @@ test("rejects wrong payout request methods locally without forwarding", async ()
     hostname: "127.0.0.1",
     port: 0,
   })
-  const port = reservePort()
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
     env: {
       ...Bun.env,
       ATM_LOCAL_REGISTRY_URL: `http://127.0.0.1:${upstream.port}`,
       ATM_ORIGIN_REVISION: testRevision,
-      PORT: String(port),
+      PORT: "0",
     },
     stderr: "pipe",
     stdout: "pipe",
   })
   try {
-    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const port = await waitForReadyOutput(server.stdout)
     const base = `http://127.0.0.1:${port}/api/registry/v1/marketplace/seller/payout-request`
 
     const put = await fetch(base, { method: "PUT" })
@@ -440,20 +434,19 @@ test("rejects malformed payout bodies, keys, and duplicate headers locally witho
     hostname: "127.0.0.1",
     port: 0,
   })
-  const port = reservePort()
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
     env: {
       ...Bun.env,
       ATM_LOCAL_REGISTRY_URL: `http://127.0.0.1:${upstream.port}`,
       ATM_ORIGIN_REVISION: testRevision,
-      PORT: String(port),
+      PORT: "0",
     },
     stderr: "pipe",
     stdout: "pipe",
   })
   try {
-    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const port = await waitForReadyOutput(server.stdout)
     const base = `http://127.0.0.1:${port}/api/registry/v1/marketplace/seller/payout-request`
     const operationId = "00000000-0000-4000-8000-000000000302"
     const canonicalHeaders = {
@@ -510,20 +503,19 @@ test("rejects malformed payout bodies, keys, and duplicate headers locally witho
 })
 
 test("serves session-only public pages without World UI artifacts", async () => {
-  const port = reservePort()
-  const baseUrl = `http://127.0.0.1:${port}`
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
     env: {
       ...Bun.env,
       ATM_ORIGIN_REVISION: testRevision,
-      PORT: String(port),
+      PORT: "0",
     },
     stderr: "pipe",
     stdout: "pipe",
   })
   try {
-    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const port = await waitForReadyOutput(server.stdout)
+    const baseUrl = `http://127.0.0.1:${port}`
 
     const root = await fetch(baseUrl)
     const detail = await fetch(`${baseUrl}/detail.html?id=sub_14m3r01jp1wd7a3rm2j719p9vv`, {
@@ -654,20 +646,19 @@ test("serves session-only public pages without World UI artifacts", async () => 
 })
 
 test("rejects a Railway-native source revision", async () => {
-  const port = reservePort()
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
     env: {
       ...Bun.env,
       ATM_ORIGIN_REVISION: undefined,
-      PORT: String(port),
+      PORT: "0",
       RAILWAY_GIT_COMMIT_SHA: testRevision,
     },
     stderr: "pipe",
     stdout: "pipe",
   })
   try {
-    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const port = await waitForReadyOutput(server.stdout)
 
     const response = await fetch(
       `http://127.0.0.1:${port}/.well-known/atm-origin-revision`,
@@ -683,21 +674,20 @@ test("rejects a Railway-native source revision", async () => {
 })
 
 test("prefers the explicit CLI deployment revision", async () => {
-  const port = reservePort()
   const cliRevision = "fedcba9876543210fedcba9876543210fedcba98"
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
     env: {
       ...Bun.env,
       ATM_ORIGIN_REVISION: cliRevision,
-      PORT: String(port),
+      PORT: "0",
       RAILWAY_GIT_COMMIT_SHA: testRevision,
     },
     stderr: "pipe",
     stdout: "pipe",
   })
   try {
-    await waitForReadyOutput(server.stdout, `marketplace ui: http://localhost:${port}/`)
+    const port = await waitForReadyOutput(server.stdout)
 
     const response = await fetch(
       `http://127.0.0.1:${port}/.well-known/atm-origin-revision`,
