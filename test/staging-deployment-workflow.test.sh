@@ -15,6 +15,16 @@ fail() {
 
 [[ -f "$WORKFLOW" ]] || fail "staging deployment workflow is missing"
 [[ -f "$RAILWAY_CONTRACT" ]] || fail "Railway deployment contract is missing"
+grep -Fq 'workflow_call:' "$WORKFLOW" \
+  || fail "staging deployment cannot be reused by the protected release"
+grep -Fq 'DEPLOY_REVISION: ${{ inputs.revision || github.sha }}' "$WORKFLOW" \
+  || fail "staging deployment does not bind the requested exact revision"
+grep -Fq 'contract/seller-beta/v1/registry-revision.txt' "$WORKFLOW" \
+  || fail "staging does not bind the deployed Registry beta revision"
+grep -Fq 'bun scripts/ops/marketplace-probe.ts' "$WORKFLOW" \
+  || fail "staging does not run the cross-repository beta probe"
+grep -Fq 'REQUIRE_WORKER_REVISION: "false"' "$WORKFLOW" \
+  || fail "direct staging incorrectly requires the production Worker revision"
 
 grep -Fq 'branches: [dev]' "$WORKFLOW" \
   || fail "staging deployment is not restricted to dev pushes"
@@ -35,8 +45,8 @@ grep -Fq 'RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}' "$WORKFLOW" \
   || fail "staging project token is not sourced from the environment secret"
 grep -Fq "$RAILWAY_CLI_IMAGE" "$RELEASE_NETWORK" \
   || fail "Railway CLI image is not pinned by digest"
-grep -Fq 'atm_release_railway_deploy "$PWD" "$GITHUB_SHA"' "$WORKFLOW" \
-  || fail "staging origin revision is not bound to the pushed commit"
+grep -Fq 'atm_release_railway_deploy "$PWD" "$DEPLOY_REVISION"' "$WORKFLOW" \
+  || fail "staging origin revision is not bound to the requested commit"
 grep -Fq 'atm_release_require_registry_policy_ready \' "$WORKFLOW" \
   || fail "staging does not require Registry account policy readiness"
 grep -Fq 'https://gateway.getatm.io 2026-08-28 2026-08-28' "$WORKFLOW" \
@@ -79,7 +89,7 @@ grep -Fq 'sleep 5' "$WORKFLOW" \
   || fail "staging attestation retry interval cannot cover Railway edge propagation"
 grep -Fq 'atm_release_require_attested' "$WORKFLOW" \
   || fail "staging attestation exhaustion does not fail closed"
-grep -Fq 'x-atm-origin-revision: $GITHUB_SHA' "$WORKFLOW" \
+grep -Fq 'x-atm-origin-revision: $DEPLOY_REVISION' "$WORKFLOW" \
   || fail "staging revision header is not bound to the pushed commit"
 grep -Fq '.revision == $revision' "$WORKFLOW" \
   || fail "staging revision body is not bound to the pushed commit"

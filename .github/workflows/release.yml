@@ -14,7 +14,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  stage:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/deploy-staging.yml
+    with:
+      release_stage: true
+      revision: ${{ github.sha }}
+    secrets: inherit
+
   release:
+    needs: stage
     runs-on: ubuntu-latest
     timeout-minutes: 120
     environment: production
