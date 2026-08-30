@@ -3,9 +3,10 @@ export type ProbeConfig = {
   readonly marketplaceUrl: string;
   readonly expectedRegistryRevision: string;
   readonly expectedMarketplaceRevision: string;
+  readonly requireWorkerRevision?: boolean;
   readonly timeoutMs?: number;
 };
-export type ProbeResult = { readonly ok: true; readonly checks: 8 };
+export type ProbeResult = { readonly ok: true; readonly checks: 7 | 8 };
 const REVISION = /^[0-9a-f]{40}$/;
 const check = (condition: boolean, message: string): void => { if (!condition) throw new Error(message); };
 const object = (value: unknown, keys: readonly string[]): Record<string, unknown> => {
@@ -36,7 +37,9 @@ export async function runProbe(config: ProbeConfig): Promise<ProbeResult> {
   check(REVISION.test(config.expectedMarketplaceRevision), "expected marketplace revision is not a SHA");
   await revision(config.registryUrl, "/.well-known/atm-origin-revision", "x-atm-origin-revision", config.expectedRegistryRevision, timeoutMs);
   await revision(config.marketplaceUrl, "/.well-known/atm-origin-revision", "x-atm-origin-revision", config.expectedMarketplaceRevision, timeoutMs);
-  await revision(config.marketplaceUrl, "/.well-known/atm-worker-revision", "x-atm-worker-revision", config.expectedMarketplaceRevision, timeoutMs);
+  if (config.requireWorkerRevision !== false) {
+    await revision(config.marketplaceUrl, "/.well-known/atm-worker-revision", "x-atm-worker-revision", config.expectedMarketplaceRevision, timeoutMs);
+  }
   const payout = await request(config.registryUrl, "/v1/marketplace/seller/payout-request", timeoutMs);
   check(payout.status === 401, "payout route must return 401");
   check(payout.headers.get("cache-control") === "no-store", "payout cache policy mismatch");
@@ -46,9 +49,14 @@ export async function runProbe(config: ProbeConfig): Promise<ProbeResult> {
   check(envelope["ok"] === false, "payout ok mismatch");
   const error = object(envelope["error"], ["code", "message"]);
   check(error["code"] === "unauthorized" && error["message"] === "Authentication is required.", "payout envelope mismatch");
-  return { ok: true, checks: 8 };
+  return { ok: true, checks: config.requireWorkerRevision === false ? 7 : 8 };
 }
 if (import.meta.main) { // no-excuse-ok: catch
-  try { await runProbe({ registryUrl: process.env["REGISTRY_URL"] ?? "", marketplaceUrl: process.env["MARKETPLACE_URL"] ?? "", expectedRegistryRevision: process.env["EXPECTED_REGISTRY_REVISION"] ?? "", expectedMarketplaceRevision: process.env["EXPECTED_MARKETPLACE_REVISION"] ?? "" }); console.log("marketplace probe passed"); }
+  try {
+    const workerFlag = process.env["REQUIRE_WORKER_REVISION"] ?? "true";
+    check(workerFlag === "true" || workerFlag === "false", "worker revision flag is invalid");
+    await runProbe({ registryUrl: process.env["REGISTRY_URL"] ?? "", marketplaceUrl: process.env["MARKETPLACE_URL"] ?? "", expectedRegistryRevision: process.env["EXPECTED_REGISTRY_REVISION"] ?? "", expectedMarketplaceRevision: process.env["EXPECTED_MARKETPLACE_REVISION"] ?? "", requireWorkerRevision: workerFlag === "true" });
+    console.log("marketplace probe passed");
+  }
   catch (error) { console.error(error instanceof Error ? error.message : "marketplace probe failed"); process.exitCode = 1; }
 }

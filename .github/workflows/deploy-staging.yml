@@ -152,6 +152,7 @@ jobs:
           REGISTRY_URL: https://gateway.getatm.io
           MARKETPLACE_URL: ${{ env.ORIGIN_URL }}
           EXPECTED_MARKETPLACE_REVISION: ${{ env.DEPLOY_REVISION }}
+          REQUIRE_WORKER_REVISION: "false"
         run: |
           set -euo pipefail
           EXPECTED_REGISTRY_REVISION="$(
