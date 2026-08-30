@@ -29,7 +29,9 @@ Commands:
   marketplace seller sessions choose
   marketplace seller candidate bundle
   marketplace seller candidate publish
-  marketplace seller candidate status
+  marketplace seller candidate status|list
+  marketplace seller sales sessions|earnings|ledger
+  marketplace seller payout status|request|withdraw
   marketplace seller wallet balance
   world --help|list|detail|run|status|download
   doctor
