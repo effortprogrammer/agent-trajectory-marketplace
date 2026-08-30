@@ -30,10 +30,14 @@ const environment = (configRoot: string, target: string): Record<string, string>
 const store = (configRoot: string, expiresAt = "2099-01-01T00:00:00.000Z"): void => {
   writeStoredAuthSession({ accessToken: tokenCanary, accountId: "acct-0123456789abcdef", expiresAt, server: officialRegistryOrigin, tokenType: "Bearer" }, { storePath: join(configRoot, "agent-trajectory-marketplace", "auth.json") });
 };
+const shellWord = (value: string): string => `'${value.replaceAll("'", "'\"'\"'")}'`;
 const runBuilt = async (argumentsList: readonly string[], env: Readonly<Record<string, string>>, terminal = false): Promise<CliResult> => {
+  const command = [process.execPath, "--preload", "./test/bun/fixtures/gateway-fetch-preload.ts", "dist/collector.js", ...argumentsList];
   const invocation = terminal
-    ? ["script", "-q", "/dev/null", process.execPath, "--preload", "./test/bun/fixtures/gateway-fetch-preload.ts", "dist/collector.js", ...argumentsList]
-    : [process.execPath, "--preload", "./test/bun/fixtures/gateway-fetch-preload.ts", "dist/collector.js", ...argumentsList];
+    ? process.platform === "linux"
+      ? ["script", "-q", "-e", "-c", command.map(shellWord).join(" "), "/dev/null"]
+      : ["script", "-q", "/dev/null", ...command]
+    : command;
   const child = Bun.spawn(invocation, { cwd: process.cwd(), env, stderr: "pipe", stdout: "pipe" });
   const [exitCode, stderr, stdout] = await Promise.all([child.exited, new Response(child.stderr).text(), new Response(child.stdout).text()]);
   return { exitCode, stderr, stdout };
