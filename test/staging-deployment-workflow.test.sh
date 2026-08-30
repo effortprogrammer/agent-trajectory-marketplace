@@ -23,6 +23,8 @@ grep -Fq 'contract/seller-beta/v1/registry-revision.txt' "$WORKFLOW" \
   || fail "staging does not bind the deployed Registry beta revision"
 grep -Fq 'bun scripts/ops/marketplace-probe.ts' "$WORKFLOW" \
   || fail "staging does not run the cross-repository beta probe"
+grep -Fq 'REQUIRE_WORKER_REVISION: "false"' "$WORKFLOW" \
+  || fail "direct staging incorrectly requires the production Worker revision"
 
 grep -Fq 'branches: [dev]' "$WORKFLOW" \
   || fail "staging deployment is not restricted to dev pushes"
