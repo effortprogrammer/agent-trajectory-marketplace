@@ -4,7 +4,7 @@ import { validPublishCredential } from "../marketplace/publish-client";
 export class MarketplaceCliError extends Error {
   readonly name = "MarketplaceCliError";
 
-  constructor(readonly code: "invalid_command" | "missing_publish_credential" | "missing_wallet_credential") {
+  constructor(readonly code: "invalid_command" | "missing_publish_credential" | "missing_seller_session" | "missing_wallet_credential") {
     super(code);
   }
 }

@@ -6,6 +6,8 @@ import {
   parseCandidateSearch,
   parseCandidateStatus,
 } from "./marketplace-candidate-command";
+import { isValidPayoutOperationId } from "../marketplace/payout-request-contract";
+import { parseSellerOptions, type SellerOptions, type SellerSalesResource } from "../marketplace/seller-sales-contract";
 import type {
   CandidatePublishCommand,
   CandidateSearchCommand,
@@ -49,6 +51,8 @@ type WalletBalanceCommand = Readonly<{
   readonly command: "wallet-balance";
 }>;
 
+type SellerReadCommand = Readonly<{ readonly command: "seller-read"; readonly options: SellerOptions; readonly resource: SellerSalesResource }>;
+type PayoutCommand = Readonly<{ readonly command: "payout"; readonly action: "status" | "request" | "withdraw"; readonly operationId?: string }>;
 type InvalidCommand = Readonly<{ readonly command: "invalid_command" }>;
 type InvalidBundleRequest = Readonly<{
   readonly command: "invalid_bundle_request";
@@ -66,6 +70,8 @@ export type MarketplaceCommand =
   | CandidatePublishCommand
   | CandidateStatusCommand
   | WalletBalanceCommand
+  | SellerReadCommand
+  | PayoutCommand
   | InvalidCommand
   | InvalidBundleRequest;
 
@@ -203,6 +209,20 @@ export const parseMarketplaceCommand = (
   }
   const group = argumentsWithoutExecutable[2];
   const action = argumentsWithoutExecutable[3];
+  const sellerRead = (resource: SellerSalesResource): MarketplaceCommand => {
+    const options = parseSellerOptions(resource, argumentsWithoutExecutable.slice(4));
+    return options === undefined ? invalidCommand() : { command: "seller-read", options, resource };
+  };
+  if (group === "candidate" && action === "list") return sellerRead("candidates");
+  if (group === "sales" && action === "sessions") return sellerRead("sales-sessions");
+  if (group === "sales" && action === "earnings") return sellerRead("sales-earnings");
+  if (group === "sales" && action === "ledger") return sellerRead("sales-ledger");
+  if (group === "payout" && (action === "status" || action === "request" || action === "withdraw")) {
+    const options = argumentsWithoutExecutable.slice(4);
+    if (options.length === 0 && action === "status") return { command: "payout", action };
+    if (options.length === 2 && options[0] === "--operation-id" && options[1] !== undefined && isValidPayoutOperationId(options[1])) return { command: "payout", action, operationId: options[1] };
+    return invalidCommand();
+  }
   if (group === "sessions" && action === "list") {
     return parseSessionsList(argumentsWithoutExecutable.slice(4));
   }

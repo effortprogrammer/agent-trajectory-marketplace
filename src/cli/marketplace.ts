@@ -15,7 +15,7 @@ import {
 } from "../marketplace/bundle-service";
 import { MarketplaceError } from "../marketplace/error";
 import { readPublishBundle } from "../marketplace/publish-bundle";
-import { createPublishClient, validPublishCredential } from "../marketplace/publish-client";
+import { createPublishClient } from "../marketplace/publish-client";
 import { createStatusClient } from "../marketplace/status-client";
 import {
   allowedCandidateTraces,
@@ -25,6 +25,9 @@ import {
   writeBundleFromSelection,
 } from "../marketplace/selection-upload";
 import { createWalletBalanceClient } from "../marketplace/wallet-balance-client";
+import { createSellerSalesClient } from "../marketplace/seller-sales-client";
+import { createPayoutRequestClient } from "../marketplace/payout-request-client";
+import { readStoredAuthSession, storedAuthSessionStatus } from "../auth/store";
 import { runFrozenReview } from "../marketplace/review-loop";
 import type { ReviewIO } from "../marketplace/review-loop";
 import {
@@ -36,6 +39,14 @@ import {
 export const isMarketplaceInvocation = (argumentsList: readonly string[]): boolean => {
   const offset = argumentsList[0] === "trajectory" ? 1 : 0;
   return argumentsList[offset] === "marketplace";
+};
+
+const sellerSessionCredential = (): string => {
+  const session = readStoredAuthSession(officialRegistryOrigin);
+  if (session === undefined || storedAuthSessionStatus(session) !== "active") {
+    throw new MarketplaceCliError("missing_seller_session");
+  }
+  return session.accessToken;
 };
 
 export const runMarketplaceCli = async (
@@ -163,6 +174,30 @@ export const runMarketplaceCli = async (
         submissionId: command.submissionId,
       });
       console.log(JSON.stringify(status));
+      return;
+    }
+    case "seller-read": {
+      const response = await createSellerSalesClient(officialRegistryOrigin).read(
+        command.resource,
+        sellerSessionCredential(),
+        command.options,
+        signal,
+      );
+      console.log(JSON.stringify(response));
+      return;
+    }
+    case "payout": {
+      const credential = sellerSessionCredential();
+      const client = createPayoutRequestClient(officialRegistryOrigin);
+      if (command.action === "status") {
+        console.log(JSON.stringify(await client.read({ credential, signal })));
+        return;
+      }
+      if (command.operationId === undefined) throw new MarketplaceCliError("invalid_command");
+      const response = command.action === "request"
+        ? await client.create({ credential, operationId: command.operationId, signal })
+        : await client.withdraw({ credential, operationId: command.operationId, signal });
+      console.log(JSON.stringify(response));
       return;
     }
     case "wallet-balance": {

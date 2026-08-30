@@ -1,4 +1,7 @@
 const helpTexts = new Map<string, string>([
+  ["marketplace seller candidate list --help", "Usage: trajectory marketplace seller candidate list [--cursor <cursor>]\n\nList seller marketplace candidates using the authenticated session."],
+  ["marketplace seller sales --help", "Usage: trajectory marketplace seller sales sessions|earnings|ledger [options]\n\nRead seller sales data using the authenticated session."],
+  ["marketplace seller payout --help", "Usage: trajectory marketplace seller payout status|request|withdraw [--operation-id <uuid>]\n\nRead or mutate payout state. Mutations require caller-supplied UUID v4 idempotency keys."],
   ["marketplace seller sessions --help", "Usage: trajectory marketplace seller sessions <command>\n\nCommands:\n  sessions list\n  sessions inspect\n  sessions choose"],
   ["marketplace seller sessions list --help", "Usage: trajectory marketplace seller sessions list --root <absolute-dir> [--json]\n\nList collected ATF sessions with bounded local summaries. No writes and no network."],
   ["marketplace seller sessions inspect --help", "Usage: trajectory marketplace seller sessions inspect <selector> --root <absolute-dir> [--json]\n\nInspect one collected ATF session locally by its full selector. No writes and no network."],

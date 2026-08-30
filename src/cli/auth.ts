@@ -32,6 +32,18 @@ export class AuthCliError extends Error {
 }
 
 const codeInputLimit = 64;
+const authHelp = `Usage: trajectory auth <command>
+
+Commands:
+  signup --email <email> --accept-terms
+  login --email <email>
+  verify --challenge <challenge> [--code-stdin]
+  status
+  logout`;
+
+const isAuthHelp = (argumentsList: readonly string[]): boolean =>
+  (argumentsList[0] === "auth" && argumentsList[1] === "--help" && argumentsList.length === 2) ||
+  (argumentsList[0] === "trajectory" && argumentsList[1] === "auth" && argumentsList[2] === "--help" && argumentsList.length === 3);
 
 const invalidCommand = (): never => {
   throw new AuthCliError("invalid_auth_command");
@@ -134,6 +146,10 @@ export const isAuthInvocation = (argumentsList: readonly string[]): boolean =>
   (argumentsList[0] === "trajectory" && argumentsList[1] === "auth");
 
 export const runAuthCli = async (argumentsList: readonly string[], signal: AbortSignal): Promise<void> => {
+  if (isAuthHelp(argumentsList)) {
+    console.log(authHelp);
+    return;
+  }
   const command = parseAuthCommand(argumentsList, process.stdin.isTTY === true);
   switch (command.command) {
     case "invalid_auth_command":
