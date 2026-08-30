@@ -1,8 +1,11 @@
 import { z } from "zod";
 
 const maximumSafeInteger = Number.MAX_SAFE_INTEGER;
-const cursorSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).brand("SellerCursor");
+const cursorSchema = z.string().min(1).max(1024).regex(
+  /^(?:[A-Za-z0-9_-]+={0,2}|[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/,
+).brand("SellerCursor");
 const creditsSchema = z.number().int().nonnegative().max(maximumSafeInteger);
+const signedCreditsSchema = z.number().int().min(-maximumSafeInteger).max(maximumSafeInteger);
 const dateSchema = z.string().date();
 const timestampSchema = z.string().datetime({ offset: true });
 const uuidSchema = z.string().uuid();
@@ -32,9 +35,14 @@ const candidateSchema = z.object({
 }).strict();
 
 export const sellerCandidatesResponseSchema = z.object({
-  candidates: z.array(candidateSchema),
-  ok: z.literal(true),
-  page: pageSchema,
+  nextCursor: cursorSchema.nullable(),
+  protocolVersion: z.literal(1),
+  rows: z.array(z.object({
+    candidate: candidateSchema,
+    protocolVersion: z.literal(1),
+    status: z.enum(["accepted", "processing", "completed", "rejected"]),
+    submissionId: z.string().regex(/^sub_[0-9a-hjkmnp-tv-z]{26}$/),
+  }).strict()),
 }).strict();
 export const sellerSessionsResponseSchema = z.object({
   asOf: timestampSchema,
@@ -49,7 +57,7 @@ export const sellerEarningsResponseSchema = z.object({
   ok: z.literal(true),
   openingCumulativeCredits: creditsSchema,
   points: z.array(z.object({
-    cumulativeNetCredits: creditsSchema,
+    cumulativeNetCredits: signedCreditsSchema,
     periodStart: timestampSchema,
   }).strict()),
   window: z.object({ from: dateSchema, to: dateSchema }).strict(),
@@ -89,14 +97,31 @@ export type SellerOptions = Readonly<{
   readonly from?: string;
   readonly interval?: "day" | "week" | "month";
   readonly limit?: number;
+  readonly status?: "not_listed" | "listed" | "sold" | "cleared" | "paid" | "withdrawn";
   readonly to?: string;
+  readonly type?: "sale" | "clearance" | "payout" | "withdrawal" | "relisting" | "clearance_failed" | "refund" | "chargeback";
 }>;
 
 const optionSchemas = {
   candidates: z.object({ cursor: cursorSchema.optional(), limit: z.coerce.number().int().min(1).max(100).optional() }).strict(),
-  "sales-sessions": z.object({ cursor: cursorSchema.optional(), from: dateSchema.optional(), limit: z.coerce.number().int().min(1).max(100).optional(), to: dateSchema.optional() }).strict(),
-  "sales-earnings": z.object({ from: dateSchema.optional(), interval: z.enum(["day", "week", "month"]).optional(), to: dateSchema.optional() }).strict(),
-  "sales-ledger": z.object({ cursor: cursorSchema.optional(), limit: z.coerce.number().int().min(1).max(100).optional() }).strict(),
+  "sales-sessions": z.object({
+    cursor: cursorSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    status: z.enum(["not_listed", "listed", "sold", "cleared", "paid", "withdrawn"]).optional(),
+  }).strict(),
+  "sales-earnings": z.object({
+    from: dateSchema.optional(),
+    interval: z.enum(["day", "week", "month"]).optional(),
+    to: dateSchema.optional(),
+  }).strict().refine(
+    (options) => Object.keys(options).length === 0
+      || (options.from !== undefined && options.interval !== undefined && options.to !== undefined),
+  ),
+  "sales-ledger": z.object({
+    cursor: cursorSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    type: z.enum(["sale", "clearance", "payout", "withdrawal", "relisting", "clearance_failed", "refund", "chargeback"]).optional(),
+  }).strict(),
 } as const;
 
 const validWindow = (options: SellerOptions): boolean =>

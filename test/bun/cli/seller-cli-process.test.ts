@@ -12,6 +12,7 @@ const tokenCanary = "stored-session-token-canary";
 const otpCanary = "otp-canary";
 const operationRequest = "00000000-0000-4000-8000-000000000301";
 const operationWithdraw = "00000000-0000-4000-8000-000000000302";
+const candidateNextCursor = "c3ViXzAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw";
 type CliResult = Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>;
 type RequestRecord = Readonly<{ readonly authorization: string | null; readonly body: string; readonly contentType: string | null; readonly idempotencyKey: string | null; readonly method: string; readonly path: string; readonly query: string }>;
 
@@ -53,7 +54,7 @@ describe("seller CLI built process boundary", () => {
       requests.push({ authorization: request.headers.get("authorization"), body: await request.text(), contentType: request.headers.get("content-type"), idempotencyKey: request.headers.get("idempotency-key"), method: request.method, path: url.pathname, query: url.search });
       const body = (() => {
         if (url.pathname === "/v1/marketplace/seller/candidates" && url.search === "?limit=2") return fixture("upload-list/v1/candidates-page-1-200.json");
-        if (url.pathname === "/v1/marketplace/seller/candidates" && url.search === "?cursor=cursor-two&limit=2") return fixture("upload-list/v1/candidates-page-2-200.json");
+        if (url.pathname === "/v1/marketplace/seller/candidates" && url.search === `?cursor=${candidateNextCursor}&limit=2`) return fixture("upload-list/v1/candidates-page-2-200.json");
         if (url.pathname === "/v1/marketplace/seller/sales/sessions") return fixture("seller-sales/v1/sessions-200.json");
         if (url.pathname === "/v1/marketplace/seller/sales/earnings") return fixture("seller-sales/v1/earnings-200.json");
         if (url.pathname === "/v1/marketplace/seller/sales/ledger") return fixture("seller-sales/v1/ledger-200.json");
@@ -68,9 +69,9 @@ describe("seller CLI built process boundary", () => {
     // When
     const results = [
       await runBuilt(["marketplace", "seller", "candidate", "list", "--limit", "2"], env),
-      await runBuilt(["marketplace", "seller", "sales", "sessions", "--from", "2026-08-01", "--to", "2026-08-30", "--limit", "2"], env),
+      await runBuilt(["marketplace", "seller", "sales", "sessions", "--status", "paid", "--limit", "2"], env),
       await runBuilt(["marketplace", "seller", "sales", "earnings", "--from", "2026-08-01", "--to", "2026-08-30", "--interval", "day"], env),
-      await runBuilt(["marketplace", "seller", "sales", "ledger", "--cursor", "ledger-one", "--limit", "2"], env),
+      await runBuilt(["marketplace", "seller", "sales", "ledger", "--cursor", "ledger-one", "--limit", "2", "--type", "sale"], env),
       await runBuilt(["marketplace", "seller", "payout", "status"], env),
       await runBuilt(["marketplace", "seller", "payout", "request", "--operation-id", operationRequest], env),
       await runBuilt(["marketplace", "seller", "payout", "withdraw", "--operation-id", operationWithdraw], env),
@@ -83,10 +84,10 @@ describe("seller CLI built process boundary", () => {
     ]);
     expect(requests).toEqual([
       { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/candidates", query: "?limit=2" },
-      { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/candidates", query: "?cursor=cursor-two&limit=2" },
-      { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/sales/sessions", query: "?from=2026-08-01&to=2026-08-30&limit=2" },
+      { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/candidates", query: `?cursor=${candidateNextCursor}&limit=2` },
+      { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/sales/sessions", query: "?limit=2&status=paid" },
       { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/sales/earnings", query: "?from=2026-08-01&to=2026-08-30&interval=day" },
-      { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/sales/ledger", query: "?cursor=ledger-one&limit=2" },
+      { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/sales/ledger", query: "?cursor=ledger-one&limit=2&type=sale" },
       { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/payout-request", query: "" },
       { authorization: `Bearer ${tokenCanary}`, body: "{}", contentType: "application/json", idempotencyKey: operationRequest, method: "POST", path: "/v1/marketplace/seller/payout-request", query: "" },
       { authorization: `Bearer ${tokenCanary}`, body: "{}", contentType: "application/json", idempotencyKey: operationWithdraw, method: "POST", path: "/v1/marketplace/seller/payout-request/withdraw", query: "" },
@@ -118,6 +119,6 @@ describe("seller CLI built process boundary", () => {
     // When
     const results = await Promise.all(commands.map((command) => runBuilt(command, env, true))); server.stop(true);
     // Then
-    expect(results.map((result) => result.exitCode)).toEqual(new Array(commands.length).fill(0)); expect(results.map((result) => result.stderr)).toEqual(new Array(commands.length).fill("")); expect(results[0]?.stdout).toContain("Usage: trajectory auth"); for (const result of results.slice(1)) expect(result.stdout).toContain('"ok":true');
+    expect(results.map((result) => result.exitCode)).toEqual(new Array(commands.length).fill(0)); expect(results.map((result) => result.stderr)).toEqual(new Array(commands.length).fill("")); expect(results[0]?.stdout).toContain("Usage: trajectory auth"); expect(results[1]?.stdout).toContain('"protocolVersion":1'); for (const result of results.slice(2)) expect(result.stdout).toContain('"ok":true');
   });
 });

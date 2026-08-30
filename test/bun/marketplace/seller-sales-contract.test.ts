@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  parseSellerEarningsResponse,
   parseSellerOptions,
   parseSellerResponse,
   SellerSalesContractError,
@@ -16,9 +17,14 @@ const candidate = {
 };
 
 const response = {
-  candidates: [candidate],
-  ok: true,
-  page: { nextCursor: null },
+  nextCursor: null,
+  protocolVersion: 1,
+  rows: [{
+    candidate,
+    protocolVersion: 1,
+    status: "completed",
+    submissionId: `sub_${"0".repeat(26)}`,
+  }],
 };
 
 describe("seller sales contracts", () => {
@@ -26,12 +32,13 @@ describe("seller sales contracts", () => {
     // Given
     const malformed = [
       { ...response, extra: true },
-      { ...response, page: { nextCursor: null, extra: true } },
-      { ...response, candidates: [{ ...candidate, extra: true }] },
-      { ...response, page: { nextCursor: "invalid cursor" } },
+      { ...response, rows: [{ ...response.rows[0], extra: true }] },
+      { ...response, rows: [{ ...response.rows[0], candidate: { ...candidate, extra: true } }] },
+      { ...response, nextCursor: "invalid cursor" },
     ];
 
     // When / Then
+    expect(parseSellerResponse("candidates", response) as unknown).toEqual(response);
     for (const value of malformed) {
       expect(() => parseSellerResponse("candidates", value)).toThrow(SellerSalesContractError);
     }
@@ -42,6 +49,14 @@ describe("seller sales contracts", () => {
     const valid = parseSellerOptions("candidates", ["--cursor", "page-one", "--limit", "2"]);
     expect(String(valid?.cursor)).toBe("page-one");
     expect(valid?.limit).toBe(2);
+    expect(parseSellerOptions("sales-sessions", ["--status", "paid", "--limit", "2"]) as unknown).toEqual({ limit: 2, status: "paid" });
+    expect(parseSellerOptions("sales-earnings", [])).toEqual({});
+    expect(parseSellerOptions("sales-earnings", ["--from", "2026-08-01", "--to", "2026-08-30", "--interval", "day"])).toEqual({
+      from: "2026-08-01",
+      interval: "day",
+      to: "2026-08-30",
+    });
+    expect(parseSellerOptions("sales-ledger", ["--type", "refund"]) as unknown).toEqual({ type: "refund" });
     for (const argumentsList of [
       ["--cursor", "page one"],
       ["--limit", "0"],
@@ -52,5 +67,16 @@ describe("seller sales contracts", () => {
     ]) {
       expect(parseSellerOptions("sales-sessions", argumentsList)).toBeUndefined();
     }
+    expect(parseSellerOptions("sales-earnings", ["--from", "2026-08-01"])).toBeUndefined();
+    expect(parseSellerOptions("sales-earnings", ["--from", "2026-08-01", "--to", "2026-08-30"])).toBeUndefined();
+    expect(parseSellerEarningsResponse({
+      asOf: "2026-08-30T00:00:00Z",
+      currency: "USD",
+      interval: "day",
+      ok: true,
+      openingCumulativeCredits: 10,
+      points: [{ cumulativeNetCredits: -5, periodStart: "2026-08-30T00:00:00Z" }],
+      window: { from: "2026-08-01", to: "2026-08-30" },
+    }).points[0]?.cumulativeNetCredits).toBe(-5);
   });
 });

@@ -17,10 +17,14 @@ const [empty, firstPage, secondPage, merged] = parsed;
 if (empty === undefined || firstPage === undefined || secondPage === undefined || merged === undefined) {
   throw new Error("missing upload-list fixture");
 }
-if (firstPage.page.nextCursor !== "cursor-two" || secondPage.page.nextCursor !== null || merged.page.nextCursor !== null) {
+if (
+  firstPage.nextCursor !== "c3ViXzAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw"
+  || secondPage.nextCursor !== null
+  || merged.nextCursor !== null
+) {
   throw new Error("invalid upload-list pagination fixture");
 }
-if (JSON.stringify(merged.candidates) !== JSON.stringify([...firstPage.candidates, ...secondPage.candidates])) {
+if (JSON.stringify(merged.rows) !== JSON.stringify([...firstPage.rows, ...secondPage.rows])) {
   throw new Error("invalid upload-list merged fixture");
 }
 console.log("upload-list fixtures: verified");

@@ -28,8 +28,8 @@ const paths = {
 const queryKeys = {
   candidates: ["cursor", "limit"],
   "sales-earnings": ["from", "to", "interval"],
-  "sales-ledger": ["cursor", "limit"],
-  "sales-sessions": ["cursor", "from", "to", "limit"],
+  "sales-ledger": ["cursor", "limit", "type"],
+  "sales-sessions": ["cursor", "limit", "status"],
 } as const;
 
 type SellerSalesClientErrorCode = "cancelled" | "invalid_pagination" | "invalid_response" | "missing_session_credential" | "request_failed" | "timeout";
@@ -108,6 +108,23 @@ const readPages = async <T extends PagedResponse>(
   return combined;
 };
 
+const readCandidatePages = async (
+  options: SellerOptions,
+  request: (options: SellerOptions) => Promise<SellerCandidatesResponse>,
+): Promise<SellerCandidatesResponse> => {
+  let combined = await request(options);
+  const cursors = new Set<string>();
+  let cursor = combined.nextCursor;
+  while (cursor !== null) {
+    if (cursors.has(cursor) || cursors.size >= maximumPages) throw new SellerSalesClientError("invalid_pagination");
+    cursors.add(cursor);
+    const next = await request({ ...options, cursor });
+    combined = { ...combined, nextCursor: next.nextCursor, rows: [...combined.rows, ...next.rows] };
+    cursor = combined.nextCursor;
+  }
+  return combined;
+};
+
 export const createSellerSalesClient = (server: unknown): SellerSalesClient => {
   const origin = normalizeAuthServerUrl(server);
   return {
@@ -116,10 +133,9 @@ export const createSellerSalesClient = (server: unknown): SellerSalesClient => {
       if (signal?.aborted === true) throw new SellerSalesClientError("cancelled");
       switch (resource) {
         case "candidates":
-          return readPages(
+          return readCandidatePages(
             options,
             (pageOptions) => requestOne(origin, resource, credential, pageOptions, signal, parseSellerCandidatesResponse),
-            (initial, next): SellerCandidatesResponse => ({ ...initial, candidates: [...initial.candidates, ...next.candidates], page: next.page }),
           );
         case "sales-sessions":
           return readPages(
