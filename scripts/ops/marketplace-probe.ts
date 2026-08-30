@@ -40,7 +40,8 @@ export async function runProbe(config: ProbeConfig): Promise<ProbeResult> {
   const payout = await request(config.registryUrl, "/v1/marketplace/seller/payout-request", timeoutMs);
   check(payout.status === 401, "payout route must return 401");
   check(payout.headers.get("cache-control") === "no-store", "payout cache policy mismatch");
-  check(payout.headers.get("content-type") === "application/json", "payout content type mismatch");
+  const payoutMediaType = payout.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  check(payoutMediaType === "application/json", "payout content type mismatch");
   const envelope = object(await payout.json(), ["ok", "error"]);
   check(envelope["ok"] === false, "payout ok mismatch");
   const error = object(envelope["error"], ["code", "message"]);
