@@ -13,6 +13,15 @@ fail() {
   exit 1
 }
 
+grep -Fq 'stage:' "$WORKFLOW" \
+  || fail "release has no exact-tag staging prerequisite"
+grep -Fq 'uses: ./.github/workflows/deploy-staging.yml' "$WORKFLOW" \
+  || fail "release does not reuse the byte-attested staging deployment"
+grep -Fq 'revision: ${{ github.sha }}' "$WORKFLOW" \
+  || fail "release staging is not bound to the exact protected tag commit"
+grep -Fq 'needs: stage' "$WORKFLOW" \
+  || fail "production release can start before exact staging attestation"
+
 source "$ROOT/scripts/version-contract.sh"
 source "$RELEASE_NETWORK"
 
@@ -268,6 +277,9 @@ grep -Fq '"main": "index.js"' "$WORKER_CONFIG" || fail "Marketplace Worker deplo
 grep -Fq '"pattern": "getatm.io/*"' "$WORKER_CONFIG" || fail "Marketplace Worker deployment does not bind the apex route"
 
 while IFS= read -r action; do
+  if [[ "$action" == ./* ]]; then
+    continue
+  fi
   [[ "$action" =~ ^[^[:space:]@]+@[a-f0-9]{40}[[:space:]]+\#[[:space:]]+v[0-9]+(\.[0-9]+){0,2}$ ]] \
     || fail "GitHub Action is not pinned to an immutable revision with a version comment: $action"
 done < <(grep -RhE '^[[:space:]]*uses:[[:space:]]+' "$ROOT/.github/workflows" | sed -E 's/^[[:space:]]*uses:[[:space:]]+//')
