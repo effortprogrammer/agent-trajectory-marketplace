@@ -1,0 +1,26 @@
+name: Marketplace beta probe
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun test ./test/bun/ops/marketplace-probe.test.ts
+      - run: bun run scripts/ops/marketplace-probe.ts
+        env:
+          REGISTRY_URL: ${{ vars.BETA_REGISTRY_URL }}
+          MARKETPLACE_URL: ${{ vars.BETA_MARKETPLACE_URL }}
+          EXPECTED_REGISTRY_REVISION: ${{ vars.BETA_REGISTRY_REVISION }}
+          EXPECTED_MARKETPLACE_REVISION: ${{ vars.BETA_MARKETPLACE_REVISION }}
