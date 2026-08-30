@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test"
 // @ts-expect-error Browser JavaScript contract module is exercised directly by Bun.
-import { parseEarningsResponse, parseLedgerResponse, parseSessionsResponse } from "../../../web/console-contract.js"
+import * as consoleContract from "../../../web/console-contract.js"
+
+const {
+  parseEarningsResponse,
+  parseLedgerResponse,
+  parseSessionsResponse,
+} = consoleContract
 
 const sessions = {
   asOf: "2026-08-20T12:00:00Z",
@@ -48,6 +54,62 @@ const ledger = {
   ok: true,
   page: { nextCursor: "ledger-next" },
 }
+
+const payoutRequest = {
+  amountMinor: 15_000,
+  approvedAt: null,
+  externalReference: null,
+  paidAt: null,
+  rejectedReason: null,
+  requestId: "44444444-4444-4444-8444-444444444444",
+  requestedAt: "2026-08-29T00:00:00Z",
+  status: "requested",
+}
+
+const payoutResponse = (request: unknown, availableMinor = 0, heldMinor = 15_000) => ({
+  ok: true,
+  payoutRequest: {
+    availableMinor,
+    currency: "USD",
+    heldMinor,
+    request,
+    thresholdMinor: 10_000,
+  },
+})
+
+test("payout contract accepts every frozen state and formats USD minor units", () => {
+  const parse = Reflect.get(consoleContract, "parsePayoutResponse")
+  const format = Reflect.get(consoleContract, "formatPayoutAmount")
+  expect(typeof parse).toBe("function")
+  expect(typeof format).toBe("function")
+  if (typeof parse !== "function" || typeof format !== "function") return
+
+  const approvedAt = "2026-08-29T01:00:00Z"
+  const paidAt = "2026-08-29T02:00:00Z"
+  const responses = [
+    payoutResponse(null, 9_999, 0),
+    payoutResponse({ ...payoutRequest, status: "requested" }),
+    payoutResponse({ ...payoutRequest, status: "pending" }),
+    payoutResponse({ ...payoutRequest, approvedAt, status: "approved" }),
+    payoutResponse({ ...payoutRequest, approvedAt, status: "processing" }),
+    payoutResponse({ ...payoutRequest, status: "cancelled" }, 15_000, 0),
+    payoutResponse({ ...payoutRequest, rejectedReason: "Destination needs review.", status: "rejected" }, 15_000, 0),
+    payoutResponse({ ...payoutRequest, approvedAt, externalReference: "manual-ach-42", paidAt, status: "paid" }, 0, 0),
+  ]
+  for (const response of responses) expect(parse(response)).toEqual(response)
+  expect(format(10_000)).toBe("$100.00")
+  expect(format(15_000)).toBe("$150.00")
+})
+
+test("payout contract rejects unknown fields and invalid state nullability", () => {
+  const parse = Reflect.get(consoleContract, "parsePayoutResponse")
+  expect(typeof parse).toBe("function")
+  if (typeof parse !== "function") return
+  expect(() => parse({ ...payoutResponse(null), unexpected: true })).toThrow()
+  expect(() => parse(payoutResponse({ ...payoutRequest, approvedAt: null, status: "approved" }))).toThrow()
+  expect(() => parse(payoutResponse({ ...payoutRequest, rejectedReason: null, status: "rejected" }))).toThrow()
+  expect(() => parse(payoutResponse({ ...payoutRequest, externalReference: null, paidAt: null, status: "paid" }))).toThrow()
+})
 
 test("seller sales contract validators strictly accept golden response shapes", () => {
   expect(parseSessionsResponse(sessions)).toEqual(sessions)

@@ -1,0 +1,1 @@
+{"ok":true,"payoutRequest":{"currency":"USD","thresholdMinor":10000,"availableMinor":15000,"heldMinor":0,"request":{"requestId":"00000000-0000-4000-8000-000000000105","amountMinor":15000,"status":"cancelled","requestedAt":"2026-08-29T00:00:00Z","approvedAt":null,"rejectedReason":null,"paidAt":null,"externalReference":null}}}

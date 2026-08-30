@@ -1,0 +1,1 @@
+{"ok":true,"payoutRequest":{"currency":"USD","thresholdMinor":10000,"availableMinor":0,"heldMinor":0,"request":{"requestId":"00000000-0000-4000-8000-000000000107","amountMinor":15000,"status":"paid","requestedAt":"2026-08-29T00:00:00Z","approvedAt":"2026-08-30T00:00:00Z","rejectedReason":null,"paidAt":"2026-09-01T00:00:00Z","externalReference":"ACH-20260901-0001"}}}

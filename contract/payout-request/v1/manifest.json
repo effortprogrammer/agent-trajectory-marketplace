@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "file": "get-empty-200.json",
+      "sha256": "480a680264f127870e74919ca647ec6f545e540c6789ea7c14fb2bb9e49c387e",
+      "verdict": "accept",
+      "status": 200
+    },
+    {
+      "file": "requested-201.json",
+      "sha256": "3cc560d8eb6f1b2200b5f0926d932a928cfa9cc01839dd82767d6bfc360c0bf3",
+      "verdict": "accept",
+      "status": 201
+    },
+    {
+      "file": "requested-replay-200.json",
+      "sha256": "3cc560d8eb6f1b2200b5f0926d932a928cfa9cc01839dd82767d6bfc360c0bf3",
+      "verdict": "accept",
+      "status": 200
+    },
+    {
+      "file": "pending-200.json",
+      "sha256": "c772e87d918094610eaa4bed8b8a9d870ae6fd02089a0d3a20cdf00436ddb7a7",
+      "verdict": "accept",
+      "status": 200
+    },
+    {
+      "file": "approved-200.json",
+      "sha256": "6b8ddeee40909dee45e85142ec9aedbc8d7d99e47f6577787cbc71089aab5b38",
+      "verdict": "accept",
+      "status": 200
+    },
+    {
+      "file": "processing-200.json",
+      "sha256": "db14033d74e2fb5a8b893dd53391a0e153d0f47ac67a6c712baf81332d4bb7e0",
+      "verdict": "accept",
+      "status": 200
+    },
+    {
+      "file": "cancelled-200.json",
+      "sha256": "00cedb693195ff66fa741358b059dcaf2839307805ccf47833a35dccd33eee82",
+      "verdict": "accept",
+      "status": 200
+    },
+    {
+      "file": "rejected-200.json",
+      "sha256": "856c0c293afa225c0257bb7455c5ac11208672e2ebb63bbf73e69032c91eb0e2",
+      "verdict": "accept",
+      "status": 200
+    },
+    {
+      "file": "paid-200.json",
+      "sha256": "4e9bfbc01865126eaef954e5fd98af0f108957da48a3cbe3f7dc91c87ac18a54",
+      "verdict": "accept",
+      "status": 200
+    },
+    {
+      "file": "withdrawn-200.json",
+      "sha256": "f12aab19edeac150cd38fc542ea7202b13c573df464c2fc821daa9b34bdea1e2",
+      "verdict": "accept",
+      "status": 200
+    },
+    {
+      "file": "error-400-invalid-request.json",
+      "sha256": "5e2019d45fd1df53ed46bd2e047b56af43eaed77b7a405c88ba94a7a7d8d8be2",
+      "verdict": "accept",
+      "status": 400
+    },
+    {
+      "file": "error-401-unauthorized.json",
+      "sha256": "4f8989d23b2185a16438d91e02d420a8b348385c3d6d8e09b0f7c8f25c5424b0",
+      "verdict": "accept",
+      "status": 401
+    },
+    {
+      "file": "error-403-forbidden.json",
+      "sha256": "2131f27caab8b3e2042e0a79fe4fbb45074bdc0ee3fd2e3d12efcd78ab2f998f",
+      "verdict": "accept",
+      "status": 403
+    },
+    {
+      "file": "error-409-open-request.json",
+      "sha256": "7da4428e2c8da09bb9a376055c504f4a5c0110e101f2e155b91b74dd1f1f205c",
+      "verdict": "accept",
+      "status": 409
+    },
+    {
+      "file": "error-409-not-withdrawable.json",
+      "sha256": "3ea840650fda6a3ce5cdd8252c188186baeaca495d2d48a7344bb54f4e93c51f",
+      "verdict": "accept",
+      "status": 409
+    },
+    {
+      "file": "error-409-conflict.json",
+      "sha256": "82cabbfba8500b4ec0c06d188437ed78aa06cfd84ae5226b9030da739d68b770",
+      "verdict": "accept",
+      "status": 409
+    },
+    {
+      "file": "error-422-below-threshold.json",
+      "sha256": "38bdba62db42091d8737f1d1e68b384b0a58118df8d4fc22dacbbb845dc92a41",
+      "verdict": "accept",
+      "status": 422
+    },
+    {
+      "file": "error-429-rate-limited.json",
+      "sha256": "eb472dc597279c9dd1b11b11e65dba505054485e7120baf2efb8af7b9a6b5591",
+      "verdict": "accept",
+      "status": 429
+    },
+    {
+      "file": "error-503-creation-disabled.json",
+      "sha256": "225e7f9ce7a1ec97625183fe5a929920f4926459e0d3f064fd595f8588843eea",
+      "verdict": "accept",
+      "status": 503
+    },
+    {
+      "file": "error-503-service-unavailable.json",
+      "sha256": "f5aa17fba0cbbff1f2a4dc3a5e17faf76a73f251bd3b4981d8de6365edaba355",
+      "verdict": "accept",
+      "status": 503
+    }
+  ]
+}
