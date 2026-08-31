@@ -84,6 +84,9 @@ test("serves session-only public pages without World UI artifacts", async () => 
     const port = await waitForReadyOutput(server.stdout)
     const baseUrl = `http://127.0.0.1:${port}`
     const root = await fetch(baseUrl)
+    const rootWithMarketingQuery = await fetch(
+      `${baseUrl}/?utm_source=qa&utm_campaign=limited-beta`,
+    )
     const detail = await fetch(`${baseUrl}/detail.html?id=sub_14m3r01jp1wd7a3rm2j719p9vv`, {
       redirect: "manual",
     })
@@ -113,6 +116,7 @@ test("serves session-only public pages without World UI artifacts", async () => 
       { redirect: "manual" },
     )
     const rootHtml = await root.text()
+    const rootWithMarketingQueryHtml = await rootWithMarketingQuery.text()
     const javascript = await script.text()
     const robots = await fetch(`${baseUrl}/robots.txt`)
     const robotsText = await robots.text()
@@ -130,6 +134,8 @@ test("serves session-only public pages without World UI artifacts", async () => 
     )
 
     expect(root.status).toBe(200)
+    expect(rootWithMarketingQuery.status).toBe(200)
+    expect(rootWithMarketingQueryHtml).toBe(rootHtml)
     expect(root.headers.get("cache-control")).toBe("no-store")
     expect(root.headers.get("content-security-policy")).toContain("default-src 'self'")
     expect(root.headers.get("content-security-policy")).toContain(
