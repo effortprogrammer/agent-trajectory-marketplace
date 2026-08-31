@@ -2,7 +2,7 @@ import {
   parseEarningsResponse,
   parseSessionsResponse,
 } from "./console-contract.19b879da9be9f44653c8d45a3ec7d48d70b20e9a033f2f0fd41caa59781c5837.js";
-import { mountPayoutConsole } from "./payout-console.d4e2484e0049f3da6fc5537a06279091f64a95888b9720412938ee823299e7e4.js";
+import { mountPayoutConsole } from "./payout-console.7c68d4a0e419003cd27c3c4950ab1f9e26a51d693dd106639edebf3d6add1462.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const shortId = (id) => id.slice(0, 8);
@@ -79,7 +79,6 @@ export const mountSellerConsole = async ({
   const state = view.querySelector("[data-console-state]");
   const chart = view.querySelector("[data-console-chart]");
   const sessions = view.querySelector("[data-console-sessions]");
-  const seller = view.querySelector("[data-console-seller]");
   const total = view.querySelector("[data-console-total]");
   const payout = view.querySelector("[data-console-payout]");
   const today = new Date(); const from = new Date(today); from.setUTCDate(from.getUTCDate() - 30);
@@ -96,7 +95,12 @@ export const mountSellerConsole = async ({
     if (!isCurrent()) return;
     if (me?.ok !== true || typeof me.account?.accountId !== "string") throw new TypeError("Invalid Registry account response");
     const validatedSessions = parseSessionsResponse(sessionsBody); const earnings = parseEarningsResponse(earningsBody);
-    seller.textContent = me.account.accountId; total.textContent = `${formatCredits(earnings.points.at(-1)?.cumulativeNetCredits ?? earnings.openingCumulativeCredits)} cumulative`;
+    const cumulativeCredits = earnings.points.at(-1)?.cumulativeNetCredits
+      ?? earnings.openingCumulativeCredits;
+    total.hidden = cumulativeCredits === 0;
+    total.textContent = cumulativeCredits === 0
+      ? ""
+      : `${formatCredits(cumulativeCredits)} cumulative`;
     renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
     state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;
     await mountPayoutConsole({

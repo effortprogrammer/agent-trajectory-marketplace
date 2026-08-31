@@ -186,7 +186,17 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.locator("[data-console-chart] svg").waitFor({ state: "visible" })
     expect(await page.locator("[data-console-sessions] li").count()).toBeGreaterThan(0)
     expect(await page.locator("[data-console-ledger]").count()).toBe(0)
-    expect(await page.locator("[data-console-seller]").innerText()).toBe("acct-0123456789abcdef")
+    expect(await page.locator("[data-console-seller]").count()).toBe(0)
+    expect(await page.locator("[data-console-view]").innerText()).not.toContain(
+      "acct-0123456789abcdef",
+    )
+    expect(await page.locator("[data-console-payout]").evaluate((element) =>
+      Number.parseFloat(
+        element.ownerDocument.defaultView
+          ?.getComputedStyle(element)
+          .paddingInlineStart ?? "0",
+      ),
+    )).toBeGreaterThan(0)
     expect(await page.locator("[data-console-sessions] .seller-status-pill[data-stage=sold]").count()).toBe(1)
     expect(harness.registryRequests.filter((request) => request.path.includes("/seller/sales/"))).toEqual(expect.arrayContaining([
       expect.objectContaining({ authorization: "Bearer marketplace-browser-session-token", body: undefined, method: "GET", path: "/v1/marketplace/seller/sales/sessions" }),
@@ -241,7 +251,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
         })
         return {
           error: null,
-          seller: document.querySelector("[data-console-seller]")?.textContent,
+          seller: document.querySelector("[data-console-seller]")?.textContent ?? null,
         }
       } catch (error) {
         return {
@@ -253,7 +263,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
 
     expect(result).toEqual({
       error: null,
-      seller: "acct-legacy0123456789",
+      seller: null,
     })
   })
 
@@ -366,26 +376,9 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.locator("[data-auth-request-submit]").click()
     await page.locator("[data-auth-code]").waitFor({ state: "visible" })
     await page.locator("[data-auth-code]").fill("654321")
-    const secondConsoleRendered = page.locator("[data-console-seller]").evaluate(
-      (element, expected) => new Promise<void>((resolve) => {
-        if (element.textContent === expected) {
-          resolve()
-          return
-        }
-        const MutationObserverConstructor =
-          element.ownerDocument.defaultView?.MutationObserver
-        if (MutationObserverConstructor === undefined) {
-          throw new Error("MutationObserver is unavailable")
-        }
-        const observer = new MutationObserverConstructor(() => {
-          if (element.textContent !== expected) return
-          observer.disconnect()
-          resolve()
-        })
-        observer.observe(element, { childList: true, subtree: true })
-      }),
-      secondAccount,
-    )
+    const secondConsoleRendered = page
+      .locator('[data-console-payout][data-payout-state="eligible"]')
+      .waitFor({ state: "attached" })
     await page.locator("[data-auth-verify-submit]").click()
     await secondConsoleRendered
 
@@ -409,9 +402,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("body").getAttribute("data-auth-state")).toBe(
       "authenticated",
     )
-    expect(await page.locator("[data-console-seller]").innerText()).toBe(
-      secondAccount,
-    )
+    expect(await page.locator("[data-console-seller]").count()).toBe(0)
     expect(await page.locator("[data-console-view]:visible").count()).toBe(1)
     expect(await page.locator("[data-console-payout]").getAttribute("data-payout-state")).toBe(
       "eligible",
@@ -431,6 +422,13 @@ describe("authenticated aggregate marketplace browser contract", () => {
         status: 200,
       })
     })
+    await page.route("**/api/registry/v1/marketplace/seller/payout-request", async (route) => {
+      await route.fulfill({
+        body: JSON.stringify(payoutSuccess(null, 0, 0)),
+        contentType: "application/json",
+        status: 200,
+      })
+    })
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
@@ -438,6 +436,11 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.getByText("No seller sessions yet.").waitFor({ state: "visible" })
 
     expect(await page.getByText("No earnings recorded in this window.").isVisible()).toBe(true)
+    expect(await page.locator("[data-console-total]").isHidden()).toBe(true)
+    expect(await page.locator("[data-console-payout]").isHidden()).toBe(true)
+    expect(await page.locator("[data-console-view]").innerText()).not.toContain(
+      "Reach $100.00 to request payout.",
+    )
     expect(await page.locator("[data-console-ledger]").count()).toBe(0)
   })
 
