@@ -35,7 +35,7 @@ const render = (root, summary, actions) => {
   root.dataset.payoutState = state;
   root.hidden = state === "below-threshold";
   root.replaceChildren();
-  const balance = root.closest(".seller-panel")?.querySelector("[data-payout-balance]");
+  const balance = root.closest("[data-payout-dialog]")?.querySelector("[data-payout-balance]");
   if (balance) balance.textContent = `${formatPayoutAmount(availableMinor)} available`;
   const copy = request === null
     ? state === "eligible"

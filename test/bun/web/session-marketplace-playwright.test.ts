@@ -88,6 +88,14 @@ const openSellerConsole = async (page: Page): Promise<void> => {
   await page.locator("[data-console-sessions] li").first().waitFor()
 }
 
+const openPayoutDialog = async (page: Page): Promise<void> => {
+  await page.locator("[data-payout-open]").click()
+  await page.locator("[data-payout-dialog]").waitFor({ state: "visible" })
+  await page.waitForFunction(
+    "document.querySelector('[data-console-payout]')?.dataset.payoutState !== 'loading'",
+  )
+}
+
 afterEach(async () => {
   if (harness !== undefined) await harness.close()
   harness = undefined
@@ -190,18 +198,62 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("[data-console-view]").innerText()).not.toContain(
       "acct-0123456789abcdef",
     )
-    expect(await page.locator("[data-console-payout]").evaluate((element) =>
+    expect(await page.locator("[data-console-sessions] .seller-status-pill[data-stage=sold]").count()).toBe(1)
+    expect(harness.registryRequests.filter((request) => request.path.includes("/seller/sales/"))).toEqual(expect.arrayContaining([
+      expect.objectContaining({ authorization: "Bearer marketplace-browser-session-token", body: undefined, method: "GET", path: "/v1/marketplace/seller/sales/sessions" }),
+    ]))
+    expect(harness.registryRequests.filter((request) => request.path.endsWith("/sales/ledger"))).toEqual([])
+  })
+
+  test("opens payout from the seller header and restores trigger focus", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    await openSellerConsole(page)
+
+    const launcher = page.locator("[data-payout-open]")
+    const dialog = page.locator("[data-payout-dialog]")
+    expect(await launcher.count()).toBe(1)
+    expect(await page.locator(".seller-payout-panel").count()).toBe(0)
+    expect(await launcher.evaluate((element) => {
+      const launcherRect = element.getBoundingClientRect()
+      const shellRect = element.closest(".seller-console-shell")
+        ?.getBoundingClientRect()
+      const chartTop = element.ownerDocument
+        .querySelector(".seller-chart-panel")
+        ?.getBoundingClientRect()
+        .top
+      return shellRect !== undefined
+        && chartTop !== undefined
+        && Math.abs(shellRect.right - launcherRect.right) <= 1
+        && launcherRect.top < chartTop
+    })).toBe(true)
+
+    await launcher.click()
+    await dialog.waitFor({ state: "visible" })
+    expect(await page.locator("[data-payout-request]").isVisible()).toBe(true)
+    expect(await page.locator(".seller-payout-dialog-body").evaluate((element) =>
       Number.parseFloat(
         element.ownerDocument.defaultView
           ?.getComputedStyle(element)
           .paddingInlineStart ?? "0",
       ),
     )).toBeGreaterThan(0)
-    expect(await page.locator("[data-console-sessions] .seller-status-pill[data-stage=sold]").count()).toBe(1)
-    expect(harness.registryRequests.filter((request) => request.path.includes("/seller/sales/"))).toEqual(expect.arrayContaining([
-      expect.objectContaining({ authorization: "Bearer marketplace-browser-session-token", body: undefined, method: "GET", path: "/v1/marketplace/seller/sales/sessions" }),
-    ]))
-    expect(harness.registryRequests.filter((request) => request.path.endsWith("/sales/ledger"))).toEqual([])
+    await page.locator("[data-payout-close]").click()
+    await dialog.waitFor({ state: "hidden" })
+    expect(await launcher.evaluate((element) =>
+      element.ownerDocument.activeElement === element
+    )).toBe(true)
+
+    await launcher.click()
+    await dialog.waitFor({ state: "visible" })
+    await page.keyboard.press("Escape")
+    await dialog.waitFor({ state: "hidden" })
+    expect(await launcher.evaluate((element) =>
+      element.ownerDocument.activeElement === element
+    )).toBe(true)
   })
 
   test("keeps the legacy Seller Console module call shape compatible", async () => {
@@ -437,6 +489,11 @@ describe("authenticated aggregate marketplace browser contract", () => {
 
     expect(await page.getByText("No earnings recorded in this window.").isVisible()).toBe(true)
     expect(await page.locator("[data-console-total]").isHidden()).toBe(true)
+    expect(await page.locator(".seller-payout-panel").count()).toBe(0)
+    await openPayoutDialog(page)
+    expect(await page.locator("[data-payout-balance]").innerText()).toBe(
+      "$0.00 available",
+    )
     expect(await page.locator("[data-console-payout]").isHidden()).toBe(true)
     expect(await page.locator("[data-console-view]").innerText()).not.toContain(
       "Reach $100.00 to request payout.",
@@ -486,6 +543,17 @@ describe("authenticated aggregate marketplace browser contract", () => {
       element.classList.contains("is-nav-open"),
     )).toBe(false)
     expect(await page.locator("html").evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(false)
+    await openPayoutDialog(page)
+    expect(await page.locator("[data-payout-dialog]").evaluate((dialog) => {
+      const rect = dialog.getBoundingClientRect()
+      return rect.left >= 0
+        && rect.right <= dialog.ownerDocument.documentElement.clientWidth
+        && rect.top >= 0
+        && rect.bottom <= dialog.ownerDocument.defaultView.innerHeight
+    })).toBe(true)
+    expect(await page.locator("html").evaluate(
+      (node) => node.scrollWidth > node.clientWidth,
+    )).toBe(false)
   })
 
   test("copies the exact installer from the simplified seller hero", async () => {
@@ -1324,6 +1392,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
       await page.goto(harness.appUrl, { waitUntil: "networkidle" })
       await authenticate(page)
       await openSellerConsole(page)
+      await openPayoutDialog(page)
 
       const payout = page.locator("[data-console-payout]")
       expect(await payout.count()).toBe(1)
@@ -1346,6 +1415,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
     await openSellerConsole(page)
+    await openPayoutDialog(page)
 
     expect(await page.locator("[data-payout-request]").count()).toBe(1)
     const release = harness.holdPayout()
@@ -1381,6 +1451,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
     await openSellerConsole(page)
+    await openPayoutDialog(page)
 
     expect(await page.locator("[data-console-payout]").count()).toBe(1)
     await page.locator("[data-payout-request]").click()
@@ -1409,6 +1480,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
     await openSellerConsole(page)
+    await openPayoutDialog(page)
 
     expect(await page.locator("[data-console-payout]").count()).toBe(1)
     await page.getByText("Payout request service is unavailable.", { exact: true }).waitFor()
