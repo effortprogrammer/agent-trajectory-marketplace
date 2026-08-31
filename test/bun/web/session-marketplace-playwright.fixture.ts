@@ -86,6 +86,25 @@ const awaitResource = async <Value>(
   }
 }
 
+type ReadinessFetch = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>
+
+export const waitForMarketplaceHttpReady = async (
+  appUrl: string,
+  fetch_: ReadinessFetch = fetch,
+): Promise<void> => {
+  const response = await awaitResource(
+    "Marketplace HTTP readiness",
+    fetch_(appUrl),
+  )
+  if (!response.ok) {
+    throw new Error(`Marketplace readiness returned HTTP ${response.status}`)
+  }
+  await response.body?.cancel()
+}
+
 export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
   const registry = startSessionRegistry()
   const ready = Promise.withResolvers<ReadyMessage>()
@@ -144,6 +163,8 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
     if (!readiness.publicStatsConfigured || !readiness.registryConfigured) {
       throw new Error("Marketplace ready IPC reported missing local configuration")
     }
+    const appUrl = `http://127.0.0.1:${readiness.marketplacePort}`
+    await waitForMarketplaceHttpReady(appUrl)
     sharedBrowser ??= await chromium.launch({
       args: ["--disable-background-networking"],
       headless: true,
@@ -151,7 +172,7 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
     const browser = sharedBrowser
     if (browser === undefined) throw new Error("Playwright Chromium did not launch")
     return {
-      appUrl: `http://127.0.0.1:${readiness.marketplacePort}`,
+      appUrl,
       holdChallenge: registry.holdChallenge,
       holdPayout: registry.holdPayout,
       holdVerify: registry.holdVerify,
