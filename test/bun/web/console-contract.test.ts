@@ -13,10 +13,14 @@ const sessions = {
   ok: true,
   page: { nextCursor: null },
   sessions: [{
+    acceptedTokens: null,
+    accruedCents: null,
     askCredits: 125,
     datasetId: "seller-dataset-alpha",
     earnedCredits: 100,
     listedAt: "2026-08-19T10:00:00Z",
+    model: null,
+    rateCentsPerMillion: null,
     saleStatus: {
       changedAt: "2026-08-20T11:30:00Z",
       exception: null,

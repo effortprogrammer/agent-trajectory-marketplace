@@ -5,6 +5,19 @@ const eventTypes = new Set(["sale", "clearance", "payout", "withdrawal", "relist
 const intervals = new Set(["day", "week", "month"]);
 const payoutStatuses = new Set(["requested", "pending", "approved", "processing", "cancelled", "rejected", "paid"]);
 const payoutUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const sessionFields = [
+  "acceptedTokens",
+  "accruedCents",
+  "askCredits",
+  "datasetId",
+  "earnedCredits",
+  "listedAt",
+  "model",
+  "rateCentsPerMillion",
+  "saleStatus",
+  "sessionId",
+  "soldAt",
+];
 const utcTimestamp = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z$/;
 const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -63,13 +76,20 @@ export const parseSessionsResponse = (value) => {
   timestamp(value.asOf, "asOf");
   page(value.page);
   for (const session of value.sessions) {
-    keys(session, ["sessionId", "datasetId", "listedAt", "askCredits", "earnedCredits", "soldAt", "saleStatus"], "session");
+    keys(session, sessionFields, "session");
     identifier(session.sessionId, "sessionId");
     text(session.datasetId, "datasetId");
     nullable(session.listedAt, timestamp, "listedAt");
     nullable(session.askCredits, credits, "askCredits");
     nullable(session.earnedCredits, credits, "earnedCredits");
     nullable(session.soldAt, timestamp, "soldAt");
+    const pricing = [session.model, session.acceptedTokens, session.rateCentsPerMillion, session.accruedCents];
+    const nullCount = pricing.filter((field) => field === null).length;
+    if (nullCount !== 0 && nullCount !== pricing.length) fail("Invalid model-token pricing");
+    nullable(session.model, text, "model");
+    nullable(session.acceptedTokens, credits, "acceptedTokens");
+    nullable(session.rateCentsPerMillion, credits, "rateCentsPerMillion");
+    nullable(session.accruedCents, credits, "accruedCents");
     keys(session.saleStatus, ["listingCycleId", "stage", "exception", "changedAt"], "saleStatus");
     nullable(session.saleStatus.listingCycleId, identifier, "listingCycleId");
     if (!stages.has(session.saleStatus.stage) || !exceptions.has(session.saleStatus.exception)) fail("Invalid saleStatus");

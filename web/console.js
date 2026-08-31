@@ -1,10 +1,20 @@
 import {
+  formatPayoutAmount,
   parseEarningsResponse,
   parseSessionsResponse,
-} from "./console-contract.19b879da9be9f44653c8d45a3ec7d48d70b20e9a033f2f0fd41caa59781c5837.js";
-import { mountPayoutConsole } from "./payout-console.d4e2484e0049f3da6fc5537a06279091f64a95888b9720412938ee823299e7e4.js";
+} from "./console-contract.8a50b3a345535d1c9270ee433ef50f9951bcfa2a234a538809dfba693938d9d8.js";
+import { mountPayoutConsole } from "./payout-console.2611e89251f1279529d86bdc4a33e8e93c67df40fbb9c4b431d90f4c110cc9e7.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
+const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 1,
+  notation: "compact",
+}).format(value)} accepted tokens`;
+const formatModel = (model) => ({
+  "claude-fable-5": "Claude Fable 5",
+  "gpt-5.6-sol": "GPT-5.6 Sol",
+})[model] ?? model;
 const shortId = (id) => id.slice(0, 8);
 const dateLabel = (value) => new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(value));
 const element = (name, className, text) => {
@@ -63,6 +73,17 @@ const renderSessions = (root, sessions) => {
     top.append(pill);
     row.append(top);
     if (session.earnedCredits !== null && max > 0) { const bar = element("div", "seller-performance-bar"); const fill = element("i"); fill.style.width = `${(session.earnedCredits / max) * 100}%`; bar.append(fill); row.append(bar); }
+    if (session.model !== null) {
+      const pricing = element("div", "seller-pricing-facts");
+      pricing.setAttribute("aria-label", "Accepted model-token earnings");
+      pricing.append(
+        element("span", "seller-pricing-model", formatModel(session.model)),
+        element("span", undefined, formatAcceptedTokens(session.acceptedTokens)),
+        element("span", undefined, `${formatPayoutAmount(session.rateCentsPerMillion)} / 1M`),
+        element("span", "seller-pricing-earned", `${formatPayoutAmount(session.accruedCents)} earned`),
+      );
+      row.append(pricing);
+    }
     row.append(element("p", "seller-performance-meta", `${session.saleStatus.stage.replaceAll("_", " ")} - updated ${dateLabel(session.saleStatus.changedAt)}`)); item.append(row); root.append(item);
   }
 };

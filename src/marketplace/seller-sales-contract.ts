@@ -4,7 +4,10 @@ const maximumSafeInteger = Number.MAX_SAFE_INTEGER;
 const cursorSchema = z.string().min(1).max(1024).regex(
   /^(?:[A-Za-z0-9_-]+={0,2}|[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/,
 ).brand("SellerCursor");
-const creditsSchema = z.number().int().nonnegative().max(maximumSafeInteger);
+const safeIntegerSchema = z.number().int().nonnegative().max(maximumSafeInteger);
+const creditsSchema = safeIntegerSchema;
+const centsSchema = safeIntegerSchema;
+const tokenCountSchema = safeIntegerSchema;
 const signedCreditsSchema = z.number().int().min(-maximumSafeInteger).max(maximumSafeInteger);
 const dateSchema = z.string().date();
 const timestampSchema = z.string().datetime({ offset: true });
@@ -12,10 +15,14 @@ const uuidSchema = z.string().uuid();
 
 const pageSchema = z.object({ nextCursor: cursorSchema.nullable() }).strict();
 const sellerSessionSchema = z.object({
+  acceptedTokens: tokenCountSchema.nullable(),
+  accruedCents: centsSchema.nullable(),
   askCredits: creditsSchema.nullable(),
   datasetId: z.string().min(1),
   earnedCredits: creditsSchema.nullable(),
   listedAt: timestampSchema.nullable(),
+  model: z.string().min(1).nullable(),
+  rateCentsPerMillion: centsSchema.nullable(),
   saleStatus: z.object({
     changedAt: timestampSchema,
     exception: z.enum(["clearance_failed", "refunded", "charged_back"]).nullable(),
@@ -24,7 +31,14 @@ const sellerSessionSchema = z.object({
   }).strict(),
   sessionId: uuidSchema,
   soldAt: timestampSchema.nullable(),
-}).strict();
+}).strict().refine(
+  (session) => {
+    const pricing = [session.acceptedTokens, session.accruedCents, session.model, session.rateCentsPerMillion];
+    const nullCount = pricing.filter((value) => value === null).length;
+    return nullCount === 0 || nullCount === pricing.length;
+  },
+  { message: "session pricing fields must be null together or valid together" },
+);
 const candidateSchema = z.object({
   archiveByteCount: z.number().int().positive().max(maximumSafeInteger),
   archiveSha256: z.string().regex(/^[0-9a-f]{64}$/),

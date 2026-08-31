@@ -27,6 +27,30 @@ const response = {
   }],
 };
 
+const pricingSessionsResponse = {
+  asOf: "2026-08-20T12:00:00Z",
+  ok: true,
+  page: { nextCursor: null },
+  sessions: [{
+    acceptedTokens: 1_000_000,
+    accruedCents: 200,
+    askCredits: 125,
+    datasetId: "seller-dataset-alpha",
+    earnedCredits: 100,
+    listedAt: "2026-08-19T10:00:00Z",
+    model: "claude-fable-5",
+    rateCentsPerMillion: 200,
+    saleStatus: {
+      changedAt: "2026-08-20T11:30:00Z",
+      exception: null,
+      listingCycleId: "22222222-2222-4222-8222-222222222222",
+      stage: "sold",
+    },
+    sessionId: "11111111-1111-4111-8111-111111111111",
+    soldAt: "2026-08-20T11:30:00Z",
+  }],
+};
+
 describe("seller sales contracts", () => {
   test("Given seller candidate JSON, When its shape changes, Then the strict contract rejects it", () => {
     // Given
@@ -78,5 +102,23 @@ describe("seller sales contracts", () => {
       points: [{ cumulativeNetCredits: -5, periodStart: "2026-08-30T00:00:00Z" }],
       window: { from: "2026-08-01", to: "2026-08-30" },
     }).points[0]?.cumulativeNetCredits).toBe(-5);
+  });
+
+  test("parses model-token pricing observability on seller sessions", () => {
+    expect(
+      parseSellerResponse("sales-sessions", pricingSessionsResponse) as unknown,
+    ).toEqual(pricingSessionsResponse);
+    expect(() => parseSellerResponse("sales-sessions", {
+      ...pricingSessionsResponse,
+      sessions: [{ ...pricingSessionsResponse.sessions[0], acceptedTokens: undefined }],
+    })).toThrow(SellerSalesContractError);
+    expect(() => parseSellerResponse("sales-sessions", {
+      ...pricingSessionsResponse,
+      sessions: [{ ...pricingSessionsResponse.sessions[0], accruedCents: null }],
+    })).toThrow(SellerSalesContractError);
+    expect(() => parseSellerResponse("sales-sessions", {
+      ...pricingSessionsResponse,
+      sessions: [{ ...pricingSessionsResponse.sessions[0], unexpected: true }],
+    })).toThrow(SellerSalesContractError);
   });
 });
