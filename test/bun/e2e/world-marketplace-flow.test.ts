@@ -43,7 +43,15 @@ const todo27Trace = (content: string): string => JSON.stringify({
     name: "user",
     timestamp: "2026-07-27T00:00:00Z",
     sourceEventId: "event-1",
-    payload: { role: "user", content },
+    payload: {
+      role: "user",
+      content,
+      usage: {
+        model: "claude-fable-5",
+        inputTokens: 1,
+        outputTokens: 1,
+      },
+    },
   }],
 })
 
