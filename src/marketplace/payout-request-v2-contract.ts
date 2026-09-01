@@ -1,6 +1,9 @@
 import { z } from "zod";
-
 import { parseAdmissionJson } from "./json-preflight";
+import {
+	encodePayoutRequestV2Detail,
+	encodePayoutRequestV2Error,
+} from "./payout-request-v2-encoding";
 
 const maximumSafeInteger = Number.MAX_SAFE_INTEGER;
 const payoutRequestTimestampSchema = z.iso
@@ -84,8 +87,8 @@ export const payoutRequestV2DetailSchema = z
 	.superRefine((value, context) => {
 		const issues: ReadonlyArray<readonly [boolean, string]> = [
 			[
-				value.feeMinor !==
-					Math.floor((value.grossMinor * value.feeBasisPoints) / 10_000),
+				BigInt(value.feeMinor) !==
+					(BigInt(value.grossMinor) * BigInt(value.feeBasisPoints)) / 10_000n,
 				"feeMinor",
 			],
 			[value.grossMinor !== value.feeMinor + value.netMinor, "netMinor"],
@@ -204,7 +207,10 @@ export const encodePayoutRequestV2Response = (
 						thresholdMinor: payoutRequest.thresholdMinor,
 						availableMinor: payoutRequest.availableMinor,
 						heldMinor: payoutRequest.heldMinor,
-						request: payoutRequest.request,
+						request:
+							payoutRequest.request === null
+								? null
+								: encodePayoutRequestV2Detail(payoutRequest.request),
 					},
 				}),
 				"utf8",
@@ -212,7 +218,10 @@ export const encodePayoutRequestV2Response = (
 		}
 		case false:
 			return Buffer.from(
-				JSON.stringify({ ok: false, error: response.error }),
+				JSON.stringify({
+					ok: false,
+					error: encodePayoutRequestV2Error(response.error),
+				}),
 				"utf8",
 			);
 		default:

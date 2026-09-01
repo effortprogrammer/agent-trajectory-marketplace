@@ -23,6 +23,7 @@ const acceptedFixtureFiles = [
 	"cancelled-200.json",
 	"rejected-200.json",
 	"paid-200.json",
+	"max-safe-200.json",
 	"error-410-v1-creation-disabled.json",
 ] as const;
 const rejectedFixtureFiles = [
@@ -33,6 +34,7 @@ const rejectedFixtureFiles = [
 	"reject-unsafe-net.json",
 	"reject-gross-fee-net.json",
 	"reject-fee-floor.json",
+	"reject-max-safe-fee-high.json",
 ] as const;
 const expectedDirectoryFiles = [
 	...acceptedFixtureFiles,

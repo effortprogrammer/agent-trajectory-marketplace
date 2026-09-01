@@ -4,7 +4,10 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { z } from "zod";
-
+import type {
+	PayoutRequestV2Detail,
+	PayoutRequestV2HttpResponse,
+} from "../../../src/marketplace/payout-request-v2-contract";
 import {
 	encodePayoutRequestV2Response,
 	PayoutRequestV2ContractError,
@@ -116,6 +119,68 @@ describe("payout request v2 contract", () => {
 		// Then: every emitted byte remains frozen.
 		expect(encoded).toEqual(
 			await Promise.all(accept.map(({ file }) => fixture(file))),
+		);
+	});
+
+	it("admits exact maximum-safe fees and rejects a fee one credit too high", () => {
+		// Given: a gross amount whose fee multiplication exceeds Number's safe range.
+		const exact = Buffer.from(
+			'{"ok":true,"payoutRequest":{"currency":"USD","thresholdMinor":10000,"availableMinor":0,"heldMinor":9007199254740969,"request":{"requestId":"00000000-0000-4000-8000-000000000208","grossMinor":9007199254740969,"feeMinor":900719925474096,"netMinor":8106479329266873,"feePolicyVersion":1,"feeBasisPoints":1000,"feeRounding":"floor","status":"requested","requestedAt":"2026-09-01T00:00:00Z","approvedAt":null,"rejectedReason":null,"paidAt":null,"externalReference":null}}}',
+		);
+		const feeOneTooHigh = Buffer.from(
+			'{"ok":true,"payoutRequest":{"currency":"USD","thresholdMinor":10000,"availableMinor":0,"heldMinor":9007199254740969,"request":{"requestId":"00000000-0000-4000-8000-000000000208","grossMinor":9007199254740969,"feeMinor":900719925474097,"netMinor":8106479329266872,"feePolicyVersion":1,"feeBasisPoints":1000,"feeRounding":"floor","status":"requested","requestedAt":"2026-09-01T00:00:00Z","approvedAt":null,"rejectedReason":null,"paidAt":null,"externalReference":null}}}',
+		);
+
+		// When: both boundary frames cross the Zod response boundary.
+		// Then: only the mathematically exact fee is admitted.
+		expect(() => parsePayoutRequestV2Response(200, exact)).not.toThrow();
+		expect(() => parsePayoutRequestV2Response(200, feeOneTooHigh)).toThrow(
+			PayoutRequestV2ContractError,
+		);
+	});
+
+	it("encodes caller-constructed nested request and error objects canonically", async () => {
+		// Given: valid typed values with deliberately reversed nested insertion order.
+		const reversedRequest = {
+			externalReference: null,
+			paidAt: null,
+			rejectedReason: null,
+			approvedAt: null,
+			requestedAt: "2026-09-01T00:00:00Z",
+			status: "requested",
+			feeRounding: "floor",
+			feeBasisPoints: 1000,
+			feePolicyVersion: 1,
+			netMinor: 9001,
+			feeMinor: 1000,
+			grossMinor: 10001,
+			requestId: "00000000-0000-4000-8000-000000000201",
+		} satisfies PayoutRequestV2Detail;
+		const response = {
+			payoutRequest: {
+				request: reversedRequest,
+				heldMinor: 10001,
+				availableMinor: 0,
+				thresholdMinor: 10000,
+				currency: "USD",
+			},
+			ok: true,
+		} satisfies PayoutRequestV2HttpResponse;
+		const error = {
+			error: {
+				message: "Payout request v1 creation is disabled.",
+				code: "payout_request_v1_disabled",
+			},
+			ok: false,
+		} satisfies PayoutRequestV2HttpResponse;
+
+		// When: the public encoder receives caller insertion order rather than Zod output.
+		// Then: nested keys still match the canonical checked-in bytes.
+		expect(encodePayoutRequestV2Response(response)).toEqual(
+			await fixture("requested-201.json"),
+		);
+		expect(encodePayoutRequestV2Response(error)).toEqual(
+			await fixture("error-410-v1-creation-disabled.json"),
 		);
 	});
 
