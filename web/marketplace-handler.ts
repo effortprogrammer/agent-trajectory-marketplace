@@ -221,7 +221,12 @@ export const createMarketplaceHandler = async (
     }
     const redirect = compatibilityRedirect(url)
     if (redirect !== undefined) return redirect
-    const asset = url.search === "" ? assets.get(url.pathname) : undefined
+    const acceptsMarketingQuery =
+      url.pathname === "/" || url.pathname === "/index.html"
+    const asset =
+      url.search === "" || acceptsMarketingQuery
+        ? assets.get(url.pathname)
+        : undefined
     if (asset === undefined) return notFound()
     const file = Bun.file(`${options.root}${asset.file}`)
     if (!(await file.exists())) return notFound()
