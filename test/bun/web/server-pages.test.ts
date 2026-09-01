@@ -22,36 +22,32 @@ const fingerprintedAssetPath = async (file: string): Promise<string> => {
   return `${file.slice(0, extensionOffset)}.${digest}${file.slice(extensionOffset)}`
 }
 
-const waitForReadyOutput = async (
-  stream: ReadableStream<Uint8Array>,
+const waitForReadyIpc = async (
+  ready: Promise<number>,
+  exited: Promise<number>,
+  stderr: ReadableStream<Uint8Array>,
 ): Promise<number> => {
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  const readyPattern = /marketplace ui: http:\/\/localhost:(\d+)\//
-  let output = ""
   let timeout: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<never>((_, reject) => {
     timeout = setTimeout(
-      () => reject(new Error("web server did not print a valid ready URL")),
+      () => reject(new Error("web server did not send a valid ready IPC event")),
       serverReadyTimeoutMs,
     )
   })
+  const earlyExit = exited.then(async (code) => {
+    const output = await new Response(stderr).text()
+    throw new Error(
+      `web server exited before ready IPC with code ${code}: ${output}`,
+    )
+  })
   try {
-    let match = output.match(readyPattern)
-    while (match === null) {
-      const chunk = await Promise.race([reader.read(), deadline])
-      if (chunk.done) throw new Error("web server exited before printing its ready URL")
-      output += decoder.decode(chunk.value, { stream: true })
-      match = output.match(readyPattern)
-    }
-    const port = Number.parseInt(match[1] ?? "", 10)
+    const port = await Promise.race([ready, earlyExit, deadline])
     if (!Number.isInteger(port) || port <= 0) {
-      throw new Error("web server printed an invalid ready port")
+      throw new Error("web server sent an invalid ready port")
     }
     return port
   } finally {
     if (timeout !== undefined) clearTimeout(timeout)
-    reader.releaseLock()
   }
 }
 
@@ -70,6 +66,7 @@ const rawHttpRequest = (port: number, path: string, host: string): Promise<strin
   })
 
 test("serves session-only public pages without World UI artifacts", async () => {
+  const ready = Promise.withResolvers<number>()
   const server = Bun.spawn(["bun", "web/server.ts"], {
     cwd: publicRoot,
     env: {
@@ -77,11 +74,23 @@ test("serves session-only public pages without World UI artifacts", async () => 
       ATM_ORIGIN_REVISION: testRevision,
       PORT: "0",
     },
+    ipc(message) {
+      if (
+        typeof message === "object"
+        && message !== null
+        && "type" in message
+        && message.type === "marketplace-ready"
+        && "marketplacePort" in message
+        && typeof message.marketplacePort === "number"
+      ) {
+        ready.resolve(message.marketplacePort)
+      }
+    },
     stderr: "pipe",
-    stdout: "pipe",
+    stdout: "ignore",
   })
   try {
-    const port = await waitForReadyOutput(server.stdout)
+    const port = await waitForReadyIpc(ready.promise, server.exited, server.stderr)
     const baseUrl = `http://127.0.0.1:${port}`
     const root = await fetch(baseUrl)
     const rootWithMarketingQuery = await fetch(
@@ -224,7 +233,7 @@ test("serves session-only public pages without World UI artifacts", async () => 
       "location: https://getatm.io//attacker.example/payload?ref=legacy",
     )
   } finally {
-    server.kill()
+    if (server.exitCode === null) server.kill()
     await server.exited
   }
 })
