@@ -180,14 +180,18 @@ describe("selected trace dataset archive", () => {
       return "admitted";
     });
 
-    // Then: only traces fully attributable to compensated models can become ZIPs.
+    // Then: invalid positive usage remains blocked, while a usage-free companion
+    // remains eligible only when the archive supplies positive compensated usage.
     expect(supportedArchives.every((archive) => archive.byteLength > 0)).toBe(
       true,
     );
-    expect(blocked as unknown).toEqual(invalid.map(() => ({
-      reason: "unsupported_model",
-      status: "blocked",
-    })));
+    expect(blocked as unknown).toEqual([
+      ...invalid.slice(0, -1).map(() => ({
+        reason: "unsupported_model",
+        status: "blocked",
+      })),
+      { status: "ready" },
+    ]);
     expect(rejectedCodes).toEqual(invalid.map(() => "unsupported_model"));
   });
 

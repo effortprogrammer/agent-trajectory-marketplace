@@ -42,9 +42,10 @@ export const assessCompensatedUsage = (
   return Object.freeze({ hasOnlySupportedUsage: true, hasPositiveUsage })
 }
 
+export const hasSupportedPositiveUsage = (
+  assessment: CompensatedUsageAssessment,
+): boolean => assessment.hasOnlySupportedUsage && assessment.hasPositiveUsage
+
 export const hasOnlyCompensatedModelUsage = (
   document: HarnessTraceDocument,
-): boolean => {
-  const assessment = assessCompensatedUsage(document)
-  return assessment.hasOnlySupportedUsage && assessment.hasPositiveUsage
-}
+): boolean => hasSupportedPositiveUsage(assessCompensatedUsage(document))

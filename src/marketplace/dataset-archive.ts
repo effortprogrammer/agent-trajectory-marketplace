@@ -8,6 +8,7 @@ import {
 } from "./archive-contract";
 import {
   assessCompensatedUsage,
+  hasSupportedPositiveUsage,
   type CompensatedUsageAssessment,
 } from "./compensated-model-policy";
 import { MarketplaceError } from "./error";
@@ -86,6 +87,10 @@ export const sanitizedArtifactDigest = (sourceBytes: Uint8Array): Readonly<{ byt
   return Object.freeze({ byteCount: bytes.byteLength, sha256: digest(bytes) });
 };
 
+export const hasTraceSupportedPositiveUsage = (
+  trace: Pick<FrozenTrace, "bytes">,
+): boolean => hasSupportedPositiveUsage(compensatedUsageAssessment(sanitizedTraceBytes(trace.bytes)));
+
 export type ArtifactAdmission =
   | Readonly<{ readonly status: "ready" }>
   | Readonly<{
@@ -129,10 +134,7 @@ export const inspectTraceAdmission = (
     throw error;
   }
   const usageAssessment = compensatedUsageAssessment(bytes);
-  if (
-    !usageAssessment.hasOnlySupportedUsage
-    || !usageAssessment.hasPositiveUsage
-  ) {
+  if (!usageAssessment.hasOnlySupportedUsage) {
     return Object.freeze({
       reason: "unsupported_model",
       status: "blocked",
@@ -181,7 +183,7 @@ export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
     if (!usageAssessment.hasOnlySupportedUsage) {
       throw new MarketplaceError("unsupported_model");
     }
-    hasPositiveUsage ||= usageAssessment.hasPositiveUsage;
+    hasPositiveUsage ||= hasSupportedPositiveUsage(usageAssessment);
     const sha256 = digest(bytes);
     if (bytes.length === 0 || bytes.length > datasetArchivePolicy.maxTraceBytes) {
       throw new MarketplaceError("invalid_bundle_request");

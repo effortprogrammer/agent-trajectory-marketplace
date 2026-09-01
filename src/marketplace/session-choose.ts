@@ -1,6 +1,9 @@
 import { datasetArchivePolicy } from "./archive-contract";
 import { writeBundleOutput } from "./bundle-output";
-import { inspectTraceAdmission } from "./dataset-archive";
+import {
+  hasTraceSupportedPositiveUsage,
+  inspectTraceAdmission,
+} from "./dataset-archive";
 import type { ArtifactAdmission } from "./dataset-archive";
 import { MarketplaceError } from "./error";
 import { safeText } from "./report-value";
@@ -137,6 +140,9 @@ export const writeSessionChoiceDocument = (
     throw new MarketplaceError("duplicate_trace");
   }
   if (selected.some((trace) => inspectTraceAdmission(trace).status === "blocked")) {
+    throw new MarketplaceError("denied_selection");
+  }
+  if (!selected.some(hasTraceSupportedPositiveUsage)) {
     throw new MarketplaceError("denied_selection");
   }
   const document = selectionDocumentFromTraces(snapshot.root, selected);
