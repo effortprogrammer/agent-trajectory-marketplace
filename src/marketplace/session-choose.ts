@@ -1,9 +1,13 @@
 import { datasetArchivePolicy } from "./archive-contract";
 import { writeBundleOutput } from "./bundle-output";
 import {
-  hasTraceSupportedPositiveUsage,
+  assessTraceCompensatedUsage,
   inspectTraceAdmission,
 } from "./dataset-archive";
+import {
+  aggregateCompensatedUsage,
+  hasSupportedPositiveUsage,
+} from "./compensated-model-policy";
 import type { ArtifactAdmission } from "./dataset-archive";
 import { MarketplaceError } from "./error";
 import { safeText } from "./report-value";
@@ -142,7 +146,9 @@ export const writeSessionChoiceDocument = (
   if (selected.some((trace) => inspectTraceAdmission(trace).status === "blocked")) {
     throw new MarketplaceError("denied_selection");
   }
-  if (!selected.some(hasTraceSupportedPositiveUsage)) {
+  if (!hasSupportedPositiveUsage(aggregateCompensatedUsage(
+    selected.map(assessTraceCompensatedUsage),
+  ))) {
     throw new MarketplaceError("denied_selection");
   }
   const document = selectionDocumentFromTraces(snapshot.root, selected);

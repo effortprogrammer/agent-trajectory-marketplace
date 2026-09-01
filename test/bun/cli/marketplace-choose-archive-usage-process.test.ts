@@ -114,6 +114,62 @@ describe("marketplace sessions choose archive-wide usage boundary", () => {
     expect(existsSync(selectionPath)).toBe(false);
   });
 
+  test("Given sessions totaling exactly the aggregate supported token cap, When choose writes, Then the selection is admitted", () => {
+    // Given: two approved sessions whose source-attested supported usage totals
+    // exactly 100,000,000 tokens, split so both token directions count.
+    const root = fixtureRoot();
+    const inputHeavy = traceBytes("first", {
+      inputTokens: 30_000_000, model: "claude-fable-5", outputTokens: 20_000_000,
+    });
+    const outputHeavy = traceBytes("second", {
+      inputTokens: 20_000_000, model: "claude-fable-5", outputTokens: 30_000_000,
+    });
+    writeFileSync(join(root, "a.atf.json"), inputHeavy);
+    writeFileSync(join(root, "b.atf.json"), outputHeavy);
+    const selectionPath = join(root, "selection.json");
+
+    // When: the exact-cap membership is approved into a single selection.
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      "--approve", approvalFor("a.atf.json", inputHeavy),
+      "--approve", approvalFor("b.atf.json", outputHeavy),
+    ]);
+
+    // Then: the boundary value is admitted because only totals above the cap are rejected.
+    expect(result.exitCode).toBe(0);
+    expect(decoder.decode(result.stderr)).toBe("");
+    const written = JSON.parse(readFileSync(selectionPath, "utf8"));
+    expect(written.traces).toHaveLength(2);
+  });
+
+  test("Given sessions totaling one token above the aggregate supported token cap, When choose writes, Then it fails closed before output", () => {
+    // Given: two approved sessions whose aggregate supported usage totals 100,000,001.
+    const root = fixtureRoot();
+    const inputHeavy = traceBytes("first", {
+      inputTokens: 30_000_000, model: "claude-fable-5", outputTokens: 20_000_000,
+    });
+    const oneOver = traceBytes("second", {
+      inputTokens: 20_000_000, model: "claude-fable-5", outputTokens: 30_000_001,
+    });
+    writeFileSync(join(root, "a.atf.json"), inputHeavy);
+    writeFileSync(join(root, "b.atf.json"), oneOver);
+    const selectionPath = join(root, "selection.json");
+
+    // When: the over-cap membership is approved into a single selection.
+    const result = runCli([
+      "marketplace", "seller", "sessions", "choose",
+      "--root", root, "--out", selectionPath,
+      "--approve", approvalFor("a.atf.json", inputHeavy),
+      "--approve", approvalFor("b.atf.json", oneOver),
+    ]);
+
+    // Then: local selection denies the over-cap membership before any output exists.
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stderr)).toContain("denied_selection");
+    expect(existsSync(selectionPath)).toBe(false);
+  });
+
   test("Given an unsupported positive-usage session, When choose writes, Then it remains blocked", () => {
     // Given: a trace with positive usage attributed to an unsupported model.
     const root = fixtureRoot();

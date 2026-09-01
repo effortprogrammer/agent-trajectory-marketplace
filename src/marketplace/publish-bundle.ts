@@ -9,7 +9,9 @@ import {
   datasetManifestSchema,
 } from "./archive-contract"
 import {
+  aggregateCompensatedUsage,
   assessCompensatedUsage,
+  hasSupportedPositiveUsage,
   type CompensatedUsageAssessment,
 } from "./compensated-model-policy"
 import {
@@ -148,7 +150,7 @@ const inspectPublishBundle = (
     if (error instanceof ArchiveContractError) return invalid()
     throw error
   }
-  let hasPositiveUsage = false
+  const usageAssessments: CompensatedUsageAssessment[] = []
   for (const artifact of manifest.data.artifacts) {
     const entry = entriesByName.get(artifact.path)
     if (entry === undefined || entry.data.length !== artifact.byteCount || createHash("sha256").update(entry.data).digest("hex") !== artifact.sha256) return invalid()
@@ -156,11 +158,12 @@ const inspectPublishBundle = (
       entry.data,
       enforceCompensatedModelPolicy,
     )
-    if (enforceCompensatedModelPolicy) {
-      hasPositiveUsage ||= usageAssessment.hasPositiveUsage
-    }
+    if (enforceCompensatedModelPolicy) usageAssessments.push(usageAssessment)
   }
-  if (enforceCompensatedModelPolicy && !hasPositiveUsage) return unsupportedModel()
+  if (
+    enforceCompensatedModelPolicy
+    && !hasSupportedPositiveUsage(aggregateCompensatedUsage(usageAssessments))
+  ) return unsupportedModel()
   return Object.freeze({
     archive,
     artifacts: Object.freeze(

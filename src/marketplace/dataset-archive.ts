@@ -7,6 +7,7 @@ import {
   encodeDatasetManifest,
 } from "./archive-contract";
 import {
+  aggregateCompensatedUsage,
   assessCompensatedUsage,
   hasSupportedPositiveUsage,
   type CompensatedUsageAssessment,
@@ -28,7 +29,7 @@ const digest = (bytes: Uint8Array): string =>
 export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
   let value: unknown;
   try {
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     value = JSON.parse(text);
   } catch (error) {
     if (error instanceof TypeError || error instanceof SyntaxError) {
@@ -77,7 +78,12 @@ const compensatedUsageAssessment = (
     JSON.parse(bytes.toString("utf8")),
   );
   if (!parsed.success) {
-    return Object.freeze({ hasOnlySupportedUsage: false, hasPositiveUsage: false });
+    return Object.freeze({
+      hasOnlySupportedUsage: false,
+      hasPositiveUsage: false,
+      supportedTokenCount: 0,
+      isWithinTokenCap: true,
+    });
   }
   return assessCompensatedUsage(parsed.data);
 };
@@ -87,9 +93,10 @@ export const sanitizedArtifactDigest = (sourceBytes: Uint8Array): Readonly<{ byt
   return Object.freeze({ byteCount: bytes.byteLength, sha256: digest(bytes) });
 };
 
-export const hasTraceSupportedPositiveUsage = (
+export const assessTraceCompensatedUsage = (
   trace: Pick<FrozenTrace, "bytes">,
-): boolean => hasSupportedPositiveUsage(compensatedUsageAssessment(sanitizedTraceBytes(trace.bytes)));
+): CompensatedUsageAssessment =>
+  compensatedUsageAssessment(sanitizedTraceBytes(trace.bytes));
 
 export type ArtifactAdmission =
   | Readonly<{ readonly status: "ready" }>
@@ -155,7 +162,7 @@ export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
     left.selector < right.selector ? -1 : left.selector > right.selector ? 1 : 0,
   );
   const entries: StoredZipEntry[] = [];
-  let hasPositiveUsage = false;
+  const usageAssessments: CompensatedUsageAssessment[] = [];
   const artifacts = traces.map((trace) => {
     if (selectors.has(trace.selector) || hashes.has(trace.hash)) {
       throw new MarketplaceError("duplicate_trace");
@@ -183,7 +190,7 @@ export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
     if (!usageAssessment.hasOnlySupportedUsage) {
       throw new MarketplaceError("unsupported_model");
     }
-    hasPositiveUsage ||= hasSupportedPositiveUsage(usageAssessment);
+    usageAssessments.push(usageAssessment);
     const sha256 = digest(bytes);
     if (bytes.length === 0 || bytes.length > datasetArchivePolicy.maxTraceBytes) {
       throw new MarketplaceError("invalid_bundle_request");
@@ -192,7 +199,9 @@ export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
     entries.push({ name: path, data: bytes });
     return { path, label: trace.selector, sha256, byteCount: bytes.length };
   });
-  if (!hasPositiveUsage) throw new MarketplaceError("unsupported_model");
+  if (!hasSupportedPositiveUsage(aggregateCompensatedUsage(usageAssessments))) {
+    throw new MarketplaceError("unsupported_model");
+  }
 
   try {
     const manifest = encodeDatasetManifest({ formatVersion: 1, artifacts });
