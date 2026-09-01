@@ -19,6 +19,7 @@ export type { PayoutFixture, RegistryRequest }
 const publicRoot = resolve(import.meta.dir, "../../..")
 const serverReadyTimeoutMs = 20_000
 const resourceTimeoutMs = 10_000
+const nativeFetch = globalThis.fetch.bind(globalThis)
 let sharedBrowser: Browser | undefined
 
 export interface SessionUiHarness {
@@ -164,11 +165,14 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
       throw new Error("Marketplace ready IPC reported missing local configuration")
     }
     const appUrl = `http://127.0.0.1:${readiness.marketplacePort}`
-    await waitForMarketplaceHttpReady(appUrl)
-    sharedBrowser ??= await chromium.launch({
-      args: ["--disable-background-networking"],
-      headless: true,
-    })
+    await waitForMarketplaceHttpReady(appUrl, nativeFetch)
+    sharedBrowser ??= await awaitResource(
+      "Playwright Chromium launch",
+      chromium.launch({
+        args: ["--disable-background-networking"],
+        headless: true,
+      }),
+    )
     const browser = sharedBrowser
     if (browser === undefined) throw new Error("Playwright Chromium did not launch")
     return {

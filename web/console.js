@@ -1,10 +1,21 @@
 import {
+  formatPayoutAmount,
   parseEarningsResponse,
+  parseLegacySessionsResponse,
   parseSessionsResponse,
-} from "./console-contract.19b879da9be9f44653c8d45a3ec7d48d70b20e9a033f2f0fd41caa59781c5837.js";
-import { mountPayoutConsole } from "./payout-console.d4e2484e0049f3da6fc5537a06279091f64a95888b9720412938ee823299e7e4.js";
+} from "./console-contract.889ee8ad70774435ea8c707f96c9d2712ffa32eb77595cfd758a71ffb507b1e7.js";
+import { mountPayoutConsole } from "./payout-console.cc22c3db9d3bb4e30b35599cae598950af7de69fe37442c0a6adadbe87516811.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
+const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 1,
+  notation: "compact",
+}).format(value)} accepted tokens`;
+const formatModel = (model) => ({
+  "claude-fable-5": "Claude Fable 5",
+  "gpt-5.6-sol": "GPT-5.6 Sol",
+})[model] ?? model;
 const shortId = (id) => id.slice(0, 8);
 const dateLabel = (value) => new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(value));
 const element = (name, className, text) => {
@@ -63,7 +74,38 @@ const renderSessions = (root, sessions) => {
     top.append(pill);
     row.append(top);
     if (session.earnedCredits !== null && max > 0) { const bar = element("div", "seller-performance-bar"); const fill = element("i"); fill.style.width = `${(session.earnedCredits / max) * 100}%`; bar.append(fill); row.append(bar); }
+    for (const detail of session.modelTokenPricing) {
+      const pricing = element("div", "seller-pricing-facts");
+      pricing.setAttribute("aria-label", "Accepted model-token earnings");
+      pricing.dataset.status = detail.status;
+      pricing.append(
+        element("span", "seller-pricing-model", formatModel(detail.model)),
+        element("span", undefined, formatAcceptedTokens(detail.acceptedTokens)),
+        element("span", undefined, `${formatPayoutAmount(detail.rateCentsPerMillion)} / 1M`),
+        element(
+          "span",
+          "seller-pricing-earned",
+          detail.status === "verified"
+            ? `${formatPayoutAmount(detail.accruedCents)} earned`
+            : `${formatPayoutAmount(detail.accruedCents)} pending review`,
+        ),
+      );
+      row.append(pricing);
+    }
     row.append(element("p", "seller-performance-meta", `${session.saleStatus.stage.replaceAll("_", " ")} - updated ${dateLabel(session.saleStatus.changedAt)}`)); item.append(row); root.append(item);
+  }
+};
+
+const requestSessions = async (requestJson, headers) => {
+  try {
+    return parseSessionsResponse(
+      await requestJson("/v2/marketplace/seller/sales/sessions", { headers }),
+    );
+  } catch (error) {
+    if (error?.status !== 404) throw error;
+    return parseLegacySessionsResponse(
+      await requestJson("/v1/marketplace/seller/sales/sessions", { headers }),
+    );
   }
 };
 
@@ -79,9 +121,50 @@ export const mountSellerConsole = async ({
   const state = view.querySelector("[data-console-state]");
   const chart = view.querySelector("[data-console-chart]");
   const sessions = view.querySelector("[data-console-sessions]");
-  const seller = view.querySelector("[data-console-seller]");
   const total = view.querySelector("[data-console-total]");
   const payout = view.querySelector("[data-console-payout]");
+  const payoutDialog = view.querySelector("[data-payout-dialog]");
+  const payoutOpen = view.querySelector("[data-payout-open]");
+  const payoutClose = view.querySelector("[data-payout-close]");
+  let restorePayoutFocus = true;
+  const closePayoutDialog = (restoreFocus = true) => {
+    restorePayoutFocus = restoreFocus;
+    if (payoutDialog.open) payoutDialog.close();
+  };
+  const showConsoleLogin = () => {
+    closePayoutDialog(false);
+    showLogin();
+  };
+  payoutOpen.onclick = () => {
+    restorePayoutFocus = true;
+    if (!payoutDialog.open) payoutDialog.showModal();
+    payoutOpen.setAttribute("aria-expanded", "true");
+    document.body.classList.add("is-payout-open");
+    const focusTarget = payoutDialog.querySelector(
+      "[data-payout-request], [data-payout-cancel], [data-payout-refresh]",
+    ) ?? payoutClose;
+    focusTarget.focus({ preventScroll: true });
+  };
+  payoutClose.onclick = () => closePayoutDialog();
+  payoutDialog.onclick = (event) => {
+    if (event.target === payoutDialog) closePayoutDialog();
+  };
+  payoutDialog.oncancel = () => {
+    restorePayoutFocus = true;
+  };
+  payoutDialog.onclose = () => {
+    payoutOpen.setAttribute("aria-expanded", "false");
+    document.body.classList.remove("is-payout-open");
+    if (
+      restorePayoutFocus
+      && isCurrent()
+      && payoutOpen.isConnected
+      && payoutOpen.getClientRects().length > 0
+    ) {
+      payoutOpen.focus({ preventScroll: true });
+    }
+    restorePayoutFocus = true;
+  };
   const today = new Date(); const from = new Date(today); from.setUTCDate(from.getUTCDate() - 30);
   const day = (value) => value.toISOString().slice(0, 10);
   const headers = { authorization: `Bearer ${session.accessToken}` };
@@ -90,13 +173,18 @@ export const mountSellerConsole = async ({
   try {
     const [me, sessionsBody, earningsBody] = await Promise.all([
       requestJson("/v1/auth/me", { headers }),
-      requestJson("/v1/marketplace/seller/sales/sessions", { headers }),
+      requestSessions(requestJson, headers),
       requestJson(`/v1/marketplace/seller/sales/earnings?from=${day(from)}&to=${day(today)}&interval=day`, { headers }),
     ]);
     if (!isCurrent()) return;
     if (me?.ok !== true || typeof me.account?.accountId !== "string") throw new TypeError("Invalid Registry account response");
-    const validatedSessions = parseSessionsResponse(sessionsBody); const earnings = parseEarningsResponse(earningsBody);
-    seller.textContent = me.account.accountId; total.textContent = `${formatCredits(earnings.points.at(-1)?.cumulativeNetCredits ?? earnings.openingCumulativeCredits)} cumulative`;
+    const validatedSessions = sessionsBody; const earnings = parseEarningsResponse(earningsBody);
+    const cumulativeCredits = earnings.points.at(-1)?.cumulativeNetCredits
+      ?? earnings.openingCumulativeCredits;
+    total.hidden = cumulativeCredits === 0;
+    total.textContent = cumulativeCredits === 0
+      ? ""
+      : `${formatCredits(cumulativeCredits)} cumulative`;
     renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
     state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;
     await mountPayoutConsole({
@@ -104,11 +192,11 @@ export const mountSellerConsole = async ({
       requestJson,
       root: payout,
       session,
-      showLogin,
+      showLogin: showConsoleLogin,
     });
   } catch (error) {
     if (!isCurrent()) return;
-    if (error?.status === 401) { showLogin(); return; }
+    if (error?.status === 401) { showConsoleLogin(); return; }
     state.hidden = false; state.dataset.state = "error"; state.textContent = "Seller sales are unavailable. Try again shortly."; announcement.textContent = "Seller console could not load.";
   }
 };

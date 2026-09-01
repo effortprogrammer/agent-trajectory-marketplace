@@ -107,7 +107,8 @@ describe("candidate publish client boundaries", () => {
         cancel() {
           responseCancelled.resolve()
         },
-        start() {
+        start(controller) {
+          controller.enqueue(new Uint8Array([0x7b]))
           responseStarted.resolve()
         },
       }), { status: 202 })

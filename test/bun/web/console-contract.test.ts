@@ -4,6 +4,7 @@ import * as consoleContract from "../../../web/console-contract.js"
 
 const {
   parseEarningsResponse,
+  parseLegacySessionsResponse,
   parseLedgerResponse,
   parseSessionsResponse,
 } = consoleContract
@@ -13,10 +14,15 @@ const sessions = {
   ok: true,
   page: { nextCursor: null },
   sessions: [{
+    acceptedTokens: null,
+    accruedCents: null,
     askCredits: 125,
     datasetId: "seller-dataset-alpha",
     earnedCredits: 100,
     listedAt: "2026-08-19T10:00:00Z",
+    model: null,
+    modelTokenPricing: [],
+    rateCentsPerMillion: null,
     saleStatus: {
       changedAt: "2026-08-20T11:30:00Z",
       exception: null,
@@ -115,6 +121,53 @@ test("seller sales contract validators strictly accept golden response shapes", 
   expect(parseSessionsResponse(sessions)).toEqual(sessions)
   expect(parseEarningsResponse(earnings)).toEqual(earnings)
   expect(parseLedgerResponse(ledger)).toEqual(ledger)
+})
+
+test("seller session pricing requires explicit v2 status facts", () => {
+  const pricing = {
+    ...sessions,
+    sessions: [{
+      ...sessions.sessions[0],
+      acceptedTokens: 1_000_000,
+      accruedCents: 200,
+      model: "claude-fable-5",
+      modelTokenPricing: [{
+        acceptedTokens: 1_000_000,
+        accruedCents: 200,
+        model: "claude-fable-5",
+        rateCentsPerMillion: 200,
+        status: "verified",
+      }],
+      rateCentsPerMillion: 200,
+    }],
+  }
+  expect(parseSessionsResponse(pricing)).toEqual(pricing)
+  expect(() => parseSessionsResponse({
+    ...pricing,
+    sessions: [{
+      ...pricing.sessions[0],
+      modelTokenPricing: [{
+        ...pricing.sessions[0].modelTokenPricing[0],
+        status: "paid",
+      }],
+    }],
+  })).toThrow()
+})
+
+test("legacy seller sessions adapt to explicit empty pricing facts", () => {
+  const legacy = {
+    ...sessions,
+    sessions: [{
+      askCredits: sessions.sessions[0].askCredits,
+      datasetId: sessions.sessions[0].datasetId,
+      earnedCredits: sessions.sessions[0].earnedCredits,
+      listedAt: sessions.sessions[0].listedAt,
+      saleStatus: sessions.sessions[0].saleStatus,
+      sessionId: sessions.sessions[0].sessionId,
+      soldAt: sessions.sessions[0].soldAt,
+    }],
+  }
+  expect(parseLegacySessionsResponse(legacy)).toEqual(sessions)
 })
 
 test("seller sales contract validators reject unknown fields, snake case, and wrong types", () => {
