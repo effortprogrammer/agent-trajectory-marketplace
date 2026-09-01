@@ -20,6 +20,7 @@ const sessions = {
     earnedCredits: 100,
     listedAt: "2026-08-19T10:00:00Z",
     model: null,
+    modelTokenPricing: [],
     rateCentsPerMillion: null,
     saleStatus: {
       changedAt: "2026-08-20T11:30:00Z",
@@ -119,6 +120,37 @@ test("seller sales contract validators strictly accept golden response shapes", 
   expect(parseSessionsResponse(sessions)).toEqual(sessions)
   expect(parseEarningsResponse(earnings)).toEqual(earnings)
   expect(parseLedgerResponse(ledger)).toEqual(ledger)
+})
+
+test("seller session pricing requires explicit v2 status facts", () => {
+  const pricing = {
+    ...sessions,
+    sessions: [{
+      ...sessions.sessions[0],
+      acceptedTokens: 1_000_000,
+      accruedCents: 200,
+      model: "claude-fable-5",
+      modelTokenPricing: [{
+        acceptedTokens: 1_000_000,
+        accruedCents: 200,
+        model: "claude-fable-5",
+        rateCentsPerMillion: 200,
+        status: "verified",
+      }],
+      rateCentsPerMillion: 200,
+    }],
+  }
+  expect(parseSessionsResponse(pricing)).toEqual(pricing)
+  expect(() => parseSessionsResponse({
+    ...pricing,
+    sessions: [{
+      ...pricing.sessions[0],
+      modelTokenPricing: [{
+        ...pricing.sessions[0].modelTokenPricing[0],
+        status: "paid",
+      }],
+    }],
+  })).toThrow()
 })
 
 test("seller sales contract validators reject unknown fields, snake case, and wrong types", () => {

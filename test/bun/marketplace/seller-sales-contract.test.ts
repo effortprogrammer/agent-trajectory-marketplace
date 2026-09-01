@@ -39,6 +39,13 @@ const pricingSessionsResponse = {
     earnedCredits: 100,
     listedAt: "2026-08-19T10:00:00Z",
     model: "claude-fable-5",
+    modelTokenPricing: [{
+      acceptedTokens: 1_000_000,
+      accruedCents: 200,
+      model: "claude-fable-5",
+      rateCentsPerMillion: 200,
+      status: "verified",
+    }],
     rateCentsPerMillion: 200,
     saleStatus: {
       changedAt: "2026-08-20T11:30:00Z",
@@ -115,6 +122,16 @@ describe("seller sales contracts", () => {
     expect(() => parseSellerResponse("sales-sessions", {
       ...pricingSessionsResponse,
       sessions: [{ ...pricingSessionsResponse.sessions[0], accruedCents: null }],
+    })).toThrow(SellerSalesContractError);
+    expect(() => parseSellerResponse("sales-sessions", {
+      ...pricingSessionsResponse,
+      sessions: [{
+        ...pricingSessionsResponse.sessions[0],
+        modelTokenPricing: [{
+          ...pricingSessionsResponse.sessions[0].modelTokenPricing[0],
+          status: undefined,
+        }],
+      }],
     })).toThrow(SellerSalesContractError);
     expect(() => parseSellerResponse("sales-sessions", {
       ...pricingSessionsResponse,

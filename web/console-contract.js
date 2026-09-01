@@ -4,6 +4,7 @@ const exceptions = new Set([null, "clearance_failed", "refunded", "charged_back"
 const eventTypes = new Set(["sale", "clearance", "payout", "withdrawal", "relisting", "clearance_failed", "refund", "chargeback"]);
 const intervals = new Set(["day", "week", "month"]);
 const payoutStatuses = new Set(["requested", "pending", "approved", "processing", "cancelled", "rejected", "paid"]);
+const pricingStatuses = new Set(["pending", "verified"]);
 const payoutUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const sessionFields = [
   "acceptedTokens",
@@ -13,6 +14,7 @@ const sessionFields = [
   "earnedCredits",
   "listedAt",
   "model",
+  "modelTokenPricing",
   "rateCentsPerMillion",
   "saleStatus",
   "sessionId",
@@ -90,6 +92,24 @@ export const parseSessionsResponse = (value) => {
     nullable(session.acceptedTokens, credits, "acceptedTokens");
     nullable(session.rateCentsPerMillion, credits, "rateCentsPerMillion");
     nullable(session.accruedCents, credits, "accruedCents");
+    if (!Array.isArray(session.modelTokenPricing)) fail("Invalid model-token pricing");
+    for (const detail of session.modelTokenPricing) {
+      keys(detail, ["acceptedTokens", "accruedCents", "model", "rateCentsPerMillion", "status"], "model-token pricing");
+      text(detail.model, "modelTokenPricing.model");
+      if (detail.model.length > 256) fail("Invalid modelTokenPricing.model");
+      credits(detail.acceptedTokens, "modelTokenPricing.acceptedTokens");
+      credits(detail.rateCentsPerMillion, "modelTokenPricing.rateCentsPerMillion");
+      credits(detail.accruedCents, "modelTokenPricing.accruedCents");
+      if (!pricingStatuses.has(detail.status)) fail("Invalid modelTokenPricing.status");
+    }
+    if (session.modelTokenPricing.length === 1) {
+      const [detail] = session.modelTokenPricing;
+      if (detail === undefined
+        || session.model !== detail.model
+        || session.acceptedTokens !== detail.acceptedTokens
+        || session.rateCentsPerMillion !== detail.rateCentsPerMillion
+        || session.accruedCents !== detail.accruedCents) fail("Invalid model-token pricing summary");
+    } else if (nullCount !== pricing.length) fail("Invalid model-token pricing summary");
     keys(session.saleStatus, ["listingCycleId", "stage", "exception", "changedAt"], "saleStatus");
     nullable(session.saleStatus.listingCycleId, identifier, "listingCycleId");
     if (!stages.has(session.saleStatus.stage) || !exceptions.has(session.saleStatus.exception)) fail("Invalid saleStatus");

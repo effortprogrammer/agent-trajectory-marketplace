@@ -14,6 +14,13 @@ const timestampSchema = z.string().datetime({ offset: true });
 const uuidSchema = z.string().uuid();
 
 const pageSchema = z.object({ nextCursor: cursorSchema.nullable() }).strict();
+const modelTokenPricingSchema = z.object({
+  acceptedTokens: tokenCountSchema,
+  accruedCents: centsSchema,
+  model: z.string().min(1).max(256),
+  rateCentsPerMillion: centsSchema,
+  status: z.enum(["pending", "verified"]),
+}).strict();
 const sellerSessionSchema = z.object({
   acceptedTokens: tokenCountSchema.nullable(),
   accruedCents: centsSchema.nullable(),
@@ -21,7 +28,8 @@ const sellerSessionSchema = z.object({
   datasetId: z.string().min(1),
   earnedCredits: creditsSchema.nullable(),
   listedAt: timestampSchema.nullable(),
-  model: z.string().min(1).nullable(),
+  model: z.string().min(1).max(256).nullable(),
+  modelTokenPricing: z.array(modelTokenPricingSchema),
   rateCentsPerMillion: centsSchema.nullable(),
   saleStatus: z.object({
     changedAt: timestampSchema,
@@ -35,9 +43,16 @@ const sellerSessionSchema = z.object({
   (session) => {
     const pricing = [session.acceptedTokens, session.accruedCents, session.model, session.rateCentsPerMillion];
     const nullCount = pricing.filter((value) => value === null).length;
-    return nullCount === 0 || nullCount === pricing.length;
+    if (session.modelTokenPricing.length !== 1) return nullCount === pricing.length;
+    const [detail] = session.modelTokenPricing;
+    return detail !== undefined
+      && nullCount === 0
+      && session.acceptedTokens === detail.acceptedTokens
+      && session.accruedCents === detail.accruedCents
+      && session.model === detail.model
+      && session.rateCentsPerMillion === detail.rateCentsPerMillion;
   },
-  { message: "session pricing fields must be null together or valid together" },
+  { message: "session pricing summary must match its explicit v2 facts" },
 );
 const candidateSchema = z.object({
   archiveByteCount: z.number().int().positive().max(maximumSafeInteger),

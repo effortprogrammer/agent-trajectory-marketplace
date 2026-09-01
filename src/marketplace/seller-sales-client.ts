@@ -23,7 +23,7 @@ const paths = {
   candidates: "/v1/marketplace/seller/candidates",
   "sales-earnings": "/v1/marketplace/seller/sales/earnings",
   "sales-ledger": "/v1/marketplace/seller/sales/ledger",
-  "sales-sessions": "/v1/marketplace/seller/sales/sessions",
+  "sales-sessions": "/v2/marketplace/seller/sales/sessions",
 } as const;
 const queryKeys = {
   candidates: ["cursor", "limit"],

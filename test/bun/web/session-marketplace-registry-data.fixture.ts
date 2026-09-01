@@ -16,6 +16,7 @@ export const sellerSessions = {
     earnedCredits: 100,
     listedAt: "2026-08-19T10:00:00Z",
     model: null,
+    modelTokenPricing: [],
     rateCentsPerMillion: null,
     saleStatus: {
       changedAt: "2026-08-20T11:30:00Z",

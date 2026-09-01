@@ -144,10 +144,13 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
     if (!readiness.publicStatsConfigured || !readiness.registryConfigured) {
       throw new Error("Marketplace ready IPC reported missing local configuration")
     }
-    sharedBrowser ??= await chromium.launch({
-      args: ["--disable-background-networking"],
-      headless: true,
-    })
+    sharedBrowser ??= await awaitResource(
+      "Playwright Chromium launch",
+      chromium.launch({
+        args: ["--disable-background-networking"],
+        headless: true,
+      }),
+    )
     const browser = sharedBrowser
     if (browser === undefined) throw new Error("Playwright Chromium did not launch")
     return {

@@ -2,8 +2,8 @@ import {
   formatPayoutAmount,
   parseEarningsResponse,
   parseSessionsResponse,
-} from "./console-contract.8a50b3a345535d1c9270ee433ef50f9951bcfa2a234a538809dfba693938d9d8.js";
-import { mountPayoutConsole } from "./payout-console.2611e89251f1279529d86bdc4a33e8e93c67df40fbb9c4b431d90f4c110cc9e7.js";
+} from "./console-contract.1fe74f73f0e07f89853888de25685d98be99644bd7d0e49ba0655530b6e76ac3.js";
+import { mountPayoutConsole } from "./payout-console.466152aa1b4ff750523083518549dd79fc935d733db421f38dfe3e97c67bd98c.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {
@@ -73,14 +73,21 @@ const renderSessions = (root, sessions) => {
     top.append(pill);
     row.append(top);
     if (session.earnedCredits !== null && max > 0) { const bar = element("div", "seller-performance-bar"); const fill = element("i"); fill.style.width = `${(session.earnedCredits / max) * 100}%`; bar.append(fill); row.append(bar); }
-    if (session.model !== null) {
+    for (const detail of session.modelTokenPricing) {
       const pricing = element("div", "seller-pricing-facts");
       pricing.setAttribute("aria-label", "Accepted model-token earnings");
+      pricing.dataset.status = detail.status;
       pricing.append(
-        element("span", "seller-pricing-model", formatModel(session.model)),
-        element("span", undefined, formatAcceptedTokens(session.acceptedTokens)),
-        element("span", undefined, `${formatPayoutAmount(session.rateCentsPerMillion)} / 1M`),
-        element("span", "seller-pricing-earned", `${formatPayoutAmount(session.accruedCents)} earned`),
+        element("span", "seller-pricing-model", formatModel(detail.model)),
+        element("span", undefined, formatAcceptedTokens(detail.acceptedTokens)),
+        element("span", undefined, `${formatPayoutAmount(detail.rateCentsPerMillion)} / 1M`),
+        element(
+          "span",
+          "seller-pricing-earned",
+          detail.status === "verified"
+            ? `${formatPayoutAmount(detail.accruedCents)} earned`
+            : `${formatPayoutAmount(detail.accruedCents)} pending review`,
+        ),
       );
       row.append(pricing);
     }
@@ -111,7 +118,7 @@ export const mountSellerConsole = async ({
   try {
     const [me, sessionsBody, earningsBody] = await Promise.all([
       requestJson("/v1/auth/me", { headers }),
-      requestJson("/v1/marketplace/seller/sales/sessions", { headers }),
+      requestJson("/v2/marketplace/seller/sales/sessions", { headers }),
       requestJson(`/v1/marketplace/seller/sales/earnings?from=${day(from)}&to=${day(today)}&interval=day`, { headers }),
     ]);
     if (!isCurrent()) return;
