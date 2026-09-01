@@ -175,10 +175,13 @@ describe("public Todo27 marketplace lifecycle", () => {
 
       const published = await run([
         process.execPath, "dist/collector.js", "marketplace", "seller", "candidate", "publish",
-        "--bundle", bundle, "--server", supplied.server, "--api-key", supplied.apiKey,
-      ])
-      expect(published.exitCode).toBe(0)
-      expect(published.stderr).toBe("")
+        "--bundle", bundle, "--api-key", supplied.apiKey,
+      ], supplied.server)
+      expect(published).toEqual({
+        exitCode: 0,
+        stderr: "",
+        stdout: expect.any(String),
+      })
       expect(JSON.parse(published.stdout)).toEqual({
         protocolVersion: 1,
         submissionId: expect.stringMatching(/^sub_/),
