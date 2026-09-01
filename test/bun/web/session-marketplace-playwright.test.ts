@@ -300,6 +300,68 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(pageErrors).toEqual([])
   })
 
+  test("falls back to frozen v1 sessions while Registry v2 rolls out", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    await page.route(
+      "**/api/registry/v2/marketplace/seller/sales/sessions",
+      async (route) => {
+        await route.fulfill({
+          body: JSON.stringify({
+            error: { code: "not_found", message: "Not found." },
+            ok: false,
+          }),
+          contentType: "application/json",
+          status: 404,
+        })
+      },
+    )
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    await openSellerConsole(page)
+
+    expect(await page.locator("[data-console-sessions] li").count()).toBe(1)
+    expect(
+      await page.locator("[data-console-sessions] .seller-pricing-facts").count(),
+    ).toBe(0)
+    expect(
+      harness.registryRequests.some((request) =>
+        request.path === "/v1/marketplace/seller/sales/sessions"
+      ),
+    ).toBe(true)
+  })
+
+  test("falls back to frozen v1 sessions while Registry v2 rolls out", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    await page.route(
+      "**/api/registry/v2/marketplace/seller/sales/sessions",
+      async (route) => {
+        await route.fulfill({
+          body: JSON.stringify({
+            error: { code: "not_found", message: "Not found." },
+            ok: false,
+          }),
+          contentType: "application/json",
+          status: 404,
+        })
+      },
+    )
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    await openSellerConsole(page)
+
+    expect(await page.locator("[data-console-sessions] li").count()).toBe(1)
+    expect(
+      await page.locator("[data-console-sessions] .seller-pricing-facts").count(),
+    ).toBe(0)
+    expect(
+      harness.registryRequests.some((request) =>
+        request.path === "/v1/marketplace/seller/sales/sessions"
+      ),
+    ).toBe(true)
+  })
+
   test("keeps the legacy Seller Console module call shape compatible", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)

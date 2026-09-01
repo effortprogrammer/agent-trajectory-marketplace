@@ -21,6 +21,21 @@ const modelTokenPricingSchema = z.object({
   rateCentsPerMillion: centsSchema,
   status: z.enum(["pending", "verified"]),
 }).strict();
+const saleStatusSchema = z.object({
+  changedAt: timestampSchema,
+  exception: z.enum(["clearance_failed", "refunded", "charged_back"]).nullable(),
+  listingCycleId: uuidSchema.nullable(),
+  stage: z.enum(["not_listed", "listed", "sold", "cleared", "paid", "withdrawn"]),
+}).strict();
+const legacySellerSessionSchema = z.object({
+  askCredits: creditsSchema.nullable(),
+  datasetId: z.string().min(1),
+  earnedCredits: creditsSchema.nullable(),
+  listedAt: timestampSchema.nullable(),
+  saleStatus: saleStatusSchema,
+  sessionId: uuidSchema,
+  soldAt: timestampSchema.nullable(),
+}).strict();
 const sellerSessionSchema = z.object({
   acceptedTokens: tokenCountSchema.nullable(),
   accruedCents: centsSchema.nullable(),
@@ -31,12 +46,7 @@ const sellerSessionSchema = z.object({
   model: z.string().min(1).max(256).nullable(),
   modelTokenPricing: z.array(modelTokenPricingSchema),
   rateCentsPerMillion: centsSchema.nullable(),
-  saleStatus: z.object({
-    changedAt: timestampSchema,
-    exception: z.enum(["clearance_failed", "refunded", "charged_back"]).nullable(),
-    listingCycleId: uuidSchema.nullable(),
-    stage: z.enum(["not_listed", "listed", "sold", "cleared", "paid", "withdrawn"]),
-  }).strict(),
+  saleStatus: saleStatusSchema,
   sessionId: uuidSchema,
   soldAt: timestampSchema.nullable(),
 }).strict().refine(
@@ -78,6 +88,12 @@ export const sellerSessionsResponseSchema = z.object({
   ok: z.literal(true),
   page: pageSchema,
   sessions: z.array(sellerSessionSchema),
+}).strict();
+const legacySellerSessionsResponseSchema = z.object({
+  asOf: timestampSchema,
+  ok: z.literal(true),
+  page: pageSchema,
+  sessions: z.array(legacySellerSessionSchema),
 }).strict();
 export const sellerEarningsResponseSchema = z.object({
   asOf: timestampSchema,
@@ -181,6 +197,22 @@ export const parseSellerCandidatesResponse = (value: unknown): SellerCandidatesR
   parseStrict(sellerCandidatesResponseSchema, value);
 export const parseSellerSessionsResponse = (value: unknown): SellerSessionsResponse =>
   parseStrict(sellerSessionsResponseSchema, value);
+export const parseLegacySellerSessionsResponse = (
+  value: unknown,
+): SellerSessionsResponse => {
+  const response = parseStrict(legacySellerSessionsResponseSchema, value);
+  return {
+    ...response,
+    sessions: response.sessions.map((session) => ({
+      ...session,
+      acceptedTokens: null,
+      accruedCents: null,
+      model: null,
+      modelTokenPricing: [],
+      rateCentsPerMillion: null,
+    })),
+  };
+};
 export const parseSellerEarningsResponse = (value: unknown): SellerEarningsResponse =>
   parseStrict(sellerEarningsResponseSchema, value);
 export const parseSellerLedgerResponse = (value: unknown): SellerLedgerResponse =>

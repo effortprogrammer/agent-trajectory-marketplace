@@ -20,6 +20,15 @@ const sessionFields = [
   "sessionId",
   "soldAt",
 ];
+const legacySessionFields = [
+  "askCredits",
+  "datasetId",
+  "earnedCredits",
+  "listedAt",
+  "saleStatus",
+  "sessionId",
+  "soldAt",
+];
 const utcTimestamp = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z$/;
 const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -116,6 +125,35 @@ export const parseSessionsResponse = (value) => {
     timestamp(session.saleStatus.changedAt, "changedAt");
   }
   return value;
+};
+
+export const parseLegacySessionsResponse = (value) => {
+  keys(value, ["ok", "asOf", "sessions", "page"], "legacy sessions response");
+  if (value.ok !== true || !Array.isArray(value.sessions)) fail("Invalid legacy sessions response");
+  timestamp(value.asOf, "asOf");
+  page(value.page);
+  const sessions = value.sessions.map((session) => {
+    keys(session, legacySessionFields, "legacy session");
+    identifier(session.sessionId, "sessionId");
+    text(session.datasetId, "datasetId");
+    nullable(session.listedAt, timestamp, "listedAt");
+    nullable(session.askCredits, credits, "askCredits");
+    nullable(session.earnedCredits, credits, "earnedCredits");
+    nullable(session.soldAt, timestamp, "soldAt");
+    keys(session.saleStatus, ["listingCycleId", "stage", "exception", "changedAt"], "saleStatus");
+    nullable(session.saleStatus.listingCycleId, identifier, "listingCycleId");
+    if (!stages.has(session.saleStatus.stage) || !exceptions.has(session.saleStatus.exception)) fail("Invalid saleStatus");
+    timestamp(session.saleStatus.changedAt, "changedAt");
+    return {
+      ...session,
+      acceptedTokens: null,
+      accruedCents: null,
+      model: null,
+      modelTokenPricing: [],
+      rateCentsPerMillion: null,
+    };
+  });
+  return { ...value, sessions };
 };
 
 export const parseEarningsResponse = (value) => {

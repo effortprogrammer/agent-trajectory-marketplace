@@ -4,6 +4,7 @@ import * as consoleContract from "../../../web/console-contract.js"
 
 const {
   parseEarningsResponse,
+  parseLegacySessionsResponse,
   parseLedgerResponse,
   parseSessionsResponse,
 } = consoleContract
@@ -151,6 +152,22 @@ test("seller session pricing requires explicit v2 status facts", () => {
       }],
     }],
   })).toThrow()
+})
+
+test("legacy seller sessions adapt to explicit empty pricing facts", () => {
+  const legacy = {
+    ...sessions,
+    sessions: [{
+      askCredits: sessions.sessions[0].askCredits,
+      datasetId: sessions.sessions[0].datasetId,
+      earnedCredits: sessions.sessions[0].earnedCredits,
+      listedAt: sessions.sessions[0].listedAt,
+      saleStatus: sessions.sessions[0].saleStatus,
+      sessionId: sessions.sessions[0].sessionId,
+      soldAt: sessions.sessions[0].soldAt,
+    }],
+  }
+  expect(parseLegacySessionsResponse(legacy)).toEqual(sessions)
 })
 
 test("seller sales contract validators reject unknown fields, snake case, and wrong types", () => {

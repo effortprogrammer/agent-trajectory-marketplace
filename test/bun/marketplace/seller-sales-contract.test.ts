@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  parseLegacySellerSessionsResponse,
   parseSellerEarningsResponse,
   parseSellerOptions,
   parseSellerResponse,
@@ -57,6 +58,26 @@ const pricingSessionsResponse = {
     soldAt: "2026-08-20T11:30:00Z",
   }],
 };
+
+const legacySessionsResponse = {
+  asOf: "2026-08-20T12:00:00Z",
+  ok: true,
+  page: { nextCursor: null },
+  sessions: [{
+    askCredits: 125,
+    datasetId: "seller-dataset-alpha",
+    earnedCredits: 100,
+    listedAt: "2026-08-19T10:00:00Z",
+    saleStatus: {
+      changedAt: "2026-08-20T11:30:00Z",
+      exception: null,
+      listingCycleId: "22222222-2222-4222-8222-222222222222",
+      stage: "sold",
+    },
+    sessionId: "11111111-1111-4111-8111-111111111111",
+    soldAt: "2026-08-20T11:30:00Z",
+  }],
+} as const;
 
 describe("seller sales contracts", () => {
   test("Given seller candidate JSON, When its shape changes, Then the strict contract rejects it", () => {
@@ -137,5 +158,19 @@ describe("seller sales contracts", () => {
       ...pricingSessionsResponse,
       sessions: [{ ...pricingSessionsResponse.sessions[0], unexpected: true }],
     })).toThrow(SellerSalesContractError);
+  });
+
+  test("adapts the frozen v1 seller-session response during Registry rollout", () => {
+    expect(parseLegacySellerSessionsResponse(legacySessionsResponse)).toEqual({
+      ...legacySessionsResponse,
+      sessions: [{
+        ...legacySessionsResponse.sessions[0],
+        acceptedTokens: null,
+        accruedCents: null,
+        model: null,
+        modelTokenPricing: [],
+        rateCentsPerMillion: null,
+      }],
+    });
   });
 });

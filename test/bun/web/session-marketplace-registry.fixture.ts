@@ -4,6 +4,7 @@ import {
   challengeId,
   eligiblePayout,
   expiresAt,
+  legacySellerSessions,
   sellerEarnings,
   sellerSessions,
   signupChallengeId,
@@ -113,6 +114,11 @@ export const startSessionRegistry = (): SessionRegistry => {
       if (url.pathname === "/v2/marketplace/seller/sales/sessions") {
         return authorized
           ? json(sellerSessions)
+          : json({ error: { code: "unauthorized" }, ok: false }, 401)
+      }
+      if (url.pathname === "/v1/marketplace/seller/sales/sessions") {
+        return authorized
+          ? json(legacySellerSessions)
           : json({ error: { code: "unauthorized" }, ok: false }, 401)
       }
       if (url.pathname === "/v1/marketplace/seller/sales/earnings") {

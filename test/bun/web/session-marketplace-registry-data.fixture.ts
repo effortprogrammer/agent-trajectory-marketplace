@@ -29,6 +29,21 @@ export const sellerSessions = {
   }],
 }
 
+export const legacySellerSessions = {
+  asOf: sellerSessions.asOf,
+  ok: true,
+  page: sellerSessions.page,
+  sessions: sellerSessions.sessions.map((session) => ({
+    askCredits: session.askCredits,
+    datasetId: session.datasetId,
+    earnedCredits: session.earnedCredits,
+    listedAt: session.listedAt,
+    saleStatus: session.saleStatus,
+    sessionId: session.sessionId,
+    soldAt: session.soldAt,
+  })),
+}
+
 export const sellerEarnings = {
   asOf: "2026-08-20T12:00:00Z",
   currency: "USD",

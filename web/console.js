@@ -1,9 +1,10 @@
 import {
   formatPayoutAmount,
   parseEarningsResponse,
+  parseLegacySessionsResponse,
   parseSessionsResponse,
-} from "./console-contract.1fe74f73f0e07f89853888de25685d98be99644bd7d0e49ba0655530b6e76ac3.js";
-import { mountPayoutConsole } from "./payout-console.466152aa1b4ff750523083518549dd79fc935d733db421f38dfe3e97c67bd98c.js";
+} from "./console-contract.889ee8ad70774435ea8c707f96c9d2712ffa32eb77595cfd758a71ffb507b1e7.js";
+import { mountPayoutConsole } from "./payout-console.52428da299e978a529948beb860a772caa4b86241c197c8a7c34fd256f9cb5e7.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {
@@ -95,6 +96,19 @@ const renderSessions = (root, sessions) => {
   }
 };
 
+const requestSessions = async (requestJson, headers) => {
+  try {
+    return parseSessionsResponse(
+      await requestJson("/v2/marketplace/seller/sales/sessions", { headers }),
+    );
+  } catch (error) {
+    if (error?.status !== 404) throw error;
+    return parseLegacySessionsResponse(
+      await requestJson("/v1/marketplace/seller/sales/sessions", { headers }),
+    );
+  }
+};
+
 export const mountSellerConsole = async ({
   isCurrent = () => true,
   requestJson,
@@ -118,12 +132,12 @@ export const mountSellerConsole = async ({
   try {
     const [me, sessionsBody, earningsBody] = await Promise.all([
       requestJson("/v1/auth/me", { headers }),
-      requestJson("/v2/marketplace/seller/sales/sessions", { headers }),
+      requestSessions(requestJson, headers),
       requestJson(`/v1/marketplace/seller/sales/earnings?from=${day(from)}&to=${day(today)}&interval=day`, { headers }),
     ]);
     if (!isCurrent()) return;
     if (me?.ok !== true || typeof me.account?.accountId !== "string") throw new TypeError("Invalid Registry account response");
-    const validatedSessions = parseSessionsResponse(sessionsBody); const earnings = parseEarningsResponse(earningsBody);
+    const validatedSessions = sessionsBody; const earnings = parseEarningsResponse(earningsBody);
     seller.textContent = me.account.accountId; total.textContent = `${formatCredits(earnings.points.at(-1)?.cumulativeNetCredits ?? earnings.openingCumulativeCredits)} cumulative`;
     renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
     state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;

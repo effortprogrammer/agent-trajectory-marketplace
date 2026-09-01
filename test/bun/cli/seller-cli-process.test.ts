@@ -56,10 +56,16 @@ describe("seller CLI built process boundary", () => {
     const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(request) {
       const url = new URL(request.url);
       requests.push({ authorization: request.headers.get("authorization"), body: await request.text(), contentType: request.headers.get("content-type"), idempotencyKey: request.headers.get("idempotency-key"), method: request.method, path: url.pathname, query: url.search });
+      if (url.pathname === "/v2/marketplace/seller/sales/sessions") {
+        return Response.json(
+          { error: { code: "not_found", message: "Not found." }, ok: false },
+          { status: 404 },
+        );
+      }
       const body = (() => {
         if (url.pathname === "/v1/marketplace/seller/candidates" && url.search === "?limit=2") return fixture("upload-list/v1/candidates-page-1-200.json");
         if (url.pathname === "/v1/marketplace/seller/candidates" && url.search === `?cursor=${candidateNextCursor}&limit=2`) return fixture("upload-list/v1/candidates-page-2-200.json");
-        if (url.pathname === "/v2/marketplace/seller/sales/sessions") return fixture("seller-sales/v1/sessions-200.json");
+        if (url.pathname === "/v1/marketplace/seller/sales/sessions") return fixture("seller-sales/v1/sessions-200.json");
         if (url.pathname === "/v1/marketplace/seller/sales/earnings") return fixture("seller-sales/v1/earnings-200.json");
         if (url.pathname === "/v1/marketplace/seller/sales/ledger") return fixture("seller-sales/v1/ledger-200.json");
         if (url.pathname === "/v1/marketplace/seller/payout-request" && request.method === "GET") return fixture("payout-request/v1/get-empty-200.json");
@@ -90,6 +96,7 @@ describe("seller CLI built process boundary", () => {
       { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/candidates", query: "?limit=2" },
       { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/candidates", query: `?cursor=${candidateNextCursor}&limit=2` },
       { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v2/marketplace/seller/sales/sessions", query: "?limit=2&status=paid" },
+      { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/sales/sessions", query: "?limit=2&status=paid" },
       { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/sales/earnings", query: "?from=2026-08-01&to=2026-08-30&interval=day" },
       { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/sales/ledger", query: "?cursor=ledger-one&limit=2&type=sale" },
       { authorization: `Bearer ${tokenCanary}`, body: "", contentType: null, idempotencyKey: null, method: "GET", path: "/v1/marketplace/seller/payout-request", query: "" },
