@@ -1,10 +1,21 @@
 import {
+  formatPayoutAmount,
   parseEarningsResponse,
+  parseLegacySessionsResponse,
   parseSessionsResponse,
-} from "./console-contract.19b879da9be9f44653c8d45a3ec7d48d70b20e9a033f2f0fd41caa59781c5837.js";
-import { mountPayoutConsole } from "./payout-console.d9c1590b0d5b5333b4338e9abcc2d919207ead33a73af7dbcd37a88106d575b9.js";
+} from "./console-contract.889ee8ad70774435ea8c707f96c9d2712ffa32eb77595cfd758a71ffb507b1e7.js";
+import { mountPayoutConsole } from "./payout-console.cc22c3db9d3bb4e30b35599cae598950af7de69fe37442c0a6adadbe87516811.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
+const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 1,
+  notation: "compact",
+}).format(value)} accepted tokens`;
+const formatModel = (model) => ({
+  "claude-fable-5": "Claude Fable 5",
+  "gpt-5.6-sol": "GPT-5.6 Sol",
+})[model] ?? model;
 const shortId = (id) => id.slice(0, 8);
 const dateLabel = (value) => new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(value));
 const element = (name, className, text) => {
@@ -63,7 +74,38 @@ const renderSessions = (root, sessions) => {
     top.append(pill);
     row.append(top);
     if (session.earnedCredits !== null && max > 0) { const bar = element("div", "seller-performance-bar"); const fill = element("i"); fill.style.width = `${(session.earnedCredits / max) * 100}%`; bar.append(fill); row.append(bar); }
+    for (const detail of session.modelTokenPricing) {
+      const pricing = element("div", "seller-pricing-facts");
+      pricing.setAttribute("aria-label", "Accepted model-token earnings");
+      pricing.dataset.status = detail.status;
+      pricing.append(
+        element("span", "seller-pricing-model", formatModel(detail.model)),
+        element("span", undefined, formatAcceptedTokens(detail.acceptedTokens)),
+        element("span", undefined, `${formatPayoutAmount(detail.rateCentsPerMillion)} / 1M`),
+        element(
+          "span",
+          "seller-pricing-earned",
+          detail.status === "verified"
+            ? `${formatPayoutAmount(detail.accruedCents)} earned`
+            : `${formatPayoutAmount(detail.accruedCents)} pending review`,
+        ),
+      );
+      row.append(pricing);
+    }
     row.append(element("p", "seller-performance-meta", `${session.saleStatus.stage.replaceAll("_", " ")} - updated ${dateLabel(session.saleStatus.changedAt)}`)); item.append(row); root.append(item);
+  }
+};
+
+const requestSessions = async (requestJson, headers) => {
+  try {
+    return parseSessionsResponse(
+      await requestJson("/v2/marketplace/seller/sales/sessions", { headers }),
+    );
+  } catch (error) {
+    if (error?.status !== 404) throw error;
+    return parseLegacySessionsResponse(
+      await requestJson("/v1/marketplace/seller/sales/sessions", { headers }),
+    );
   }
 };
 
@@ -131,12 +173,12 @@ export const mountSellerConsole = async ({
   try {
     const [me, sessionsBody, earningsBody] = await Promise.all([
       requestJson("/v1/auth/me", { headers }),
-      requestJson("/v1/marketplace/seller/sales/sessions", { headers }),
+      requestSessions(requestJson, headers),
       requestJson(`/v1/marketplace/seller/sales/earnings?from=${day(from)}&to=${day(today)}&interval=day`, { headers }),
     ]);
     if (!isCurrent()) return;
     if (me?.ok !== true || typeof me.account?.accountId !== "string") throw new TypeError("Invalid Registry account response");
-    const validatedSessions = parseSessionsResponse(sessionsBody); const earnings = parseEarningsResponse(earningsBody);
+    const validatedSessions = sessionsBody; const earnings = parseEarningsResponse(earningsBody);
     const cumulativeCredits = earnings.points.at(-1)?.cumulativeNetCredits
       ?? earnings.openingCumulativeCredits;
     total.hidden = cumulativeCredits === 0;

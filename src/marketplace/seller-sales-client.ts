@@ -3,6 +3,7 @@ import ky, { isNetworkError, isTimeoutError } from "ky";
 import { normalizeAuthServerUrl } from "../auth/server-url";
 import { validPublishCredential } from "./publish-client";
 import {
+  parseLegacySellerSessionsResponse,
   parseSellerCandidatesResponse,
   parseSellerEarningsResponse,
   parseSellerLedgerResponse,
@@ -19,11 +20,12 @@ import {
 
 const requestTimeoutMs = 10_000;
 const maximumPages = 100;
+const legacySellerSessionsPath = "/v1/marketplace/seller/sales/sessions";
 const paths = {
   candidates: "/v1/marketplace/seller/candidates",
   "sales-earnings": "/v1/marketplace/seller/sales/earnings",
   "sales-ledger": "/v1/marketplace/seller/sales/ledger",
-  "sales-sessions": "/v1/marketplace/seller/sales/sessions",
+  "sales-sessions": "/v2/marketplace/seller/sales/sessions",
 } as const;
 const queryKeys = {
   candidates: ["cursor", "limit"],
@@ -63,20 +65,31 @@ const requestOne = async <T>(
   options: SellerOptions,
   signal: AbortSignal | undefined,
   parse: (value: unknown) => T,
+  notFoundFallback?: Readonly<{
+    readonly parse: (value: unknown) => T;
+    readonly path: string;
+  }>,
 ): Promise<T> => {
   const timeoutSignal = AbortSignal.timeout(requestTimeoutMs);
   const requestSignal = signal === undefined ? timeoutSignal : AbortSignal.any([signal, timeoutSignal]);
   try {
     const parameters = query(resource, options);
-    const response = await ky(`${origin}${paths[resource]}${parameters.size === 0 ? "" : `?${parameters.toString()}`}`, {
-      headers: { authorization: `Bearer ${credential}` },
-      method: "GET",
-      redirect: "manual",
-      retry: 0,
-      signal: requestSignal,
-      throwHttpErrors: false,
-      timeout: requestTimeoutMs,
-    });
+    const suffix = parameters.size === 0 ? "" : `?${parameters.toString()}`;
+    const requestPath = (path: string) => ky(`${origin}${path}${suffix}`, {
+        headers: { authorization: `Bearer ${credential}` },
+        method: "GET",
+        redirect: "manual",
+        retry: 0,
+        signal: requestSignal,
+        throwHttpErrors: false,
+        timeout: requestTimeoutMs,
+      });
+    let response = await requestPath(paths[resource]);
+    if (response.status === 404 && notFoundFallback !== undefined) {
+      response = await requestPath(notFoundFallback.path);
+      if (response.status !== 200) throw new SellerSalesClientError("invalid_response");
+      return notFoundFallback.parse(await response.json());
+    }
     if (response.status !== 200) throw new SellerSalesClientError("invalid_response");
     return parse(await response.json());
   } catch (error) {
@@ -140,7 +153,18 @@ export const createSellerSalesClient = (server: unknown): SellerSalesClient => {
         case "sales-sessions":
           return readPages(
             options,
-            (pageOptions) => requestOne(origin, resource, credential, pageOptions, signal, parseSellerSessionsResponse),
+            (pageOptions) => requestOne(
+              origin,
+              resource,
+              credential,
+              pageOptions,
+              signal,
+              parseSellerSessionsResponse,
+              {
+                parse: parseLegacySellerSessionsResponse,
+                path: legacySellerSessionsPath,
+              },
+            ),
             (initial, next): SellerSessionsResponse => ({ ...initial, page: next.page, sessions: [...initial.sessions, ...next.sessions] }),
           );
         case "sales-ledger":

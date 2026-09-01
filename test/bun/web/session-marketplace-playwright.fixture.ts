@@ -165,10 +165,13 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
     }
     const appUrl = `http://127.0.0.1:${readiness.marketplacePort}`
     await waitForMarketplaceHttpReady(appUrl)
-    sharedBrowser ??= await chromium.launch({
-      args: ["--disable-background-networking"],
-      headless: true,
-    })
+    sharedBrowser ??= await awaitResource(
+      "Playwright Chromium launch",
+      chromium.launch({
+        args: ["--disable-background-networking"],
+        headless: true,
+      }),
+    )
     const browser = sharedBrowser
     if (browser === undefined) throw new Error("Playwright Chromium did not launch")
     return {

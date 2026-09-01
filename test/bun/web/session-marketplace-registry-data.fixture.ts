@@ -9,10 +9,15 @@ export const sellerSessions = {
   ok: true,
   page: { nextCursor: null },
   sessions: [{
+    acceptedTokens: null,
+    accruedCents: null,
     askCredits: 125,
     datasetId: "seller-dataset-alpha",
     earnedCredits: 100,
     listedAt: "2026-08-19T10:00:00Z",
+    model: null,
+    modelTokenPricing: [],
+    rateCentsPerMillion: null,
     saleStatus: {
       changedAt: "2026-08-20T11:30:00Z",
       exception: null,
@@ -22,6 +27,21 @@ export const sellerSessions = {
     sessionId: "11111111-1111-4111-8111-111111111111",
     soldAt: "2026-08-20T11:30:00Z",
   }],
+}
+
+export const legacySellerSessions = {
+  asOf: sellerSessions.asOf,
+  ok: true,
+  page: sellerSessions.page,
+  sessions: sellerSessions.sessions.map((session) => ({
+    askCredits: session.askCredits,
+    datasetId: session.datasetId,
+    earnedCredits: session.earnedCredits,
+    listedAt: session.listedAt,
+    saleStatus: session.saleStatus,
+    sessionId: session.sessionId,
+    soldAt: session.soldAt,
+  })),
 }
 
 export const sellerEarnings = {

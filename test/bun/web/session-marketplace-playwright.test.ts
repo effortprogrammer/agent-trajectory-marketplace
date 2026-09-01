@@ -22,7 +22,8 @@ const openMemberSignIn = async (page: Page): Promise<void> => {
   }
   const signIn = page.getByTestId("sign-in-button")
   if (!await signIn.isVisible()) {
-    await page.locator("[data-nav-menu-toggle]").click()
+    const menuToggle = page.locator("[data-nav-menu-toggle]")
+    if (await menuToggle.isVisible()) await menuToggle.click()
     await signIn.waitFor({ state: "visible" })
   }
   await signIn.click()
@@ -82,6 +83,43 @@ const payoutError = (code: string, message: string) => ({
   error: { code, message },
   ok: false,
 })
+
+const pricingSessions = {
+  asOf: "2026-08-31T00:00:00Z",
+  ok: true,
+  page: { nextCursor: null },
+  sessions: [{
+    acceptedTokens: null,
+    accruedCents: null,
+    askCredits: null,
+    datasetId: "seller-dataset-mixed",
+    earnedCredits: null,
+    listedAt: "2026-08-31T00:00:00Z",
+    model: null,
+    modelTokenPricing: [{
+      acceptedTokens: 1_000_000,
+      accruedCents: 200,
+      model: "claude-fable-5",
+      rateCentsPerMillion: 200,
+      status: "verified",
+    }, {
+      acceptedTokens: 2_000_000,
+      accruedCents: 300,
+      model: "gpt-5.6-sol",
+      rateCentsPerMillion: 150,
+      status: "pending",
+    }],
+    rateCentsPerMillion: null,
+    saleStatus: {
+      changedAt: "2026-08-31T00:00:00Z",
+      exception: null,
+      listingCycleId: "22222222-2222-4222-8222-222222222222",
+      stage: "listed",
+    },
+    sessionId: "11111111-1111-4111-8111-111111111111",
+    soldAt: null,
+  }],
+}
 
 const openSellerConsole = async (page: Page): Promise<void> => {
   await page.getByTestId("seller-console-link").click()
@@ -200,9 +238,139 @@ describe("authenticated aggregate marketplace browser contract", () => {
     )
     expect(await page.locator("[data-console-sessions] .seller-status-pill[data-stage=sold]").count()).toBe(1)
     expect(harness.registryRequests.filter((request) => request.path.includes("/seller/sales/"))).toEqual(expect.arrayContaining([
-      expect.objectContaining({ authorization: "Bearer marketplace-browser-session-token", body: undefined, method: "GET", path: "/v1/marketplace/seller/sales/sessions" }),
+      expect.objectContaining({ authorization: "Bearer marketplace-browser-session-token", body: undefined, method: "GET", path: "/v2/marketplace/seller/sales/sessions" }),
     ]))
     expect(harness.registryRequests.filter((request) => request.path.endsWith("/sales/ledger"))).toEqual([])
+  })
+
+  test("renders every accepted model-token pricing fact at desktop and mobile widths", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    const consoleErrors: string[] = []
+    const pageErrors: string[] = []
+    page.on("console", (message) => {
+      if (message.type() === "error") consoleErrors.push(message.text())
+    })
+    page.on("pageerror", (error) => pageErrors.push(error.message))
+    await page.route(
+      "**/api/registry/v2/marketplace/seller/sales/sessions",
+      async (route) => {
+        await route.fulfill({
+          body: JSON.stringify(pricingSessions),
+          contentType: "application/json",
+          status: 200,
+        })
+      },
+    )
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    const sessionsResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith(
+        "/v2/marketplace/seller/sales/sessions",
+      )
+    )
+    await page.getByTestId("seller-console-link").click()
+    await sessionsResponse
+    await page.locator(
+      "[data-console-sessions] .seller-pricing-facts",
+    ).first().waitFor()
+
+    const expectedText = [
+      "Claude Fable 5",
+      "1.0M accepted tokens",
+      "$2.00 / 1M",
+      "$2.00 earned",
+      "GPT-5.6 Sol",
+      "2.0M accepted tokens",
+      "$1.50 / 1M",
+      "$3.00 pending review",
+    ] as const
+    const observations: Array<{
+      readonly overflowFree: boolean
+      readonly textCounts: readonly number[]
+    }> = []
+    for (const viewport of [desktop, mobile]) {
+      await page.setViewportSize(viewport)
+      observations.push({
+        overflowFree: await page.locator("html").evaluate(
+          (element) => element.scrollWidth <= element.clientWidth,
+        ),
+        textCounts: await Promise.all(
+          expectedText.map((text) =>
+            page.getByText(text, { exact: true }).count()
+          ),
+        ),
+      })
+    }
+
+    expect(observations).toEqual([
+      { overflowFree: true, textCounts: expectedText.map(() => 1) },
+      { overflowFree: true, textCounts: expectedText.map(() => 1) },
+    ])
+    expect(consoleErrors).toEqual([])
+    expect(pageErrors).toEqual([])
+  })
+
+  test("falls back to frozen v1 sessions while Registry v2 rolls out", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    await page.route(
+      "**/api/registry/v2/marketplace/seller/sales/sessions",
+      async (route) => {
+        await route.fulfill({
+          body: JSON.stringify({
+            error: { code: "not_found", message: "Not found." },
+            ok: false,
+          }),
+          contentType: "application/json",
+          status: 404,
+        })
+      },
+    )
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    await openSellerConsole(page)
+
+    expect(await page.locator("[data-console-sessions] li").count()).toBe(1)
+    expect(
+      await page.locator("[data-console-sessions] .seller-pricing-facts").count(),
+    ).toBe(0)
+    expect(
+      harness.registryRequests.some((request) =>
+        request.path === "/v1/marketplace/seller/sales/sessions"
+      ),
+    ).toBe(true)
+  })
+
+  test("falls back to frozen v1 sessions while Registry v2 rolls out", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    await page.route(
+      "**/api/registry/v2/marketplace/seller/sales/sessions",
+      async (route) => {
+        await route.fulfill({
+          body: JSON.stringify({
+            error: { code: "not_found", message: "Not found." },
+            ok: false,
+          }),
+          contentType: "application/json",
+          status: 404,
+        })
+      },
+    )
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await authenticate(page)
+    await openSellerConsole(page)
+
+    expect(await page.locator("[data-console-sessions] li").count()).toBe(1)
+    expect(
+      await page.locator("[data-console-sessions] .seller-pricing-facts").count(),
+    ).toBe(0)
+    expect(
+      harness.registryRequests.some((request) =>
+        request.path === "/v1/marketplace/seller/sales/sessions"
+      ),
+    ).toBe(true)
   })
 
   test("opens payout from the seller header and restores trigger focus", async () => {
@@ -278,7 +446,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
                 ok: true,
               }
             }
-            if (path === "/v1/marketplace/seller/sales/sessions") {
+            if (path === "/v2/marketplace/seller/sales/sessions") {
               return {
                 asOf: "2026-08-20T12:00:00Z",
                 ok: true,
@@ -395,7 +563,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     }
     await page.route("**/api/registry/v1/auth/me", fulfillConsoleRequest)
     await page.route(
-      "**/api/registry/v1/marketplace/seller/sales/**",
+      "**/api/registry/*/marketplace/seller/sales/**",
       fulfillConsoleRequest,
     )
     await page.route(
@@ -466,7 +634,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     const page = await harness.newPage(desktop)
     const emptySessions = { asOf: "2026-08-20T12:00:00Z", ok: true, page: { nextCursor: null }, sessions: [] }
     const emptyEarnings = { asOf: "2026-08-20T12:00:00Z", currency: "USD", interval: "day", ok: true, openingCumulativeCredits: 0, points: [], window: { from: "2026-07-21", to: "2026-08-20" } }
-    await page.route("**/api/registry/v1/marketplace/seller/sales/**", async (route) => {
+    await page.route("**/api/registry/*/marketplace/seller/sales/**", async (route) => {
       const pathname = new URL(route.request().url()).pathname
       await route.fulfill({
         body: JSON.stringify(pathname.endsWith("sessions") ? emptySessions : emptyEarnings),
@@ -504,7 +672,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
   test("returns to the sign-in gate when a seller sales endpoint rejects the session", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
-    await page.route("**/api/registry/v1/marketplace/seller/sales/sessions", async (route) => {
+    await page.route("**/api/registry/v2/marketplace/seller/sales/sessions", async (route) => {
       await route.fulfill({ body: JSON.stringify({ error: { code: "unauthorized" }, ok: false }), contentType: "application/json", status: 401 })
     })
 
