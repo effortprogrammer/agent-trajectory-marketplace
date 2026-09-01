@@ -9,7 +9,7 @@
   <link rel="canonical" href="https://getatm.io/" />
   <link rel="preconnect" href="https://gateway.getatm.io" />
   <link rel="stylesheet" href="marketplace.f053fb2db4db159f7146d3129d7bc25005866951f5560aa985017020642c958b.css" />
-  <link rel="stylesheet" href="console.9b4bcda58f05950ff7e8037f862ae1d878915480cf056e15e7fb9e0d869fb451.css" />
+  <link rel="stylesheet" href="console.e24cc72b139c69c64a555b099acc951136460db69f58b2db27421038f8f2c5e1.css" />
 </head>
 <body class="marketplace-page no-js">
   <a class="skip-link" href="#main-content" data-testid="session-skip-link">Skip to live corpus</a>
@@ -103,25 +103,62 @@
     <section data-console-view class="seller-console" aria-labelledby="seller-console-title" hidden>
       <div class="seller-console-shell">
         <header class="seller-console-heading">
-          <p class="kicker">Earnings</p>
-          <h1 id="seller-console-title">Your sales, over time.</h1>
-          <p>See cumulative earnings and what each session earned.</p>
-          <span class="seller-account-chip" data-console-seller></span>
+          <div class="seller-console-heading-bar">
+            <p class="kicker">Earnings</p>
+            <button
+              class="signal-button seller-payout-launcher"
+              type="button"
+              aria-controls="seller-payout-dialog"
+              aria-haspopup="dialog"
+              data-payout-open
+              data-testid="seller-payout-button"
+            >Payout</button>
+          </div>
+          <div class="seller-console-heading-copy">
+            <h1 id="seller-console-title">Your sales, over time.</h1>
+            <p>See cumulative earnings and what each session earned.</p>
+          </div>
         </header>
+        <dialog
+          class="auth-gate seller-payout-dialog"
+          id="seller-payout-dialog"
+          aria-describedby="seller-payout-description"
+          aria-labelledby="seller-payout-title"
+          data-payout-dialog
+        >
+          <div class="auth-gate-panel seller-payout-dialog-panel">
+            <header class="auth-console-bar seller-payout-dialog-bar">
+              <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="auth-console-path seller-payout-dialog-path">ATM / payout</span>
+              <button
+                class="auth-close-button"
+                type="button"
+                aria-label="Close payout dialog"
+                data-payout-close
+                data-testid="seller-payout-close"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </header>
+            <div class="auth-panel-body seller-payout-dialog-body">
+              <p class="kicker">Seller payout</p>
+              <h2 id="seller-payout-title">Request payout</h2>
+              <p class="seller-payout-dialog-intro" id="seller-payout-description">Review your available balance and payout status.</p>
+              <div class="seller-payout-balance">
+                <span>Available balance</span>
+                <strong data-payout-balance>—</strong>
+              </div>
+              <div class="seller-payout" data-console-payout data-payout-state="loading">
+                <p class="seller-console-state">Loading payout eligibility...</p>
+              </div>
+            </div>
+          </div>
+        </dialog>
         <p class="sr-only" aria-live="polite" data-console-announcement></p>
         <p class="seller-console-state" role="status" aria-live="polite" data-console-state>Loading seller sales...</p>
         <section class="seller-panel seller-chart-panel" aria-label="Cumulative earnings">
-          <div class="seller-panel-heading"><h2>Cumulative earnings</h2><span data-console-total></span></div>
+          <div class="seller-panel-heading"><h2>Cumulative earnings</h2><span data-console-total hidden></span></div>
           <div class="seller-chart-wrap" data-console-chart></div>
-        </section>
-        <section class="seller-panel seller-payout-panel" aria-labelledby="seller-payout-title">
-          <div class="seller-panel-heading">
-            <h2 id="seller-payout-title">Payout request</h2>
-            <span data-payout-balance></span>
-          </div>
-          <div class="seller-payout" data-console-payout data-payout-state="loading">
-            <p class="seller-console-state">Loading payout eligibility...</p>
-          </div>
         </section>
         <section class="seller-panel" aria-label="Earnings by session">
           <div class="seller-panel-heading"><h2>Earnings by session</h2></div>
@@ -299,6 +336,6 @@
     </div>
   </footer>
 
-  <script type="module" src="marketplace.895eddcb33d3b6d4acc1e308b8416872a1aed87604d6eadb29d4144bef8bf685.js"></script>
+  <script type="module" src="marketplace.bc77a06401c327b52248fcd2373be90c7a724620fdcbb595d174c194c9a26d32.js"></script>
 </body>
 </html>

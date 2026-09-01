@@ -2,7 +2,7 @@ import {
   parseEarningsResponse,
   parseSessionsResponse,
 } from "./console-contract.19b879da9be9f44653c8d45a3ec7d48d70b20e9a033f2f0fd41caa59781c5837.js";
-import { mountPayoutConsole } from "./payout-console.d4e2484e0049f3da6fc5537a06279091f64a95888b9720412938ee823299e7e4.js";
+import { mountPayoutConsole } from "./payout-console.d9c1590b0d5b5333b4338e9abcc2d919207ead33a73af7dbcd37a88106d575b9.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const shortId = (id) => id.slice(0, 8);
@@ -79,9 +79,50 @@ export const mountSellerConsole = async ({
   const state = view.querySelector("[data-console-state]");
   const chart = view.querySelector("[data-console-chart]");
   const sessions = view.querySelector("[data-console-sessions]");
-  const seller = view.querySelector("[data-console-seller]");
   const total = view.querySelector("[data-console-total]");
   const payout = view.querySelector("[data-console-payout]");
+  const payoutDialog = view.querySelector("[data-payout-dialog]");
+  const payoutOpen = view.querySelector("[data-payout-open]");
+  const payoutClose = view.querySelector("[data-payout-close]");
+  let restorePayoutFocus = true;
+  const closePayoutDialog = (restoreFocus = true) => {
+    restorePayoutFocus = restoreFocus;
+    if (payoutDialog.open) payoutDialog.close();
+  };
+  const showConsoleLogin = () => {
+    closePayoutDialog(false);
+    showLogin();
+  };
+  payoutOpen.onclick = () => {
+    restorePayoutFocus = true;
+    if (!payoutDialog.open) payoutDialog.showModal();
+    payoutOpen.setAttribute("aria-expanded", "true");
+    document.body.classList.add("is-payout-open");
+    const focusTarget = payoutDialog.querySelector(
+      "[data-payout-request], [data-payout-cancel], [data-payout-refresh]",
+    ) ?? payoutClose;
+    focusTarget.focus({ preventScroll: true });
+  };
+  payoutClose.onclick = () => closePayoutDialog();
+  payoutDialog.onclick = (event) => {
+    if (event.target === payoutDialog) closePayoutDialog();
+  };
+  payoutDialog.oncancel = () => {
+    restorePayoutFocus = true;
+  };
+  payoutDialog.onclose = () => {
+    payoutOpen.setAttribute("aria-expanded", "false");
+    document.body.classList.remove("is-payout-open");
+    if (
+      restorePayoutFocus
+      && isCurrent()
+      && payoutOpen.isConnected
+      && payoutOpen.getClientRects().length > 0
+    ) {
+      payoutOpen.focus({ preventScroll: true });
+    }
+    restorePayoutFocus = true;
+  };
   const today = new Date(); const from = new Date(today); from.setUTCDate(from.getUTCDate() - 30);
   const day = (value) => value.toISOString().slice(0, 10);
   const headers = { authorization: `Bearer ${session.accessToken}` };
@@ -96,7 +137,12 @@ export const mountSellerConsole = async ({
     if (!isCurrent()) return;
     if (me?.ok !== true || typeof me.account?.accountId !== "string") throw new TypeError("Invalid Registry account response");
     const validatedSessions = parseSessionsResponse(sessionsBody); const earnings = parseEarningsResponse(earningsBody);
-    seller.textContent = me.account.accountId; total.textContent = `${formatCredits(earnings.points.at(-1)?.cumulativeNetCredits ?? earnings.openingCumulativeCredits)} cumulative`;
+    const cumulativeCredits = earnings.points.at(-1)?.cumulativeNetCredits
+      ?? earnings.openingCumulativeCredits;
+    total.hidden = cumulativeCredits === 0;
+    total.textContent = cumulativeCredits === 0
+      ? ""
+      : `${formatCredits(cumulativeCredits)} cumulative`;
     renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
     state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;
     await mountPayoutConsole({
@@ -104,11 +150,11 @@ export const mountSellerConsole = async ({
       requestJson,
       root: payout,
       session,
-      showLogin,
+      showLogin: showConsoleLogin,
     });
   } catch (error) {
     if (!isCurrent()) return;
-    if (error?.status === 401) { showLogin(); return; }
+    if (error?.status === 401) { showConsoleLogin(); return; }
     state.hidden = false; state.dataset.state = "error"; state.textContent = "Seller sales are unavailable. Try again shortly."; announcement.textContent = "Seller console could not load.";
   }
 };
