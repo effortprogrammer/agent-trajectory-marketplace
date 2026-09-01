@@ -464,6 +464,34 @@ describe("marketplace candidate bundle process boundary", () => {
     ].toSorted());
   });
 
+  test("Given an unsupported positive-model trace, When explicit bundle runs with a private review cache, Then no sidecar commits before admission fails", () => {
+    // Given: one explicit trace whose only usage is positive but unsupported, and an unused private review cache.
+    const parent = fixtureRoot();
+    const root = join(parent, "candidate-workspace");
+    const cacheRoot = join(parent, "private-review-cache");
+    mkdirSync(root);
+    writeFileSync(join(root, "candidate.atf.json"), traceBytes("codex", "unsupported", ["unsupported-model"]));
+    const output = join(root, "candidate.zip");
+
+    // When: the real CLI selects the trace through the private review path.
+    const result = runCli([
+      "marketplace", "seller", "candidate", "bundle",
+      "--root", root, "--out", output, "--trace", "candidate.atf.json",
+      "--review-cache", cacheRoot, "--review-policy", "policy-v1",
+    ]);
+
+    // Then: compensated-model admission is the observable failure, no candidate ZIP exists,
+    // and no committed JSON sidecar remains in the private review cache.
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stdout)).toBe("");
+    expect(decoder.decode(result.stderr)).toBe('{"error":"unsupported_model"}\n');
+    expect(existsSync(output)).toBe(false);
+    const committedSidecars = existsSync(cacheRoot)
+      ? Array.from(new Bun.Glob("*.json").scanSync({ cwd: cacheRoot }))
+      : [];
+    expect(committedSidecars).toEqual([]);
+  });
+
   test("Given an unresponsive child, When the PTY deadline expires, Then it is killed and reaped", () => {
     // Given
     const startedAt = performance.now();

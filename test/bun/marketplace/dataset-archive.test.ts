@@ -191,6 +191,34 @@ describe("selected trace dataset archive", () => {
     expect(rejectedCodes).toEqual(invalid.map(() => "unsupported_model"));
   });
 
+  test("admits a latency-only companion when compensated usage is archive-wide", () => {
+    // Given: one artifact with the selection's only positive source-attested compensated
+    // usage, beside a standalone latency-only companion with no positive tokens.
+    const attributed = frozenTrace(
+      "b1",
+      new TextDecoder().decode(atfWithUsage("codex", [
+        { inputTokens: 3, model: "claude-fable-5", outputTokens: 2 },
+      ])),
+    )
+    const latencyOnly = frozenTrace(
+      "b2",
+      new TextDecoder().decode(atfWithUsage("codex", [
+        { latencyMs: 9, model: "runtime-only" },
+      ])),
+    )
+
+    // When: the whole selection is assembled into one dataset archive.
+    const archive = buildDatasetArchive([attributed, latencyOnly])
+
+    // Then: the nonempty compensated-usage requirement is satisfied archive-wide,
+    // so the latency-only companion is admitted as an artifact of the same archive.
+    expect([...localEntries(archive).keys()]).toEqual([
+      "dataset-manifest.json",
+      `traces/${attributed.selector}.atf.json`,
+      `traces/${latencyOnly.selector}.atf.json`,
+    ])
+  })
+
   test("stores unchanged credential-free bytes in opaque paths when input order differs", () => {
     // Given: selected frozen traces supplied in reverse selector order.
     const first = frozenTrace("1", new TextDecoder().decode(validAtf("codex")));

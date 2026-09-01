@@ -6,7 +6,10 @@ import {
   datasetManifestPath,
   encodeDatasetManifest,
 } from "./archive-contract";
-import { hasOnlyCompensatedModelUsage } from "./compensated-model-policy";
+import {
+  assessCompensatedUsage,
+  type CompensatedUsageAssessment,
+} from "./compensated-model-policy";
 import { MarketplaceError } from "./error";
 import { ResidualSecretScanError, assertNoResidualSecrets } from "./residual-secret-scan";
 import type { FrozenTrace } from "./session-contract";
@@ -66,11 +69,16 @@ export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
   return Buffer.from(JSON.stringify(sanitized.data), "utf8");
 };
 
-const hasCompensatedUsage = (bytes: Buffer): boolean => {
+const compensatedUsageAssessment = (
+  bytes: Buffer,
+): CompensatedUsageAssessment => {
   const parsed = harnessTraceDocumentSchema.safeParse(
     JSON.parse(bytes.toString("utf8")),
   );
-  return parsed.success && hasOnlyCompensatedModelUsage(parsed.data);
+  if (!parsed.success) {
+    return Object.freeze({ hasOnlySupportedUsage: false, hasPositiveUsage: false });
+  }
+  return assessCompensatedUsage(parsed.data);
 };
 
 export const sanitizedArtifactDigest = (sourceBytes: Uint8Array): Readonly<{ byteCount: number; sha256: string }> => {
@@ -120,7 +128,11 @@ export const inspectTraceAdmission = (
     }
     throw error;
   }
-  if (!hasCompensatedUsage(bytes)) {
+  const usageAssessment = compensatedUsageAssessment(bytes);
+  if (
+    !usageAssessment.hasOnlySupportedUsage
+    || !usageAssessment.hasPositiveUsage
+  ) {
     return Object.freeze({
       reason: "unsupported_model",
       status: "blocked",
@@ -141,6 +153,7 @@ export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
     left.selector < right.selector ? -1 : left.selector > right.selector ? 1 : 0,
   );
   const entries: StoredZipEntry[] = [];
+  let hasPositiveUsage = false;
   const artifacts = traces.map((trace) => {
     if (selectors.has(trace.selector) || hashes.has(trace.hash)) {
       throw new MarketplaceError("duplicate_trace");
@@ -164,9 +177,11 @@ export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
       }
       throw error;
     }
-    if (!hasCompensatedUsage(bytes)) {
+    const usageAssessment = compensatedUsageAssessment(bytes);
+    if (!usageAssessment.hasOnlySupportedUsage) {
       throw new MarketplaceError("unsupported_model");
     }
+    hasPositiveUsage ||= usageAssessment.hasPositiveUsage;
     const sha256 = digest(bytes);
     if (bytes.length === 0 || bytes.length > datasetArchivePolicy.maxTraceBytes) {
       throw new MarketplaceError("invalid_bundle_request");
@@ -175,6 +190,7 @@ export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
     entries.push({ name: path, data: bytes });
     return { path, label: trace.selector, sha256, byteCount: bytes.length };
   });
+  if (!hasPositiveUsage) throw new MarketplaceError("unsupported_model");
 
   try {
     const manifest = encodeDatasetManifest({ formatVersion: 1, artifacts });

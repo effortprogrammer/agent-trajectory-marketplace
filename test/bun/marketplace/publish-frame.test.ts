@@ -6,6 +6,7 @@ import { join } from "node:path"
 import {
   PublishBundleError,
   parsePublishBundle,
+  parsePublishBundleForWireContract,
   readPublishBundle,
 } from "../../../src/marketplace/publish-bundle"
 import {
@@ -97,6 +98,32 @@ describe("publish frame", () => {
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
+  })
+
+  it("refuses to frame a wire-contract bundle on the publish-client capability path", () => {
+    // Given: frozen wire bytes whose archive fails compensated-model business admission.
+    const archive = Buffer.from(wireArchive)
+    const strict = (): void => {
+      parsePublishBundle(archive)
+    }
+    expect(strict).toThrow(PublishBundleError)
+    try {
+      strict()
+    } catch (error) {
+      expect(error).toBeInstanceOf(PublishBundleError)
+      if (error instanceof PublishBundleError) expect(error.code).toBe("unsupported_model")
+    }
+    const bundle = parsePublishBundleForWireContract(archive)
+
+    // When: the normal publish-client capability path frames the wire-admitted bundle.
+    const frame = (): void => {
+      // Invoke the untyped JavaScript boundary: TypeScript rejects this direct call.
+      Reflect.apply(createPublishFrameBody, undefined, [bundle])
+    }
+
+    // Then: framing must not consume bundles admitted without the compensated-model
+    // policy; only full business admission may hold publish capability.
+    expect(frame).toThrow(PublishWireContractError)
   })
 
   it.each([

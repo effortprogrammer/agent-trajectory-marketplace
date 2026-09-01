@@ -26,6 +26,7 @@ const archiveForTrace = (trace: Buffer): Buffer => {
 
 type UsageFixture = Readonly<{
   readonly inputTokens?: number
+  readonly latencyMs?: number
   readonly model?: string
   readonly outputTokens?: number
 }>
@@ -50,10 +51,27 @@ const traceForUsages = (usages: readonly UsageFixture[]): Buffer =>
           ...(usage.outputTokens === undefined
             ? {}
             : { outputTokens: usage.outputTokens }),
+          ...(usage.latencyMs === undefined ? {} : { latencyMs: usage.latencyMs }),
         },
       },
     })),
   }), "utf8")
+
+const archiveForTraces = (traces: readonly Buffer[]): Buffer => {
+  const artifacts = traces.map((trace, index) => {
+    const label = `s-${index.toString(16).padStart(64, "0")}`
+    return {
+      byteCount: trace.length,
+      label,
+      path: `traces/${label}.atf.json`,
+      sha256: createHash("sha256").update(trace).digest("hex"),
+    }
+  })
+  return writeDatasetZip([
+    { data: encodeDatasetManifest({ artifacts, formatVersion: 1 }), name: "dataset-manifest.json" },
+    ...artifacts.map((artifact, index) => ({ data: traces[index], name: artifact.path })),
+  ])
+}
 
 const validArchive = (): Buffer => archiveForTrace(traceForUsages([{
   inputTokens: 2,
@@ -474,6 +492,26 @@ describe("publish bundle ZIP integrity", () => {
     // Then: only fully supported stored bundles cross the local publish boundary.
     expect(accepted.archive.byteLength).toBeGreaterThan(0)
     expect(rejectedCodes).toEqual(invalid.map(() => "unsupported_model"))
+  })
+
+  test("admits stored bundles whose compensated usage is archive-wide", () => {
+    // Given: a stored two-artifact bundle where one artifact carries the archive's only
+    // positive source-attested compensated usage and its standalone latency-only
+    // companion carries none.
+    const root = mkdtempSync(join(tmpdir(), "trajectory-publish-archive-wide-"))
+    roots.push(root)
+    const path = join(root, "candidate.zip")
+    writeFileSync(path, archiveForTraces([
+      traceForUsages([{ inputTokens: 3, model: "claude-fable-5", outputTokens: 2 }]),
+      traceForUsages([{ latencyMs: 9, model: "runtime-only" }]),
+    ]))
+
+    // When: the public bundle reader admits the stored bundle from disk.
+    const bundle = readPublishBundle(path)
+
+    // Then: the nonempty compensated-usage requirement holds archive-wide, so the
+    // latency-only companion does not fail its own artifact admission.
+    expect(bundle.artifacts).toHaveLength(2)
   })
 
   test("rejects an existing bundle whose JSON-escaped payload decodes to a credential", () => {
