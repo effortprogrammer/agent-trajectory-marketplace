@@ -47,6 +47,9 @@ export const inferenceCreditKeySchema = z.object({
 }).strict().superRefine((value, context) => {
   const revoked = value.status === "revoked"
   if (revoked !== (value.revokedAt !== null)) context.addIssue({ code: "custom", message: "status/revokedAt mismatch", path: ["revokedAt"] })
+  if (value.requestCeilingCredits > value.budgetCredits || value.usedCredits > value.budgetCredits) {
+    context.addIssue({ code: "custom", message: "key budget mismatch" })
+  }
 })
 
 export const inferenceCreditKeyCreateRequestSchema = z.object({
@@ -55,12 +58,15 @@ export const inferenceCreditKeyCreateRequestSchema = z.object({
   requestCeilingCredits: positiveSafeInteger,
   budgetCredits: positiveSafeInteger,
   expiresAt: timestamp,
-}).strict()
+}).strict().superRefine((value, context) => {
+  if (value.requestCeilingCredits > value.budgetCredits) context.addIssue({ code: "custom", message: "key budget mismatch" })
+})
 
 export const inferenceCreditKeyCreateResponseSchema = z.object({
   ok: z.literal(true),
   key: inferenceCreditKeySchema,
-  credentialDelivery: z.literal("once"),
+  credentialDelivery: z.literal("responseBody"),
+  credential: z.string().min(1).max(4096),
 }).strict()
 
 export const inferenceCreditKeyListResponseSchema = z.object({
@@ -86,7 +92,11 @@ export const inferenceCreditQuoteResponseSchema = z.object({
     expiresAt: timestamp,
     createdAt: timestamp,
   }).strict(),
-}).strict()
+}).strict().superRefine((value, context) => {
+  if (Date.parse(value.quote.expiresAt) <= Date.parse(value.quote.createdAt)) {
+    context.addIssue({ code: "custom", message: "quote expiry mismatch", path: ["quote", "expiresAt"] })
+  }
+})
 
 export const inferenceCreditRequestCreateSchema = z.object({ quoteId, idempotencyKey }).strict()
 const usage = z.object({ inputTokens: safeInteger, outputTokens: safeInteger }).strict()
@@ -103,6 +113,9 @@ export const inferenceCreditRequestSchema = z.object({
   createdAt: timestamp,
   finalizedAt: timestamp.nullable(),
 }).strict().superRefine((value, context) => {
+  if (value.finalDebitCredits !== null && value.finalDebitCredits > value.ceilingCredits) {
+    context.addIssue({ code: "custom", message: "final debit mismatch", path: ["finalDebitCredits"] })
+  }
   switch (value.status) {
     case "final":
       if (value.finalDebitCredits === null || value.usage === null || value.finalizedAt === null) context.addIssue({ code: "custom", message: "finality mismatch" })
@@ -140,7 +153,7 @@ export const inferenceCreditErrorSchema = z.object({
 
 export type InferenceCreditKey = z.infer<typeof inferenceCreditKeySchema>
 export type InferenceCreditRequest = z.infer<typeof inferenceCreditRequestSchema>
-export type InferenceCreditDocumentKind = "key-create-request" | "key-create" | "key-list" | "key-revoke" | "quote-request" | "quote" | "request" | "cancel" | "probe" | "usage" | "privacy" | "error"
+export type InferenceCreditDocumentKind = "key-create-request" | "key-create" | "key-list" | "key-revoke" | "quote-request" | "quote" | "request-create" | "request" | "cancel" | "probe" | "usage" | "privacy" | "error"
 export type InferenceCreditDocument =
   | z.infer<typeof inferenceCreditKeyCreateRequestSchema>
   | z.infer<typeof inferenceCreditKeyCreateResponseSchema>

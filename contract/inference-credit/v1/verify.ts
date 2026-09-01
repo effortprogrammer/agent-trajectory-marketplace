@@ -15,13 +15,13 @@ import { parseAdmissionJson } from "../../../src/marketplace/json-preflight"
 
 const expectedFixtureFiles = [
   "key-create-request.json", "key-created-201.json", "key-list-200.json", "key-revoked-200.json",
-  "quote-request.json", "quote-200.json", "request-202.json", "request-stream-final.sse", "cancel-200.json",
+  "quote-request.json", "quote-200.json", "request-create.json", "request-202.json", "request-stream-final.sse", "cancel-200.json",
   "probe-200.json", "usage-200.json", "privacy-200.json", "error-400.json", "error-401.json", "error-403.json",
   "error-404.json", "error-409-quote-expired.json", "error-409-conflict.json",
 ] as const
 const fixtureKinds = [
-  "key-create-request", "key-create", "key-list", "key-revoke", "quote-request", "quote", "request",
-  "stream-final", "cancel", "probe", "usage", "privacy", "error", "error", "error", "error", "error", "error",
+  "key-create-request", "key-create", "key-list", "key-revoke", "quote-request", "quote", "request-create",
+  "request", "stream-final", "cancel", "probe", "usage", "privacy", "error", "error", "error", "error", "error", "error",
 ] as const
 const expectedDirectoryFiles = [...expectedFixtureFiles, "manifest.json", "verify.ts"].sort()
 

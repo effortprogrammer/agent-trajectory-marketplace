@@ -28,6 +28,7 @@ const statusIsExpected = (kind: InferenceCreditDocumentKind, status: number): bo
   switch (kind) {
     case "key-create-request":
     case "quote-request":
+    case "request-create":
       return status === 0
     case "key-create":
       return status === 201
@@ -77,8 +78,9 @@ const schemaFor = (kind: InferenceCreditDocumentKind): z.ZodType<InferenceCredit
       return inferenceCreditQuoteRequestSchema
     case "quote":
       return inferenceCreditQuoteResponseSchema
-    case "request":
+    case "request-create":
       return inferenceCreditRequestCreateSchema
+    case "request":
     case "cancel":
     case "probe":
       return inferenceCreditRequestResponseSchema
@@ -103,7 +105,9 @@ const parseJson = (bytes: Uint8Array): unknown => {
 const encodeBody = (kind: InferenceCreditDocumentKind, input: unknown): Buffer => {
   const parsed = schemaFor(kind).safeParse(input)
   if (!parsed.success) throw new InferenceCreditContractError()
-  return Buffer.from(JSON.stringify(parsed.data), "utf8")
+  const encoded = Buffer.from(JSON.stringify(parsed.data), "utf8")
+  if (encoded.byteLength > inferenceCreditMaximumDocumentBytes) throw new InferenceCreditContractError()
+  return encoded
 }
 
 export const encodeInferenceCreditDocument = (kind: InferenceCreditDocumentKind, input: unknown): Buffer => encodeBody(kind, input)
@@ -125,7 +129,9 @@ const finalStreamSuffix = "\n\ndata: [DONE]\n"
 export const encodeInferenceCreditFinalStream = (request: InferenceCreditRequest): Buffer => {
   if (request.status !== "final" && request.status !== "cancelled") throw new InferenceCreditContractError()
   const body = encodeBody("cancel", { ok: true, request })
-  return Buffer.from(`${finalStreamPrefix}${body.toString("utf8")}${finalStreamSuffix}`, "utf8")
+  const stream = Buffer.from(`${finalStreamPrefix}${body.toString("utf8")}${finalStreamSuffix}`, "utf8")
+  if (stream.byteLength > inferenceCreditMaximumDocumentBytes) throw new InferenceCreditContractError()
+  return stream
 }
 
 export const parseInferenceCreditFinalStream = (bytes: Uint8Array): { readonly request: InferenceCreditRequest } => {
