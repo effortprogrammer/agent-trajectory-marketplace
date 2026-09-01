@@ -1,0 +1,1 @@
+{"ok":true,"key":{"keyId":"ikey-0000000000000001","status":"active","scopes":["inference:quote","inference:request","inference:usage"],"models":["claude-fable-5"],"requestCeilingCredits":32,"budgetCredits":200,"usedCredits":0,"expiresAt":"2030-01-02T03:04:05Z","createdAt":"2030-01-01T03:04:05Z","revokedAt":null},"credentialDelivery":"once"}

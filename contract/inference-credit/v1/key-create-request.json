@@ -1,0 +1,1 @@
+{"scopes":["inference:quote","inference:request","inference:usage"],"models":["claude-fable-5"],"requestCeilingCredits":32,"budgetCredits":200,"expiresAt":"2030-01-02T03:04:05Z"}
