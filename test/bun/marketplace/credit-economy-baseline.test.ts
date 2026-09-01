@@ -4,13 +4,15 @@ import { join } from "node:path"
 import { describe, expect, it } from "bun:test"
 
 import {
+  parsePayoutRequestResponse,
   payoutRequestDetailSchema,
   payoutRequestEnvelopeSchema,
   payoutRequestStatuses,
-  parsePayoutRequestResponse,
 } from "../../../src/marketplace/payout-request-contract"
-// @ts-expect-error Browser JavaScript contract module is exercised directly by Bun.
-import * as consoleContract from "../../../web/console-contract.js"
+import {
+  SellerSalesContractError,
+  parseSellerSessionsResponse,
+} from "../../../src/marketplace/seller-sales-contract"
 
 const sha256 = (bytes: Buffer): string =>
   createHash("sha256").update(bytes).digest("hex")
@@ -131,40 +133,41 @@ const statusFixtures: ReadonlyArray<readonly [string, number]> = [
   ["withdrawn-200.json", 200],
 ]
 
-const sessionPricingPayload = (status: string): unknown => ({
-  asOf: "2026-08-20T12:00:00Z",
-  ok: true,
-  page: { nextCursor: null },
-  sessions: [
-    {
-      acceptedTokens: 1_000_000,
-      accruedCents: 200,
-      askCredits: 125,
-      datasetId: "seller-dataset-baseline",
-      earnedCredits: 200,
-      listedAt: "2026-08-19T10:00:00Z",
-      model: "claude-fable-5",
-      modelTokenPricing: [
-        {
-          acceptedTokens: 1_000_000,
-          accruedCents: 200,
-          model: "claude-fable-5",
-          rateCentsPerMillion: 200,
-          status,
+const sessionsJson = (status: string): string =>
+  JSON.stringify({
+    asOf: "2026-08-20T12:00:00Z",
+    ok: true,
+    page: { nextCursor: null },
+    sessions: [
+      {
+        acceptedTokens: 1_000_000,
+        accruedCents: 200,
+        askCredits: 125,
+        datasetId: "seller-dataset-baseline",
+        earnedCredits: 200,
+        listedAt: "2026-08-19T10:00:00Z",
+        model: "claude-fable-5",
+        modelTokenPricing: [
+          {
+            acceptedTokens: 1_000_000,
+            accruedCents: 200,
+            model: "claude-fable-5",
+            rateCentsPerMillion: 200,
+            status,
+          },
+        ],
+        rateCentsPerMillion: 200,
+        saleStatus: {
+          changedAt: "2026-08-20T11:30:00Z",
+          exception: null,
+          listingCycleId: "22222222-2222-4222-8222-222222222222",
+          stage: "sold",
         },
-      ],
-      rateCentsPerMillion: 200,
-      saleStatus: {
-        changedAt: "2026-08-20T11:30:00Z",
-        exception: null,
-        listingCycleId: "22222222-2222-4222-8222-222222222222",
-        stage: "sold",
+        sessionId: "11111111-1111-4111-8111-111111111111",
+        soldAt: "2026-08-20T11:30:00Z",
       },
-      sessionId: "11111111-1111-4111-8111-111111111111",
-      soldAt: "2026-08-20T11:30:00Z",
-    },
-  ],
-})
+    ],
+  })
 
 const manifestDigests = async (
   root: string,
@@ -265,16 +268,16 @@ describe("released credit economy baseline (plan Todo 5)", () => {
     ).toThrow()
   })
 
-  it("pins the seller console pricing status vocabulary to pending or verified", () => {
-    const { parseSessionsResponse, SellerSalesContractError } = consoleContract as {
-      parseSessionsResponse: (value: unknown) => unknown
-      SellerSalesContractError: new () => Error
-    }
+  it("pins the seller pricing status vocabulary to pending or verified", () => {
+    const parseSessionsJson = (json: string) =>
+      parseSellerSessionsResponse(JSON.parse(json))
 
-    expect(parseSessionsResponse(sessionPricingPayload("verified"))).toBeTruthy()
-    expect(parseSessionsResponse(sessionPricingPayload("pending"))).toBeTruthy()
+    const verified = parseSessionsJson(sessionsJson("verified"))
+    const pending = parseSessionsJson(sessionsJson("pending"))
+    expect(verified.sessions[0]?.modelTokenPricing[0]?.status).toBe("verified")
+    expect(pending.sessions[0]?.modelTokenPricing[0]?.status).toBe("pending")
     for (const unknownStatus of ["swept", "accrued", ""]) {
-      expect(() => parseSessionsResponse(sessionPricingPayload(unknownStatus))).toThrow(
+      expect(() => parseSessionsJson(sessionsJson(unknownStatus))).toThrow(
         SellerSalesContractError,
       )
     }
