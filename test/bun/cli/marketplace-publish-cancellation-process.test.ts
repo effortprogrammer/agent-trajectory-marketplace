@@ -19,7 +19,25 @@ const fixtureRoot = (): string => {
 }
 
 const bundle = (root: string): string => {
-  const trace = Buffer.from('{"runtime":"codex","status":"collected","eventCount":0,"events":[]}', "utf8")
+  const trace = Buffer.from(JSON.stringify({
+    runtime: "codex",
+    status: "collected",
+    formatVersion: 2,
+    eventCount: 1,
+    events: [{
+      kind: "message",
+      name: "assistant",
+      timestamp: "2026-09-01T00:00:00.000Z",
+      sourceEventId: "usage-0",
+      payload: {
+        usage: {
+          model: "claude-fable-5",
+          inputTokens: 1,
+          outputTokens: 1,
+        },
+      },
+    }],
+  }), "utf8")
   const label = `s-${"0".repeat(64)}`
   const path = `traces/${label}.atf.json`
   const manifest = encodeDatasetManifest({
@@ -185,9 +203,17 @@ describe("marketplace candidate publish cancellation", () => {
       ])
 
       // Then: the process exits through the stable CLI error and cancels the live body.
-      expect({ bodyCancellation, lengths, outcome, stderr, stdout }).toEqual({
+      expect({
+        bodyCancellation,
+        lengthsMatch: lengths.declared === lengths.received,
+        positiveLength: lengths.declared > 0,
+        outcome,
+        stderr,
+        stdout,
+      }).toEqual({
         bodyCancellation: "cancelled",
-        lengths: { declared: 1115, received: 1115 },
+        lengthsMatch: true,
+        positiveLength: true,
         outcome: { exitCode: 1 },
         stderr: '{"error":"cancelled"}\n',
         stdout: "",

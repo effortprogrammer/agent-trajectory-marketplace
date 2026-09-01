@@ -82,12 +82,31 @@ const fixtureRoot = (): string => {
   return root;
 };
 
-const traceBytes = (runtime: string, request: string): Uint8Array => new TextEncoder().encode(JSON.stringify({
+const traceBytes = (
+  runtime: string,
+  request: string,
+  models: readonly (string | undefined)[] = ["claude-fable-5"],
+): Uint8Array => new TextEncoder().encode(JSON.stringify({
   runtime,
   status: "collected",
   formatVersion: 2,
-  eventCount: 1,
-  events: [{ kind: "function_enter", name: "turn", payload: { role: "user", content: request } }],
+  eventCount: Math.max(models.length, 1),
+  events: models.length === 0
+    ? [{ kind: "function_enter", name: "turn", payload: { role: "user", content: request } }]
+    : models.map((model, index) => ({
+      kind: "function_enter",
+      name: "turn",
+      timestamp: `2026-09-01T00:00:0${index}.000Z`,
+      sourceEventId: `usage-${index}`,
+      payload: {
+        ...(index === 0 ? { role: "user", content: request } : {}),
+        usage: {
+          ...(model === undefined ? {} : { model }),
+          inputTokens: 1,
+          outputTokens: 1,
+        },
+      },
+    })),
 }));
 
 const selectorFor = (relativePath: string): string =>
@@ -120,6 +139,45 @@ afterEach(() => {
 });
 
 describe("marketplace candidate bundle process boundary", () => {
+  test("Given non-compensated model traces, When explicit bundle runs, Then it writes nothing", () => {
+    // Given: every model-policy rejection class at the real CLI boundary.
+    const cases = [
+      ["mixed", ["claude-fable-5", "unsupported-model"]],
+      ["unsupported", ["unsupported-model"]],
+      ["missing", [undefined]],
+      ["no-usage", []],
+    ] as const;
+    const root = fixtureRoot();
+    const invocations = cases.map(([name, models]) => {
+      const trace = `${name}.atf.json`;
+      const output = join(root, `${name}.zip`);
+      writeFileSync(join(root, trace), traceBytes("codex", name, models));
+      return {
+        output,
+        result: runCli([
+          "marketplace", "seller", "candidate", "bundle",
+          "--root", root, "--out", output, "--trace", trace,
+        ]),
+      };
+    });
+
+    // When: each unsupported selection attempts to become a candidate ZIP.
+    const observations = invocations.map(({ output, result }) => ({
+      exitCode: result.exitCode,
+      outputExists: existsSync(output),
+      stderr: decoder.decode(result.stderr),
+      stdout: decoder.decode(result.stdout),
+    }));
+
+    // Then: every case fails with one actionable code and no output artifact.
+    expect(observations).toEqual(cases.map(() => ({
+      exitCode: 1,
+      outputExists: false,
+      stderr: '{"error":"unsupported_model"}\n',
+      stdout: "",
+    })));
+  });
+
   test("Given explicit root-relative traces, When non-TTY bundle runs, Then only exact selected bytes enter the ZIP", () => {
     // Given
     const root = fixtureRoot();

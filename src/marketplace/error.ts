@@ -15,6 +15,7 @@ export const marketplaceErrorCodes = [
   "invalid_bundle_request",
   "invalid_deny_policy",
   "denied_selection",
+  "unsupported_model",
   "snapshot_too_large",
   "unsupported_platform",
 ] as const;

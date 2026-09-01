@@ -1,25 +1,21 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
 import { createServer } from "node:net"
 import type { AddressInfo, Server, Socket } from "node:net"
 
 import {
-  parsePublishBundle,
-} from "../../../src/marketplace/publish-bundle"
-import {
   createPublishClient,
   PublishClientError,
 } from "../../../src/marketplace/publish-client"
-import { createPublishFrameBody, parsePublishFrame } from "../../../src/marketplace/publish-frame"
+import { createPublishFrameBody } from "../../../src/marketplace/publish-frame"
+import {
+  compensatedPublishBundle,
+} from "../fixtures/compensated-publish-bundle"
 
 const servers: Bun.Server<undefined>[] = []
 const tcpServers: Server[] = []
 const tcpSockets = new Set<Socket>()
 
-const validBundle = () => {
-  const fixture = parsePublishFrame(readFileSync("contract/publish-wire/v1/candidate-valid.frame"))
-  return parsePublishBundle(Buffer.from(fixture.archive))
-}
+const validBundle = compensatedPublishBundle
 
 const serve = (fetch: (request: Request) => Response | Promise<Response>): Bun.Server<undefined> => {
   const server = Bun.serve({ fetch, hostname: "127.0.0.1", port: 0 })

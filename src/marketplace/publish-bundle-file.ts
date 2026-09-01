@@ -5,7 +5,11 @@ import { datasetArchivePolicy } from "./archive-contract"
 
 export class PublishBundleError extends Error {
   readonly name = "PublishBundleError"
-  constructor(readonly code: "invalid_bundle_request") { super(code) }
+  constructor(
+    readonly code: "invalid_bundle_request" | "unsupported_model",
+  ) {
+    super(code)
+  }
 }
 
 export type PublishBundleReadOptions = Readonly<{ readonly afterInitialStat?: () => void }>

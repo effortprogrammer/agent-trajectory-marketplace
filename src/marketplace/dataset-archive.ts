@@ -6,6 +6,7 @@ import {
   datasetManifestPath,
   encodeDatasetManifest,
 } from "./archive-contract";
+import { hasOnlyCompensatedModelUsage } from "./compensated-model-policy";
 import { MarketplaceError } from "./error";
 import { ResidualSecretScanError, assertNoResidualSecrets } from "./residual-secret-scan";
 import type { FrozenTrace } from "./session-contract";
@@ -65,6 +66,13 @@ export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
   return Buffer.from(JSON.stringify(sanitized.data), "utf8");
 };
 
+const hasCompensatedUsage = (bytes: Buffer): boolean => {
+  const parsed = harnessTraceDocumentSchema.safeParse(
+    JSON.parse(bytes.toString("utf8")),
+  );
+  return parsed.success && hasOnlyCompensatedModelUsage(parsed.data);
+};
+
 export const sanitizedArtifactDigest = (sourceBytes: Uint8Array): Readonly<{ byteCount: number; sha256: string }> => {
   const bytes = sanitizedTraceBytes(sourceBytes);
   return Object.freeze({ byteCount: bytes.byteLength, sha256: digest(bytes) });
@@ -74,7 +82,11 @@ export type ArtifactAdmission =
   | Readonly<{ readonly status: "ready" }>
   | Readonly<{
     readonly status: "blocked";
-    readonly reason: "archive_policy" | "residual_secret" | "sanitization_failed";
+    readonly reason:
+      | "archive_policy"
+      | "residual_secret"
+      | "sanitization_failed"
+      | "unsupported_model";
   }>;
 
 export const inspectTraceAdmission = (
@@ -88,7 +100,12 @@ export const inspectTraceAdmission = (
     bytes = sanitizedTraceBytes(trace.bytes);
   } catch (error) {
     if (error instanceof MarketplaceError) {
-      return Object.freeze({ reason: "sanitization_failed", status: "blocked" });
+      return Object.freeze({
+        reason: error.code === "unsupported_model"
+          ? "unsupported_model"
+          : "sanitization_failed",
+        status: "blocked",
+      });
     }
     throw error;
   }
@@ -102,6 +119,12 @@ export const inspectTraceAdmission = (
       return Object.freeze({ reason: "residual_secret", status: "blocked" });
     }
     throw error;
+  }
+  if (!hasCompensatedUsage(bytes)) {
+    return Object.freeze({
+      reason: "unsupported_model",
+      status: "blocked",
+    });
   }
   return Object.freeze({ status: "ready" });
 };
@@ -140,6 +163,9 @@ export function buildDatasetArchive(selected: readonly FrozenTrace[]): Buffer {
         throw new MarketplaceError("invalid_bundle_request");
       }
       throw error;
+    }
+    if (!hasCompensatedUsage(bytes)) {
+      throw new MarketplaceError("unsupported_model");
     }
     const sha256 = digest(bytes);
     if (bytes.length === 0 || bytes.length > datasetArchivePolicy.maxTraceBytes) {

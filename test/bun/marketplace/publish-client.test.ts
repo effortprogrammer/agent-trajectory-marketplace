@@ -1,16 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
-
-import { parsePublishBundle } from "../../../src/marketplace/publish-bundle"
 import { createPublishClient, PublishClientError } from "../../../src/marketplace/publish-client"
-import { parsePublishFrame } from "../../../src/marketplace/publish-frame"
+import { encodeCandidateJson } from "../../../src/marketplace/publish-contract"
+import {
+  compensatedPublishBundle,
+} from "../fixtures/compensated-publish-bundle"
 
 const servers: Bun.Server<undefined>[] = []
 
-const validRequest = () => {
-  const fixture = parsePublishFrame(readFileSync("contract/publish-wire/v1/candidate-valid.frame"))
-  return { bundle: parsePublishBundle(Buffer.from(fixture.archive)) }
-}
+const validRequest = () => ({ bundle: compensatedPublishBundle() })
 
 const serve = (fetch: (request: Request) => Response | Promise<Response>): Bun.Server<undefined> => {
   const server = Bun.serve({ fetch, hostname: "127.0.0.1", port: 0 })
@@ -26,6 +23,9 @@ describe("candidate publish client", () => {
   test("CLI API key wins without leaking any credential sentinel", async () => {
     // Given: a loopback registry and three intentionally different credentials.
     const { bundle } = validRequest()
+    const expectedLength = 4
+      + encodeCandidateJson(bundle.candidate).byteLength
+      + bundle.archive.byteLength
     const sentinels = ["flag-sentinel", "environment-sentinel", "stored-sentinel"]
     const submissionId = `sub_${"0".repeat(26)}`
     const authorizations: string[] = []
@@ -59,7 +59,7 @@ describe("candidate publish client", () => {
     }).toEqual({
       authorization: "Bearer flag-sentinel",
       count: 1,
-      lengths: [{ declared: 1115, received: 1115 }],
+      lengths: [{ declared: expectedLength, received: expectedLength }],
       receipt: expect.objectContaining({ protocolVersion: 1, status: "accepted" }),
     })
     expect(JSON.stringify({ authorizations, receipt })).not.toContain(sentinels[1] ?? "")

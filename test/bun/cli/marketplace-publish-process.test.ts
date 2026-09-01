@@ -18,8 +18,29 @@ const fixtureRoot = (): string => {
   return root
 }
 
-const bundle = (root: string): string => {
-  const trace = Buffer.from('{"runtime":"codex","status":"collected","eventCount":0,"events":[]}', "utf8")
+const bundle = (
+  root: string,
+  model = "claude-fable-5",
+): string => {
+  const trace = Buffer.from(JSON.stringify({
+    runtime: "codex",
+    status: "collected",
+    formatVersion: 2,
+    eventCount: 1,
+    events: [{
+      kind: "message",
+      name: "assistant",
+      timestamp: "2026-09-01T00:00:00.000Z",
+      sourceEventId: "usage-0",
+      payload: {
+        usage: {
+          inputTokens: 1,
+          model,
+          outputTokens: 1,
+        },
+      },
+    }],
+  }), "utf8")
   const label = `s-${"0".repeat(64)}`
   const path = `traces/${label}.atf.json`
   const manifest = encodeDatasetManifest({
@@ -99,6 +120,43 @@ describe("marketplace candidate publish process boundary", () => {
       hits: 0,
       invalid: '{"error":"invalid_bundle_request"}\n',
       missing: '{"error":"missing_publish_credential"}\n',
+    })
+  })
+
+  test("unsupported stored bundle fails before credentials and transport", async () => {
+    // Given: a structurally valid unsupported-model ZIP and live request counter.
+    const root = fixtureRoot()
+    let hits = 0
+    const server = Bun.serve({
+      fetch: () => {
+        hits += 1
+        return new Response(null, { status: 500 })
+      },
+      hostname: "127.0.0.1",
+      port: 0,
+    })
+    const archive = bundle(root, "unsupported-model")
+
+    // When: the built CLI receives valid credentials but a disallowed archive.
+    const result = await runCli([
+      "marketplace", "seller", "candidate", "publish",
+      "--bundle", archive,
+      "--server", `http://127.0.0.1:${server.port}`,
+      "--api-key", "valid-local-key",
+    ], {
+      ...process.env,
+      TRAJECTORY_MARKETPLACE_CONFIG_HOME: root,
+    })
+    server.stop(true)
+
+    // Then: pre-publish re-admission fails locally without one HTTP request.
+    expect({ hits, result }).toEqual({
+      hits: 0,
+      result: {
+        exitCode: 1,
+        stderr: '{"error":"unsupported_model"}\n',
+        stdout: "",
+      },
     })
   })
 

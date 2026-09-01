@@ -24,8 +24,42 @@ const archiveForTrace = (trace: Buffer): Buffer => {
   return writeDatasetZip([{ data: manifest, name: "dataset-manifest.json" }, { data: trace, name: path }])
 }
 
-const validArchive = (): Buffer =>
-  archiveForTrace(Buffer.from('{"runtime":"codex","status":"collected","eventCount":0,"events":[]}', "utf8"))
+type UsageFixture = Readonly<{
+  readonly inputTokens?: number
+  readonly model?: string
+  readonly outputTokens?: number
+}>
+
+const traceForUsages = (usages: readonly UsageFixture[]): Buffer =>
+  Buffer.from(JSON.stringify({
+    runtime: "codex",
+    status: "collected",
+    formatVersion: 2,
+    eventCount: usages.length,
+    events: usages.map((usage, index) => ({
+      kind: "message",
+      name: "assistant",
+      timestamp: `2026-09-01T00:00:0${index}.000Z`,
+      sourceEventId: `usage-${index}`,
+      payload: {
+        usage: {
+          ...(usage.model === undefined ? {} : { model: usage.model }),
+          ...(usage.inputTokens === undefined
+            ? {}
+            : { inputTokens: usage.inputTokens }),
+          ...(usage.outputTokens === undefined
+            ? {}
+            : { outputTokens: usage.outputTokens }),
+        },
+      },
+    })),
+  }), "utf8")
+
+const validArchive = (): Buffer => archiveForTrace(traceForUsages([{
+  inputTokens: 2,
+  model: "claude-fable-5",
+  outputTokens: 1,
+}]))
 
 const fixedMetadata = (
   archive: Buffer,
@@ -397,6 +431,51 @@ describe("publish bundle ZIP integrity", () => {
     expect(parse).toThrow(PublishBundleError)
   })
 
+  test("re-admits stored bundles through compensated model policy", () => {
+    // Given: archives built below the normal construction gate.
+    const supported = archiveForTrace(traceForUsages([
+      { inputTokens: 2, model: "claude-fable-5", outputTokens: 1 },
+      { inputTokens: 4, model: "gpt-5.6-sol", outputTokens: 3 },
+    ]))
+    const invalid = [
+      archiveForTrace(traceForUsages([
+        { inputTokens: 1, model: "claude-fable-5", outputTokens: 1 },
+        { inputTokens: 1, model: "unsupported-model", outputTokens: 1 },
+      ])),
+      archiveForTrace(traceForUsages([
+        { inputTokens: 1, model: "unsupported-model", outputTokens: 1 },
+      ])),
+      archiveForTrace(traceForUsages([
+        { inputTokens: 1, outputTokens: 1 },
+      ])),
+      archiveForTrace(Buffer.from(JSON.stringify({
+        runtime: "codex",
+        status: "collected",
+        eventCount: 0,
+        events: [],
+      }), "utf8")),
+    ] as const
+
+    // When: the independent pre-publish parser re-admits each stored ZIP.
+    const accepted = parsePublishBundle(supported)
+    const rejectedCodes = invalid.map((archive) => {
+      try {
+        parsePublishBundle(archive)
+      } catch (error) {
+        return error instanceof Error
+            && "code" in error
+            && typeof error.code === "string"
+          ? error.code
+          : error instanceof Error ? error.name : String(error)
+      }
+      return "admitted"
+    })
+
+    // Then: only fully supported stored bundles cross the local publish boundary.
+    expect(accepted.archive.byteLength).toBeGreaterThan(0)
+    expect(rejectedCodes).toEqual(invalid.map(() => "unsupported_model"))
+  })
+
   test("rejects an existing bundle whose JSON-escaped payload decodes to a credential", () => {
     // Given: a manifest-consistent trace whose serialized content conceals a GitHub token.
     const trace = Buffer.from(`{"runtime":"codex","status":"collected","formatVersion":2,"eventCount":1,"events":[{"kind":"message","name":"assistant","payload":{"content":"github_pat_\\u0061${"a".repeat(81)}"}}]}`, "utf8")
@@ -582,7 +661,7 @@ describe("publish bundle ZIP integrity", () => {
 
   test("preserves safe noncanonical ATF bytes exactly", () => {
     // Given: semantically valid, redaction-fixed-point trace bytes with noncanonical whitespace.
-    const trace = Buffer.from('{\n  "runtime": "codex",\n  "status": "collected",\n  "eventCount": 0,\n  "events": []\n}', "utf8")
+    const trace = Buffer.from('{\n  "runtime": "codex",\n  "status": "collected",\n  "formatVersion": 2,\n  "eventCount": 1,\n  "events": [{\n    "kind": "message",\n    "name": "assistant",\n    "timestamp": "2026-09-01T00:00:00.000Z",\n    "sourceEventId": "usage-0",\n    "payload": {"usage": {"model": "claude-fable-5", "inputTokens": 1, "outputTokens": 1}}\n  }]\n}', "utf8")
     const archive = archiveForTrace(trace)
 
     // When: the bundle is admitted.

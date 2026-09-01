@@ -8,6 +8,7 @@ import {
   datasetManifestPath,
   datasetManifestSchema,
 } from "./archive-contract"
+import { hasOnlyCompensatedModelUsage } from "./compensated-model-policy"
 import {
   PublishBundleError,
   readBundleFile,
@@ -55,6 +56,9 @@ export type PublishBundle = Readonly<{
 }>
 
 const invalid = (): never => { throw new PublishBundleError("invalid_bundle_request") }
+const unsupportedModel = (): never => {
+  throw new PublishBundleError("unsupported_model")
+}
 const admittedBundles = new WeakSet<PublishBundle>()
 
 const readEntries = (archive: Buffer): readonly BundleEntry[] => {
@@ -166,11 +170,20 @@ const readEntries = (archive: Buffer): readonly BundleEntry[] => {
   return entries
 }
 
-const assertTraceAdmission = (data: Buffer): void => {
+const assertTraceAdmission = (
+  data: Buffer,
+  enforceCompensatedModelPolicy: boolean,
+): void => {
   const input = parseAdmissionJson(data)
   if (input === undefined) return invalid()
   const parsed = harnessTraceDocumentSchema.safeParse(input)
   if (!parsed.success || parsed.data.events.length > datasetArchivePolicy.maxTraceEvents) return invalid()
+  if (
+    enforceCompensatedModelPolicy
+    && !hasOnlyCompensatedModelUsage(parsed.data)
+  ) {
+    return unsupportedModel()
+  }
   const runtime = boundedRedactedString(parsed.data.runtime)
   if (runtime.truncated || runtime.text !== parsed.data.runtime) return invalid()
   for (const event of parsed.data.events) {
@@ -217,7 +230,10 @@ export const takePublishBundle = (
   return bundle
 }
 
-export const parsePublishBundle = (archive: Buffer): PublishBundle => {
+const parsePublishBundleWithPolicy = (
+  archive: Buffer,
+  enforceCompensatedModelPolicy: boolean,
+): PublishBundle => {
   if (archive.byteLength <= 0 || archive.byteLength > datasetArchivePolicy.maxArchiveBytes) return invalid()
   const entries = readEntries(archive)
   const entriesByName = new Map(entries.map((entry) => [entry.name, entry]))
@@ -246,7 +262,7 @@ export const parsePublishBundle = (archive: Buffer): PublishBundle => {
   for (const artifact of manifest.data.artifacts) {
     const entry = entriesByName.get(artifact.path)
     if (entry === undefined || entry.data.length !== artifact.byteCount || createHash("sha256").update(entry.data).digest("hex") !== artifact.sha256) return invalid()
-    assertTraceAdmission(entry.data)
+    assertTraceAdmission(entry.data, enforceCompensatedModelPolicy)
   }
   return admitPublishBundle(
     archive,
@@ -258,6 +274,13 @@ export const parsePublishBundle = (archive: Buffer): PublishBundle => {
     manifest.data.artifacts,
   )
 }
+
+export const parsePublishBundle = (archive: Buffer): PublishBundle =>
+  parsePublishBundleWithPolicy(archive, true)
+
+export const parsePublishBundleForWireContract = (
+  archive: Buffer,
+): PublishBundle => parsePublishBundleWithPolicy(archive, false)
 
 export const readPublishBundle = (
   path: string,

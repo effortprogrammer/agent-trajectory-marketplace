@@ -7,7 +7,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { writeCandidateBundle } from "../../../src/marketplace/bundle-service";
 import { datasetManifestSchema } from "../../../src/marketplace/archive-contract";
-import { buildDatasetArchive } from "../../../src/marketplace/dataset-archive";
+import {
+  buildDatasetArchive,
+  inspectTraceAdmission,
+} from "../../../src/marketplace/dataset-archive";
 import { MarketplaceError } from "../../../src/marketplace/error";
 import { fullSelectorSchema, traceHashSchema } from "../../../src/marketplace/session-contract";
 import type { FrozenTrace } from "../../../src/marketplace/session-contract";
@@ -22,7 +25,53 @@ const fixtureRoot = (): string => {
   return root;
 };
 
-const validAtf = (runtime: string): Uint8Array => new TextEncoder().encode(
+type UsageFixture = Readonly<{
+  readonly attested?: boolean;
+  readonly inputTokens?: number;
+  readonly latencyMs?: number;
+  readonly model?: string;
+  readonly outputTokens?: number;
+}>;
+
+const atfWithUsage = (
+  runtime: string,
+  usages: readonly UsageFixture[],
+): Uint8Array => new TextEncoder().encode(JSON.stringify({
+  runtime,
+  status: "collected",
+  formatVersion: 2,
+  eventCount: usages.length,
+  events: usages.map((usage, index) => ({
+    kind: "message",
+    name: "assistant",
+    ...(usage.attested === false
+      ? {}
+      : {
+        timestamp: `2026-09-01T00:00:0${index}.000Z`,
+        sourceEventId: `usage-${index}`,
+      }),
+    payload: {
+      usage: {
+        ...(usage.model === undefined ? {} : { model: usage.model }),
+        ...(usage.inputTokens === undefined
+          ? {}
+          : { inputTokens: usage.inputTokens }),
+        ...(usage.outputTokens === undefined
+          ? {}
+          : { outputTokens: usage.outputTokens }),
+        ...(usage.latencyMs === undefined ? {} : { latencyMs: usage.latencyMs }),
+      },
+    },
+  })),
+}));
+
+const validAtf = (runtime: string): Uint8Array => atfWithUsage(runtime, [{
+  inputTokens: 2,
+  model: "claude-fable-5",
+  outputTokens: 1,
+}]);
+
+const usageFreeAtf = (runtime: string): Uint8Array => new TextEncoder().encode(
   JSON.stringify({ runtime, status: "collected", eventCount: 0, events: [] }),
 );
 
@@ -63,6 +112,85 @@ const localEntries = (archive: Uint8Array): ReadonlyMap<string, Uint8Array> => {
 };
 
 describe("selected trace dataset archive", () => {
+  test("admits only source-attested compensated model usage", () => {
+    // Given: supported, normalized, mixed, unsupported, unattributed, and usage-free traces.
+    const supported = frozenTrace(
+      "a1",
+      new TextDecoder().decode(atfWithUsage("codex", [
+        { inputTokens: 3, model: "claude-fable-5", outputTokens: 2 },
+        { inputTokens: 5, model: "gpt-5.6-sol", outputTokens: 4 },
+        { latencyMs: 9, model: "runtime-only" },
+      ])),
+    );
+    const normalized = frozenTrace(
+      "a2",
+      new TextDecoder().decode(atfWithUsage("codex", [
+        { inputTokens: 1, model: "  CLAUDE-FABLE-5  ", outputTokens: 0 },
+      ])),
+    );
+    const invalid = [
+      frozenTrace(
+        "a3",
+        new TextDecoder().decode(atfWithUsage("codex", [
+          { inputTokens: 1, model: "claude-fable-5", outputTokens: 1 },
+          { inputTokens: 1, model: "unsupported-model", outputTokens: 1 },
+        ])),
+      ),
+      frozenTrace(
+        "a4",
+        new TextDecoder().decode(atfWithUsage("codex", [
+          { inputTokens: 1, model: "unsupported-model", outputTokens: 1 },
+        ])),
+      ),
+      frozenTrace(
+        "a5",
+        new TextDecoder().decode(atfWithUsage("codex", [
+          { inputTokens: 1, outputTokens: 1 },
+        ])),
+      ),
+      frozenTrace(
+        "a6",
+        new TextDecoder().decode(atfWithUsage("codex", [
+          {
+            attested: false,
+            inputTokens: 1,
+            model: "claude-fable-5",
+            outputTokens: 1,
+          },
+        ])),
+      ),
+      frozenTrace("a7", new TextDecoder().decode(usageFreeAtf("codex"))),
+    ] as const;
+
+    // When: every trace is classified and independently assembled.
+    const supportedArchives = [supported, normalized].map((trace) =>
+      buildDatasetArchive([trace])
+    );
+    const blocked = invalid.map((trace) => inspectTraceAdmission(trace));
+    const rejectedCodes = invalid.map((trace) => {
+      try {
+        buildDatasetArchive([trace]);
+      } catch (error) {
+        return error instanceof Error
+            && "code" in error
+            && typeof error.code === "string"
+          ? error.code
+          : error instanceof Error ? error.name : String(error);
+      }
+      return "admitted";
+    });
+
+    // Then: only traces fully attributable to compensated models can become ZIPs.
+    expect(supportedArchives.every((archive) => archive.byteLength > 0)).toBe(
+      true,
+    );
+    expect(blocked as unknown).toEqual(invalid.map(() => ({
+      reason: "unsupported_model",
+      status: "blocked",
+    })));
+    expect(rejectedCodes).toEqual(invalid.map(() => "unsupported_model"));
+  });
+
   test("stores unchanged credential-free bytes in opaque paths when input order differs", () => {
     // Given: selected frozen traces supplied in reverse selector order.
     const first = frozenTrace("1", new TextDecoder().decode(validAtf("codex")));
@@ -155,6 +283,8 @@ describe("selected trace dataset archive", () => {
       events: [{
         kind: "tool_call",
         name: "terminal",
+        timestamp: "2026-09-01T00:00:00.000Z",
+        sourceEventId: "usage-0",
         payload: {
           input: {
             apiKey: numericApiKey,
@@ -167,6 +297,11 @@ describe("selected trace dataset archive", () => {
             password,
             pwd: pwdValue,
             "sk-proj": projectObjectValue,
+          },
+          usage: {
+            model: "claude-fable-5",
+            inputTokens: 1,
+            outputTokens: 1,
           },
         },
       }],
@@ -231,14 +366,40 @@ describe("selected trace dataset archive", () => {
       status: "collected",
       formatVersion: 2,
       eventCount: 1,
-      events: [{ kind: "message", name: "assistant", payload: { content: residual } }],
+      events: [{
+        kind: "message",
+        name: "assistant",
+        timestamp: "2026-09-01T00:00:00.000Z",
+        sourceEventId: "usage-0",
+        payload: {
+          content: residual,
+          usage: {
+            model: "claude-fable-5",
+            inputTokens: 1,
+            outputTokens: 1,
+          },
+        },
+      }],
     }));
     const benign = frozenTrace("9", JSON.stringify({
       runtime: "codex",
       status: "collected",
       formatVersion: 2,
       eventCount: 1,
-      events: [{ kind: "message", name: "assistant", payload: { content: "Set GITHUB_TOKEN in your environment; never paste a token value." } }],
+      events: [{
+        kind: "message",
+        name: "assistant",
+        timestamp: "2026-09-01T00:00:00.000Z",
+        sourceEventId: "usage-0",
+        payload: {
+          content: "Set GITHUB_TOKEN in your environment; never paste a token value.",
+          usage: {
+            model: "claude-fable-5",
+            inputTokens: 1,
+            outputTokens: 1,
+          },
+        },
+      }],
     }));
 
     // When: candidate archives are assembled from the exact reviewed inputs.
