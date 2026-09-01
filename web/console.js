@@ -4,7 +4,7 @@ import {
   parseLegacySessionsResponse,
   parseSessionsResponse,
 } from "./console-contract.889ee8ad70774435ea8c707f96c9d2712ffa32eb77595cfd758a71ffb507b1e7.js";
-import { mountPayoutConsole } from "./payout-console.52428da299e978a529948beb860a772caa4b86241c197c8a7c34fd256f9cb5e7.js";
+import { mountPayoutConsole } from "./payout-console.cc22c3db9d3bb4e30b35599cae598950af7de69fe37442c0a6adadbe87516811.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {
@@ -121,9 +121,50 @@ export const mountSellerConsole = async ({
   const state = view.querySelector("[data-console-state]");
   const chart = view.querySelector("[data-console-chart]");
   const sessions = view.querySelector("[data-console-sessions]");
-  const seller = view.querySelector("[data-console-seller]");
   const total = view.querySelector("[data-console-total]");
   const payout = view.querySelector("[data-console-payout]");
+  const payoutDialog = view.querySelector("[data-payout-dialog]");
+  const payoutOpen = view.querySelector("[data-payout-open]");
+  const payoutClose = view.querySelector("[data-payout-close]");
+  let restorePayoutFocus = true;
+  const closePayoutDialog = (restoreFocus = true) => {
+    restorePayoutFocus = restoreFocus;
+    if (payoutDialog.open) payoutDialog.close();
+  };
+  const showConsoleLogin = () => {
+    closePayoutDialog(false);
+    showLogin();
+  };
+  payoutOpen.onclick = () => {
+    restorePayoutFocus = true;
+    if (!payoutDialog.open) payoutDialog.showModal();
+    payoutOpen.setAttribute("aria-expanded", "true");
+    document.body.classList.add("is-payout-open");
+    const focusTarget = payoutDialog.querySelector(
+      "[data-payout-request], [data-payout-cancel], [data-payout-refresh]",
+    ) ?? payoutClose;
+    focusTarget.focus({ preventScroll: true });
+  };
+  payoutClose.onclick = () => closePayoutDialog();
+  payoutDialog.onclick = (event) => {
+    if (event.target === payoutDialog) closePayoutDialog();
+  };
+  payoutDialog.oncancel = () => {
+    restorePayoutFocus = true;
+  };
+  payoutDialog.onclose = () => {
+    payoutOpen.setAttribute("aria-expanded", "false");
+    document.body.classList.remove("is-payout-open");
+    if (
+      restorePayoutFocus
+      && isCurrent()
+      && payoutOpen.isConnected
+      && payoutOpen.getClientRects().length > 0
+    ) {
+      payoutOpen.focus({ preventScroll: true });
+    }
+    restorePayoutFocus = true;
+  };
   const today = new Date(); const from = new Date(today); from.setUTCDate(from.getUTCDate() - 30);
   const day = (value) => value.toISOString().slice(0, 10);
   const headers = { authorization: `Bearer ${session.accessToken}` };
@@ -138,7 +179,12 @@ export const mountSellerConsole = async ({
     if (!isCurrent()) return;
     if (me?.ok !== true || typeof me.account?.accountId !== "string") throw new TypeError("Invalid Registry account response");
     const validatedSessions = sessionsBody; const earnings = parseEarningsResponse(earningsBody);
-    seller.textContent = me.account.accountId; total.textContent = `${formatCredits(earnings.points.at(-1)?.cumulativeNetCredits ?? earnings.openingCumulativeCredits)} cumulative`;
+    const cumulativeCredits = earnings.points.at(-1)?.cumulativeNetCredits
+      ?? earnings.openingCumulativeCredits;
+    total.hidden = cumulativeCredits === 0;
+    total.textContent = cumulativeCredits === 0
+      ? ""
+      : `${formatCredits(cumulativeCredits)} cumulative`;
     renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
     state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;
     await mountPayoutConsole({
@@ -146,11 +192,11 @@ export const mountSellerConsole = async ({
       requestJson,
       root: payout,
       session,
-      showLogin,
+      showLogin: showConsoleLogin,
     });
   } catch (error) {
     if (!isCurrent()) return;
-    if (error?.status === 401) { showLogin(); return; }
+    if (error?.status === 401) { showConsoleLogin(); return; }
     state.hidden = false; state.dataset.state = "error"; state.textContent = "Seller sales are unavailable. Try again shortly."; announcement.textContent = "Seller console could not load.";
   }
 };

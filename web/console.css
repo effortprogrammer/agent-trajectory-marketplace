@@ -1,10 +1,11 @@
 .seller-console { padding: var(--space-32) 0 var(--space-20); }
 .seller-console-shell { width: min(72rem, calc(100% - var(--space-12))); margin: 0 auto; }
-.seller-console-heading { max-width: 44rem; }
+.seller-console-heading { max-width: none; }
+.seller-console-heading-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.seller-console-heading-copy { max-width: 44rem; }
 .seller-console-heading h1 { margin: var(--space-2) 0 var(--space-3); font-family: var(--font-display); font-size: clamp(2.2rem, 4.5vw, 3.4rem); font-weight: 300; letter-spacing: -.035em; line-height: 1.05; }
-.seller-console-heading > p:last-child { color: var(--text-secondary); }
-.seller-account-chip { display: inline-flex; align-items: center; gap: var(--space-2); margin-top: var(--space-5); border: 1px solid var(--border-quiet); border-radius: var(--radius-pill); background: var(--surface); color: var(--text-secondary); padding: var(--space-1) var(--space-3); font-family: var(--font-mono); font-size: var(--type-mono-sm); }
-.seller-account-chip::before { width: .45rem; height: .45rem; border-radius: 50%; background: var(--accent-bright); content: ""; }
+.seller-console-heading-copy > p:last-child { color: var(--text-secondary); }
+.seller-payout-launcher { width: auto; min-height: 44px; flex: 0 0 auto; }
 .seller-panel { overflow: hidden; border: 1px solid var(--border-quiet); border-radius: var(--radius-shell); background: var(--surface); }
 .seller-panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); border-bottom: 1px solid var(--border-quiet); padding: var(--space-4) var(--space-5); }
 .seller-panel-heading h2 { font-family: var(--font-display); font-size: 1.25rem; font-weight: 500; }
@@ -27,8 +28,14 @@
 .seller-pricing-earned { color: var(--accent-bright); }
 .seller-performance-meta { margin-top: var(--space-1); color: var(--text-muted); font-family: var(--font-mono); font-size: var(--type-mono-sm); }
 .seller-console-state { min-height: 10rem; display: grid; place-items: center; padding: var(--space-6); color: var(--text-secondary); text-align: center; } .seller-console-state[data-state="error"] { color: var(--status-error); } .seller-console-skeleton { width: 100%; height: 9rem; border-radius: var(--radius-control); background: linear-gradient(90deg, var(--surface-soft), var(--border), var(--surface-soft)); background-size: 200% 100%; animation: skeleton-sweep 1.8s var(--ease-standard) infinite; }
-.seller-payout-panel { display: grid; gap: var(--space-5); }
-.seller-payout { display: grid; gap: var(--space-3); }
+.is-payout-open { overflow: hidden; }
+.seller-payout-dialog h2 { margin-top: var(--space-2); font-family: var(--font-display); font-size: var(--type-h2); font-weight: 300; letter-spacing: -.035em; line-height: 1.02; }
+.seller-payout-dialog-intro { margin-top: var(--space-4); color: var(--text-secondary); line-height: 1.65; }
+.seller-payout-balance { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); margin-top: var(--space-6); border: 1px solid var(--border-quiet); border-radius: var(--radius-control); background: var(--surface-soft); padding: var(--space-4); color: var(--text-secondary); }
+.seller-payout-balance span { font-size: var(--type-body-sm); }
+.seller-payout-balance strong { color: var(--text-primary); font-family: var(--font-mono); font-size: var(--type-body-sm); font-weight: 500; white-space: nowrap; }
+.seller-payout { display: grid; gap: var(--space-3); margin-top: var(--space-5); }
+.seller-payout[hidden] { display: none; }
 .seller-payout-status { margin: 0; max-width: 46rem; color: var(--text-primary); font-size: 1rem; line-height: 1.55; }
 .seller-payout-detail { margin: 0; color: var(--text-secondary); }
 .seller-payout-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
@@ -36,4 +43,4 @@
 .seller-payout > button { justify-self: start; }
 .is-console-view .skip-link { display: none; }
 .is-console-view [data-landing-view], .is-console-view .marketplace-footer { display: none; }
-@media (max-width: 640px) { .seller-console { padding-top: var(--space-24); } .seller-console-shell { width: min(100% - var(--space-8), 72rem); } .seller-console-heading h1 { font-size: 2.25rem; } .seller-pricing-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .seller-console { padding-top: var(--space-24); } .seller-console-shell { width: min(100% - var(--space-8), 72rem); } .seller-console-heading h1 { font-size: 2.25rem; } .seller-pricing-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .seller-payout-dialog h2 { font-size: var(--type-h3); line-height: 1.08; } .seller-payout-balance { align-items: flex-start; flex-direction: column; gap: var(--space-2); } }

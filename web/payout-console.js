@@ -33,15 +33,16 @@ const render = (root, summary, actions) => {
     ? availableMinor >= thresholdMinor ? "eligible" : "below-threshold"
     : request.status;
   root.dataset.payoutState = state;
+  root.hidden = state === "below-threshold";
   root.replaceChildren();
-  const balance = root.closest(".seller-panel")?.querySelector("[data-payout-balance]");
+  const balance = root.closest("[data-payout-dialog]")?.querySelector("[data-payout-balance]");
   if (balance) balance.textContent = `${formatPayoutAmount(availableMinor)} available`;
   const copy = request === null
     ? state === "eligible"
       ? `Your full ${formatPayoutAmount(availableMinor)} available balance can be held for payout.`
-      : `Reach ${formatPayoutAmount(thresholdMinor)} to request payout.`
+      : null
     : labels[request.status];
-  root.append(element("p", "seller-payout-status", copy));
+  if (copy !== null) root.append(element("p", "seller-payout-status", copy));
   if (request?.status === "rejected" && request.rejectedReason !== null) {
     root.append(element("p", "seller-payout-detail", request.rejectedReason));
   }
@@ -68,6 +69,7 @@ const render = (root, summary, actions) => {
 
 const renderFailure = (root, state, message, refresh) => {
   root.dataset.payoutState = state;
+  root.hidden = false;
   root.replaceChildren(element("p", "seller-payout-status", message));
   const button = control("Refresh payout status", refresh, "text-button");
   button.dataset.payoutRefresh = "";
@@ -76,6 +78,7 @@ const renderFailure = (root, state, message, refresh) => {
 
 const renderSubmitting = (root) => {
   root.dataset.payoutState = "submitting";
+  root.hidden = false;
   root.replaceChildren(element("p", "seller-payout-status", "Submitting payout request..."));
   const button = element("button", "signal-button", "Submitting...");
   button.type = "button";
