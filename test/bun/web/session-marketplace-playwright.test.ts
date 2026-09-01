@@ -1456,12 +1456,12 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("[data-console-payout]").count()).toBe(1)
     await page.locator("[data-payout-request]").click()
     await page.getByText("Payout requests are temporarily unavailable.", { exact: true }).waitFor()
-    const refreshRequest = page.waitForRequest((request) =>
-      request.method() === "GET"
-      && new URL(request.url()).pathname.endsWith("/seller/payout-request")
+    const refreshResponse = page.waitForResponse((response) =>
+      response.request().method() === "GET"
+      && new URL(response.url()).pathname.endsWith("/seller/payout-request")
     )
     await page.locator("[data-payout-refresh]").click()
-    await refreshRequest
+    await refreshResponse
     expect(harness.registryRequests.filter((request) =>
       request.path === "/v1/marketplace/seller/payout-request"
     ).map((request) => request.method)).toEqual(["GET", "POST", "GET"])
@@ -1484,12 +1484,12 @@ describe("authenticated aggregate marketplace browser contract", () => {
 
     expect(await page.locator("[data-console-payout]").count()).toBe(1)
     await page.getByText("Payout request service is unavailable.", { exact: true }).waitFor()
-    const refreshRequest = page.waitForRequest((request) =>
-      request.method() === "GET"
-      && new URL(request.url()).pathname.endsWith("/seller/payout-request")
+    const refreshResponse = page.waitForResponse((response) =>
+      response.request().method() === "GET"
+      && new URL(response.url()).pathname.endsWith("/seller/payout-request")
     )
     await page.locator("[data-payout-refresh]").click()
-    await refreshRequest
+    await refreshResponse
     expect(harness.registryRequests.filter((request) =>
       request.path.includes("/payout-request")
     ).every((request) => request.method === "GET")).toBe(true)
