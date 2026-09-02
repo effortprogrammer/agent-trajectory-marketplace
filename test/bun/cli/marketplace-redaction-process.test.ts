@@ -84,6 +84,8 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
     events: [{
       kind: "tool_call",
       name: "terminal",
+      timestamp: "2026-09-01T00:00:00.000Z",
+      sourceEventId: "usage-0",
       payload: {
         input: {
           apiKey: numericApiKey,
@@ -96,6 +98,11 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
           password,
           pwd: pwdValue,
           "sk-proj": projectObjectValue,
+        },
+        usage: {
+          model: "claude-fable-5",
+          inputTokens: 1,
+          outputTokens: 1,
         },
       },
     }],

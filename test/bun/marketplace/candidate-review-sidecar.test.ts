@@ -36,7 +36,21 @@ const artifact = (request = "first"): Uint8Array => encoder.encode(JSON.stringif
   status: "collected",
   formatVersion: 2,
   eventCount: 1,
-  events: [{ kind: "function_enter", name: "turn", payload: { role: "user", content: request } }],
+  events: [{
+    kind: "function_enter",
+    name: "turn",
+    timestamp: "2026-09-01T00:00:00.000Z",
+    sourceEventId: "usage-0",
+    payload: {
+      role: "user",
+      content: request,
+      usage: {
+        model: "claude-fable-5",
+        inputTokens: 1,
+        outputTokens: 1,
+      },
+    },
+  }],
 }));
 
 const reviewRationale = "The trace is relevant to the candidate.";

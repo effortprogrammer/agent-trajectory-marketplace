@@ -9,6 +9,7 @@ import type { PublishCandidate } from "./publish-contract"
 import {
   PublishBundleError,
   parsePublishBundle,
+  parsePublishBundleForWireContract,
   takePublishBundle,
 } from "./publish-bundle"
 import type { PublishBundle } from "./publish-bundle"
@@ -35,9 +36,17 @@ export type ParsedPublishFrame = Readonly<{
 const bufferView = (input: Uint8Array): Buffer =>
   Buffer.isBuffer(input) ? input : Buffer.from(input.buffer, input.byteOffset, input.byteLength)
 
-const assertCandidateMatchesBundle = (candidate: PublishCandidate, archive: Buffer): void => {
+const assertCandidateMatchesBundle = (
+  candidate: PublishCandidate,
+  archive: Buffer,
+  enforceCompensatedModelPolicy: boolean,
+): void => {
   try {
-    const expected = parsePublishBundle(archive).candidate
+    const expected = (
+      enforceCompensatedModelPolicy
+        ? parsePublishBundle
+        : parsePublishBundleForWireContract
+    )(archive).candidate
     if (!encodeCandidateJson(expected).equals(encodeCandidateJson(candidate))) {
       throw new PublishWireContractError("invalid_candidate")
     }
@@ -76,10 +85,18 @@ const assemblePublishFrame = (candidate: PublishCandidate, archive: Buffer): Pub
   }
 }
 
-const rawPublishFrameParts = (input: unknown, archiveInput: Uint8Array): PublishFrameParts => {
+const rawPublishFrameParts = (
+  input: unknown,
+  archiveInput: Uint8Array,
+  enforceCompensatedModelPolicy: boolean,
+): PublishFrameParts => {
   const candidate = parseCandidateJson(encodeCandidateJson(input))
   const archive = bufferView(archiveInput)
-  assertCandidateMatchesBundle(candidate, archive)
+  assertCandidateMatchesBundle(
+    candidate,
+    archive,
+    enforceCompensatedModelPolicy,
+  )
   return assemblePublishFrame(candidate, archive)
 }
 
@@ -116,11 +133,22 @@ export const createPublishFrameBody = (bundle: PublishBundle): PublishFrameBody 
 }
 
 export const encodePublishFrame = (input: unknown, archiveInput: Uint8Array): Buffer => {
-  const parts = rawPublishFrameParts(input, archiveInput)
+  const parts = rawPublishFrameParts(input, archiveInput, true)
   return Buffer.concat([parts.header, parts.candidateJson, parts.archive], parts.length)
 }
 
-export const parsePublishFrame = (input: Uint8Array): ParsedPublishFrame => {
+export const encodePublishFrameForWireContract = (
+  input: unknown,
+  archiveInput: Uint8Array,
+): Buffer => {
+  const parts = rawPublishFrameParts(input, archiveInput, false)
+  return Buffer.concat([parts.header, parts.candidateJson, parts.archive], parts.length)
+}
+
+const parsePublishFrameWithPolicy = (
+  input: Uint8Array,
+  enforceCompensatedModelPolicy: boolean,
+): ParsedPublishFrame => {
   const frame = bufferView(input)
   if (frame.byteLength < frameHeaderBytes) throw new PublishWireContractError("invalid_candidate")
   const candidateByteCount = frame.readUInt32BE(0)
@@ -131,6 +159,17 @@ export const parsePublishFrame = (input: Uint8Array): ParsedPublishFrame => {
   if (candidateEnd > frame.byteLength) throw new PublishWireContractError("invalid_candidate")
   const candidate = parseCandidateJson(frame.subarray(frameHeaderBytes, candidateEnd))
   const archive = frame.subarray(candidateEnd)
-  assertCandidateMatchesBundle(candidate, archive)
+  assertCandidateMatchesBundle(
+    candidate,
+    archive,
+    enforceCompensatedModelPolicy,
+  )
   return { candidate, archive }
 }
+
+export const parsePublishFrame = (input: Uint8Array): ParsedPublishFrame =>
+  parsePublishFrameWithPolicy(input, true)
+
+export const parsePublishFrameForWireContract = (
+  input: Uint8Array,
+): ParsedPublishFrame => parsePublishFrameWithPolicy(input, false)

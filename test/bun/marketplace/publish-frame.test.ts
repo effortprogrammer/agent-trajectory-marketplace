@@ -4,7 +4,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
+  PublishBundleError,
   parsePublishBundle,
+  parsePublishBundleForWireContract,
   readPublishBundle,
 } from "../../../src/marketplace/publish-bundle"
 import {
@@ -13,12 +15,18 @@ import {
 } from "../../../src/marketplace/publish-contract"
 import {
   createPublishFrameBody,
-  encodePublishFrame,
+  encodePublishFrameForWireContract,
   parsePublishFrame,
+  parsePublishFrameForWireContract,
 } from "../../../src/marketplace/publish-frame"
+import {
+  compensatedPublishArchive,
+} from "../fixtures/compensated-publish-bundle"
 
-const fixture = parsePublishFrame(readFileSync("contract/publish-wire/v1/candidate-valid.frame"))
-const { archive, candidate } = fixture
+const wireFixture = parsePublishFrameForWireContract(
+  readFileSync("contract/publish-wire/v1/candidate-valid.frame"),
+)
+const { archive: wireArchive, candidate: wireCandidate } = wireFixture
 
 const rawFrame = (input: unknown, archiveBytes: Uint8Array): Buffer => {
   const candidateBytes = encodeCandidateJson(input)
@@ -30,31 +38,31 @@ const rawFrame = (input: unknown, archiveBytes: Uint8Array): Buffer => {
 describe("publish frame", () => {
   it("encodes the frozen candidate bytes before the ZIP at the declared uint32BE offset", () => {
     // Given
-    const candidateBytes = encodeCandidateJson(candidate)
+    const candidateBytes = encodeCandidateJson(wireCandidate)
 
     // When
-    const frame = encodePublishFrame(candidate, archive)
+    const frame = encodePublishFrameForWireContract(wireCandidate, wireArchive)
 
     // Then
     expect(frame.readUInt32BE(0)).toBe(candidateBytes.length)
     expect(frame.subarray(4, 4 + candidateBytes.length).equals(candidateBytes)).toBe(true)
-    expect(frame.subarray(4 + candidateBytes.length).equals(archive)).toBe(true)
+    expect(frame.subarray(4 + candidateBytes.length).equals(wireArchive)).toBe(true)
   })
 
   it("rejects mutated uint32 length and zip bytes", () => {
     // Given
-    const frame = encodePublishFrame(candidate, archive)
+    const frame = encodePublishFrameForWireContract(wireCandidate, wireArchive)
     const mutatedLength = Buffer.from(frame)
-    mutatedLength.writeUInt32BE(encodeCandidateJson(candidate).length + 1, 0)
+    mutatedLength.writeUInt32BE(encodeCandidateJson(wireCandidate).length + 1, 0)
     const mutatedZip = Buffer.from(frame)
     mutatedZip[mutatedZip.length - 1] ^= 1
 
     // When
     const parseLength = (): void => {
-      parsePublishFrame(mutatedLength)
+      parsePublishFrameForWireContract(mutatedLength)
     }
     const parseZip = (): void => {
-      parsePublishFrame(mutatedZip)
+      parsePublishFrameForWireContract(mutatedZip)
     }
 
     // Then
@@ -69,39 +77,69 @@ describe("publish frame", () => {
     }
   })
 
-  it("ships an accepted fixture whose archive satisfies the dataset bundle contract", () => {
-    // Given: the frozen accepted frame and an isolated regular file for its embedded archive.
-    const frame = parsePublishFrame(readFileSync("contract/publish-wire/v1/candidate-valid.frame"))
+  it("keeps the frozen wire fixture valid without bypassing current business admission", () => {
+    // Given: the frozen protocol frame and an isolated regular file for its legacy archive.
+    const frame = parsePublishFrameForWireContract(
+      readFileSync("contract/publish-wire/v1/candidate-valid.frame"),
+    )
     const root = mkdtempSync(join(tmpdir(), "trajectory-publish-fixture-"))
     const path = join(root, "candidate.zip")
     writeFileSync(path, frame.archive)
 
-    // When: the same reader used by the public CLI validates the fixture archive.
+    // When: the public CLI reader applies current compensated-model admission.
     try {
-      const bundle = readPublishBundle(path)
+      const read = (): void => {
+        readPublishBundle(path)
+      }
 
-      // Then: the fixture candidate describes the exact valid dataset bundle.
-      expect(bundle.archive).toEqual(frame.archive)
-      expect(bundle.candidate).toEqual(frame.candidate)
+      // Then: wire bytes remain valid, while the legacy no-usage archive is rejected.
+      expect(frame).toEqual(wireFixture)
+      expect(read).toThrow(PublishBundleError)
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
   })
 
+  it("refuses to frame a wire-contract bundle on the publish-client capability path", () => {
+    // Given: frozen wire bytes whose archive fails compensated-model business admission.
+    const archive = Buffer.from(wireArchive)
+    const strict = (): void => {
+      parsePublishBundle(archive)
+    }
+    expect(strict).toThrow(PublishBundleError)
+    try {
+      strict()
+    } catch (error) {
+      expect(error).toBeInstanceOf(PublishBundleError)
+      if (error instanceof PublishBundleError) expect(error.code).toBe("unsupported_model")
+    }
+    const bundle = parsePublishBundleForWireContract(archive)
+
+    // When: the normal publish-client capability path frames the wire-admitted bundle.
+    const frame = (): void => {
+      // Invoke the untyped JavaScript boundary: TypeScript rejects this direct call.
+      Reflect.apply(createPublishFrameBody, undefined, [bundle])
+    }
+
+    // Then: framing must not consume bundles admitted without the compensated-model
+    // policy; only full business admission may hold publish capability.
+    expect(frame).toThrow(PublishWireContractError)
+  })
+
   it.each([
     { field: "manifestSha256", value: "0".repeat(64) },
-    { field: "artifactCount", value: candidate.artifactCount + 1 },
+    { field: "artifactCount", value: wireCandidate.artifactCount + 1 },
   ] as const)("binds candidate $field to the embedded dataset ZIP", ({ field, value }) => {
     // Given: valid archive bytes with canonical but false candidate metadata.
-    const substituted = { ...candidate, [field]: value }
-    const maliciousFrame = rawFrame(substituted, archive)
+    const substituted = { ...wireCandidate, [field]: value }
+    const maliciousFrame = rawFrame(substituted, wireArchive)
 
     // When: both local encoding and received-frame parsing validate those bytes.
     const encode = (): void => {
-      encodePublishFrame(substituted, archive)
+      encodePublishFrameForWireContract(substituted, wireArchive)
     }
     const parse = (): void => {
-      parsePublishFrame(maliciousFrame)
+      parsePublishFrameForWireContract(maliciousFrame)
     }
 
     // Then: neither boundary accepts candidate metadata that does not describe the ZIP.
@@ -111,10 +149,15 @@ describe("publish frame", () => {
 
   it("transfers archive ownership before exposing streamed bytes", async () => {
     // Given: a valid bundle archive whose caller retains a mutable reference.
-    const admittedArchive = Buffer.allocUnsafeSlow(archive.byteLength)
-    admittedArchive.set(archive)
+    const sourceArchive = compensatedPublishArchive()
+    const admittedArchive = Buffer.allocUnsafeSlow(sourceArchive.byteLength)
+    admittedArchive.set(sourceArchive)
     const archiveByteCount = admittedArchive.byteLength
     const bundle = parsePublishBundle(admittedArchive)
+    const expected = {
+      archive: Buffer.from(bundle.archive),
+      candidate: bundle.candidate,
+    }
 
     // When: the HTTP body is framed as a bounded stream.
     const framed = createPublishFrameBody(bundle)
@@ -134,11 +177,12 @@ describe("publish frame", () => {
     expect(chunks[2]).not.toBe(admittedArchive)
     expect(chunks[2]?.byteLength).toBe(archiveByteCount)
     expect(chunks.reduce((total, chunk) => total + chunk.byteLength, 0)).toBe(framed.contentLength)
-    expect(parsePublishFrame(emitted)).toEqual(fixture)
+    expect(parsePublishFrame(emitted)).toEqual(expected)
   })
 
   it("isolates archive subviews without detaching sibling storage", async () => {
     // Given: a valid archive in the middle of caller-owned backing storage.
+    const archive = compensatedPublishArchive()
     const backing = Buffer.allocUnsafeSlow(archive.byteLength + 16)
     backing.fill(0x7a)
     archive.copy(backing, 8)
@@ -165,7 +209,7 @@ describe("publish frame", () => {
 
   it("consumes an admitted bundle exactly once", () => {
     // Given: one bundle admitted from exact archive bytes.
-    const bundle = parsePublishBundle(Buffer.from(archive))
+    const bundle = parsePublishBundle(compensatedPublishArchive())
 
     // When: framing consumes its ownership token.
     createPublishFrameBody(bundle)

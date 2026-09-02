@@ -43,7 +43,15 @@ const todo27Trace = (content: string): string => JSON.stringify({
     name: "user",
     timestamp: "2026-07-27T00:00:00Z",
     sourceEventId: "event-1",
-    payload: { role: "user", content },
+    payload: {
+      role: "user",
+      content,
+      usage: {
+        model: "claude-fable-5",
+        inputTokens: 1,
+        outputTokens: 1,
+      },
+    },
   }],
 })
 
@@ -167,10 +175,13 @@ describe("public Todo27 marketplace lifecycle", () => {
 
       const published = await run([
         process.execPath, "dist/collector.js", "marketplace", "seller", "candidate", "publish",
-        "--bundle", bundle, "--server", supplied.server, "--api-key", supplied.apiKey,
-      ])
-      expect(published.exitCode).toBe(0)
-      expect(published.stderr).toBe("")
+        "--bundle", bundle, "--api-key", supplied.apiKey,
+      ], supplied.server)
+      expect(published).toEqual({
+        exitCode: 0,
+        stderr: "",
+        stdout: expect.any(String),
+      })
       expect(JSON.parse(published.stdout)).toEqual({
         protocolVersion: 1,
         submissionId: expect.stringMatching(/^sub_/),

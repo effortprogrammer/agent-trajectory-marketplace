@@ -7,7 +7,9 @@ import {
   createCandidateFromExactBytes,
   encodePublishResponse,
 } from "../../../src/marketplace/publish-contract"
-import { encodePublishFrame } from "../../../src/marketplace/publish-frame"
+import {
+  encodePublishFrameForWireContract,
+} from "../../../src/marketplace/publish-frame"
 import { writeDatasetZip } from "../../../src/marketplace/stored-zip"
 
 type Fixture = Readonly<{
@@ -42,7 +44,7 @@ const archive = writeDatasetZip([
   { data: trace, name: path },
 ])
 const candidate = createCandidateFromExactBytes({ archive, manifest, artifactCount: 1 })
-const frame = encodePublishFrame(candidate, archive)
+const frame = encodePublishFrameForWireContract(candidate, archive)
 const malformedLength = Buffer.from(frame)
 malformedLength.writeUInt32BE(frame.readUInt32BE(0) + 1, 0)
 const mutatedZip = Buffer.from(frame)

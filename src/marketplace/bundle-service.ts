@@ -56,6 +56,7 @@ export function writeCandidateBundleWithPrivateReview(
   operations?: BundleOutputOperations,
 ): ReviewedCandidateBundleResult {
   const unchanged = assertTracesUnchanged(snapshot, selected);
+  const archive = buildDatasetArchive(unchanged);
   const reviewSidecars = unchanged.map((trace) => {
     const result = reviewPrivateCandidate({
       artifactBytes: trace.bytes,
@@ -72,7 +73,6 @@ export function writeCandidateBundleWithPrivateReview(
     if (result.review.decision !== "approved") throw new MarketplaceError("invalid_bundle_request");
     return Object.freeze({ address: result.address, source: result.source });
   });
-  const archive = buildDatasetArchive(unchanged);
   if (operations === undefined) writeBundleOutput(outputPath, archive);
   else writeBundleOutput(outputPath, archive, operations);
   return Object.freeze({

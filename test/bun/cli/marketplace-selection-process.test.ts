@@ -28,7 +28,21 @@ const traceBytes = (runtime: string, request: string): Uint8Array => new TextEnc
   status: "collected",
   formatVersion: 2,
   eventCount: 1,
-  events: [{ kind: "function_enter", name: "turn", payload: { role: "user", content: request } }],
+  events: [{
+    kind: "function_enter",
+    name: "turn",
+    timestamp: "2026-09-01T00:00:00.000Z",
+    sourceEventId: "usage-0",
+    payload: {
+      role: "user",
+      content: request,
+      usage: {
+        inputTokens: 1,
+        model: "claude-fable-5",
+        outputTokens: 1,
+      },
+    },
+  }],
 }));
 
 const residualSecretTraceBytes = (): Uint8Array => new TextEncoder().encode(JSON.stringify({
@@ -39,7 +53,17 @@ const residualSecretTraceBytes = (): Uint8Array => new TextEncoder().encode(JSON
   events: [{
     kind: "function_enter",
     name: "turn",
-    payload: { content: residualSecret, role: "user" },
+    timestamp: "2026-09-01T00:00:00.000Z",
+    sourceEventId: "usage-0",
+    payload: {
+      content: residualSecret,
+      role: "user",
+      usage: {
+        inputTokens: 1,
+        model: "claude-fable-5",
+        outputTokens: 1,
+      },
+    },
   }],
 }));
 
@@ -137,7 +161,7 @@ describe("marketplace selection process boundary", () => {
       expect(actual.artifactByteCount).toBeGreaterThan(0);
       expect(actual.runtime).toBe(expected.selector === selectorFor("a.atf.json") ? "codex" : "claude-code");
       expect(actual.eventCount).toBe(1);
-      expect(actual.earliestTimestamp).toBe("unknown");
+      expect(actual.earliestTimestamp).toBe("2026-09-01T00:00:00.000Z");
     }
     expect(existsSync(join(root, "candidate.zip"))).toBe(false);
   });
