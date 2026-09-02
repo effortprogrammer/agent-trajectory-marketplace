@@ -9,7 +9,9 @@ import {
   PublishWireContractError,
   parsePublishResponse,
 } from "../../../src/marketplace/publish-contract"
-import { parsePublishFrame } from "../../../src/marketplace/publish-frame"
+import {
+  parsePublishFrameForWireContract,
+} from "../../../src/marketplace/publish-frame"
 import { parseAdmissionJson } from "../../../src/marketplace/json-preflight"
 
 const expectedFixtureFiles = [
@@ -75,7 +77,7 @@ const responseStatus = (file: string): number => {
 const responseCode = (response: ReturnType<typeof parsePublishResponse>): string => "code" in response ? response.code : response.status
 
 const verifyFrame = (bytes: Uint8Array): string => {
-  parsePublishFrame(bytes)
+  parsePublishFrameForWireContract(bytes)
   return "accepted"
 }
 

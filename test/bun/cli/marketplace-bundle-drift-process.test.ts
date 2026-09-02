@@ -70,8 +70,21 @@ const fixtureRoot = (): string => {
 const traceBytes = (runtime: string): Uint8Array => new TextEncoder().encode(JSON.stringify({
   runtime,
   status: "collected",
-  eventCount: 0,
-  events: [],
+  formatVersion: 2,
+  eventCount: 1,
+  events: [{
+    kind: "message",
+    name: "assistant",
+    timestamp: "2026-09-01T00:00:00.000Z",
+    sourceEventId: "usage-0",
+    payload: {
+      usage: {
+        model: "claude-fable-5",
+        inputTokens: 1,
+        outputTokens: 1,
+      },
+    },
+  }],
 }));
 
 const selectorFor = (relativePath: string): string =>

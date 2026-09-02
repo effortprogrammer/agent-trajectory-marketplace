@@ -82,12 +82,31 @@ const fixtureRoot = (): string => {
   return root;
 };
 
-const traceBytes = (runtime: string, request: string): Uint8Array => new TextEncoder().encode(JSON.stringify({
+const traceBytes = (
+  runtime: string,
+  request: string,
+  models: readonly (string | undefined)[] = ["claude-fable-5"],
+): Uint8Array => new TextEncoder().encode(JSON.stringify({
   runtime,
   status: "collected",
   formatVersion: 2,
-  eventCount: 1,
-  events: [{ kind: "function_enter", name: "turn", payload: { role: "user", content: request } }],
+  eventCount: Math.max(models.length, 1),
+  events: models.length === 0
+    ? [{ kind: "function_enter", name: "turn", payload: { role: "user", content: request } }]
+    : models.map((model, index) => ({
+      kind: "function_enter",
+      name: "turn",
+      timestamp: `2026-09-01T00:00:0${index}.000Z`,
+      sourceEventId: `usage-${index}`,
+      payload: {
+        ...(index === 0 ? { role: "user", content: request } : {}),
+        usage: {
+          ...(model === undefined ? {} : { model }),
+          inputTokens: 1,
+          outputTokens: 1,
+        },
+      },
+    })),
 }));
 
 const selectorFor = (relativePath: string): string =>
@@ -120,6 +139,45 @@ afterEach(() => {
 });
 
 describe("marketplace candidate bundle process boundary", () => {
+  test("Given non-compensated model traces, When explicit bundle runs, Then it writes nothing", () => {
+    // Given: every model-policy rejection class at the real CLI boundary.
+    const cases = [
+      ["mixed", ["claude-fable-5", "unsupported-model"]],
+      ["unsupported", ["unsupported-model"]],
+      ["missing", [undefined]],
+      ["no-usage", []],
+    ] as const;
+    const root = fixtureRoot();
+    const invocations = cases.map(([name, models]) => {
+      const trace = `${name}.atf.json`;
+      const output = join(root, `${name}.zip`);
+      writeFileSync(join(root, trace), traceBytes("codex", name, models));
+      return {
+        output,
+        result: runCli([
+          "marketplace", "seller", "candidate", "bundle",
+          "--root", root, "--out", output, "--trace", trace,
+        ]),
+      };
+    });
+
+    // When: each unsupported selection attempts to become a candidate ZIP.
+    const observations = invocations.map(({ output, result }) => ({
+      exitCode: result.exitCode,
+      outputExists: existsSync(output),
+      stderr: decoder.decode(result.stderr),
+      stdout: decoder.decode(result.stdout),
+    }));
+
+    // Then: every case fails with one actionable code and no output artifact.
+    expect(observations).toEqual(cases.map(() => ({
+      exitCode: 1,
+      outputExists: false,
+      stderr: '{"error":"unsupported_model"}\n',
+      stdout: "",
+    })));
+  });
+
   test("Given explicit root-relative traces, When non-TTY bundle runs, Then only exact selected bytes enter the ZIP", () => {
     // Given
     const root = fixtureRoot();
@@ -404,6 +462,34 @@ describe("marketplace candidate bundle process boundary", () => {
       "dataset-manifest.json",
       `traces/${selectorFor("candidate.atf.json")}.atf.json`,
     ].toSorted());
+  });
+
+  test("Given an unsupported positive-model trace, When explicit bundle runs with a private review cache, Then no sidecar commits before admission fails", () => {
+    // Given: one explicit trace whose only usage is positive but unsupported, and an unused private review cache.
+    const parent = fixtureRoot();
+    const root = join(parent, "candidate-workspace");
+    const cacheRoot = join(parent, "private-review-cache");
+    mkdirSync(root);
+    writeFileSync(join(root, "candidate.atf.json"), traceBytes("codex", "unsupported", ["unsupported-model"]));
+    const output = join(root, "candidate.zip");
+
+    // When: the real CLI selects the trace through the private review path.
+    const result = runCli([
+      "marketplace", "seller", "candidate", "bundle",
+      "--root", root, "--out", output, "--trace", "candidate.atf.json",
+      "--review-cache", cacheRoot, "--review-policy", "policy-v1",
+    ]);
+
+    // Then: compensated-model admission is the observable failure, no candidate ZIP exists,
+    // and no committed JSON sidecar remains in the private review cache.
+    expect(result.exitCode).toBe(1);
+    expect(decoder.decode(result.stdout)).toBe("");
+    expect(decoder.decode(result.stderr)).toBe('{"error":"unsupported_model"}\n');
+    expect(existsSync(output)).toBe(false);
+    const committedSidecars = existsSync(cacheRoot)
+      ? Array.from(new Bun.Glob("*.json").scanSync({ cwd: cacheRoot }))
+      : [];
+    expect(committedSidecars).toEqual([]);
   });
 
   test("Given an unresponsive child, When the PTY deadline expires, Then it is killed and reaped", () => {
