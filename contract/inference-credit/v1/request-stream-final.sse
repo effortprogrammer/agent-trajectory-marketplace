@@ -1,0 +1,4 @@
+event: final
+data: {"ok":true,"request":{"requestId":"ireq-0000000000000001","quoteId":"iquote-0000000000000001","canonicalModel":"claude-fable-5","provider":"relay-alpha","status":"final","ceilingCredits":32,"finalDebitCredits":17,"usage":{"inputTokens":1000,"outputTokens":200},"createdAt":"2030-01-01T03:04:05Z","finalizedAt":"2030-01-01T03:04:07Z"}}
+
+data: [DONE]

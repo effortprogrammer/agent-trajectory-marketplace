@@ -206,6 +206,7 @@ describe("trajectory marketplace seller CLI grammar", () => {
     const argumentsList = [
       "trajectory", "marketplace", "seller", "candidate", "publish",
       "--bundle", "/tmp/candidate.zip", "--api-key", "flag-value",
+      "--selection", "/tmp/selection.json",
     ];
 
     // When: the arguments cross the marketplace parser boundary.
@@ -216,7 +217,22 @@ describe("trajectory marketplace seller CLI grammar", () => {
       apiKey: "flag-value",
       bundle: "/tmp/candidate.zip",
       command: "candidate-publish",
+      selection: "/tmp/selection.json",
     });
+  });
+
+  test("rejects candidate publication without an approved selection", () => {
+    // Given: a candidate archive without its content-bound approval document.
+    const argumentsList = [
+      "marketplace", "seller", "candidate", "publish",
+      "--bundle", "/tmp/candidate.zip",
+    ];
+
+    // When: the incomplete publication crosses the parser boundary.
+    const result = parseMarketplaceCommand(argumentsList);
+
+    // Then: no publish command can reach credential or network handling.
+    expect(result).toEqual({ command: "invalid_command" });
   });
 
   test("returns invalid command for unsupported marketplace spellings and session syntax", () => {

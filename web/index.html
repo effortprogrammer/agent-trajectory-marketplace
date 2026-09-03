@@ -8,8 +8,8 @@
   <meta name="theme-color" content="#fefcf5" />
   <link rel="canonical" href="https://getatm.io/" />
   <link rel="preconnect" href="https://gateway.getatm.io" />
-  <link rel="stylesheet" href="marketplace.f053fb2db4db159f7146d3129d7bc25005866951f5560aa985017020642c958b.css" />
-  <link rel="stylesheet" href="console.aa76548b2aa113059b20112f49701e918ef6e4eca43fc4becc7ac441f5baf05f.css" />
+  <link rel="stylesheet" href="marketplace.0b5370fa5cbe15fa5a48a7dcb9ed44f5eb80ca90a5e5f54217a66570d1edb6a5.css" />
+  <link rel="stylesheet" href="console.5025b8d9fa270c004ecafd6e8b60cdd8bb397b45f1561371bf31ee27f4314183.css" />
 </head>
 <body class="marketplace-page no-js">
   <a class="skip-link" href="#main-content" data-testid="session-skip-link">Skip to live corpus</a>
@@ -119,6 +119,34 @@
             <p>See cumulative earnings and what each session earned.</p>
           </div>
         </header>
+        <section
+          class="seller-panel seller-weekly-limits-panel"
+          aria-labelledby="seller-weekly-limits-title"
+          data-weekly-limits
+          data-state="loading"
+          aria-busy="true"
+        >
+          <div class="seller-panel-heading">
+            <h2 id="seller-weekly-limits-title">Rolling 7-day limits</h2>
+            <span>USD 200.00 each</span>
+          </div>
+          <div class="seller-weekly-limits-grid">
+            <article class="seller-weekly-limit-card">
+              <p>Session value capacity</p>
+              <span class="seller-weekly-limit-skeleton" aria-hidden="true"></span>
+              <strong data-weekly-session-value-remaining hidden>—</strong>
+              <span class="seller-weekly-limit-context">of USD 200.00 / rolling 7 days</span>
+              <span>Accepted session value available before uploads pause</span>
+            </article>
+            <article class="seller-weekly-limit-card">
+              <p>Payout capacity</p>
+              <span class="seller-weekly-limit-skeleton" aria-hidden="true"></span>
+              <strong data-weekly-payout-remaining hidden>—</strong>
+              <span class="seller-weekly-limit-context">of USD 200.00 / rolling 7 days</span>
+              <span>Gross Credit principal available to request</span>
+            </article>
+          </div>
+        </section>
         <dialog
           class="auth-gate seller-payout-dialog"
           id="seller-payout-dialog"
@@ -177,7 +205,7 @@
         <div class="hero-copy">
           <p class="kicker">monetize real agent work</p>
           <h1><span>Turn agent sessions</span><em>into revenue.</em></h1>
-          <p class="hero-lead">Publish credential-redacted coding-agent sessions as sellable data supply.</p>
+          <p class="hero-lead">Copy one line into your coding agent. It reads the onboarding guide, installs ATM, and asks before anything uploads.</p>
           <div class="hero-actions">
             <a class="signal-button" href="#install-command">
               <span>Start selling sessions</span>
@@ -188,13 +216,10 @@
 
         <div class="hero-install">
           <div class="command-block">
-            <span aria-hidden="true">$</span>
-            <code id="install-command">curl -fsSL https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/latest/download/install-agent.sh | bash -s -- --dir atm</code>
-            <button class="copy-button" type="button" data-copy-target="install-command">Copy</button>
+            <span aria-hidden="true">&gt;</span>
+            <code id="install-command">Read https://getatm.io/agent-onboarding.md and guide me through installing ATM and choosing which sessions to upload.</code>
+            <button class="copy-button" type="button" data-copy-target="install-command" data-copy-state="idle">Copy</button>
             <span class="sr-only" aria-live="polite" data-copy-status></span>
-          </div>
-          <div class="hero-tool-footer">
-            <a class="hero-tool-run" href="#provenance" aria-label="See the publishing path">↑</a>
           </div>
         </div>
       </div>
@@ -336,6 +361,6 @@
     </div>
   </footer>
 
-  <script type="module" src="marketplace.1de8469c8497af87a6aa12283d0cd0257aad196f7a5bd59a9247a048401fb357.js"></script>
+  <script type="module" src="marketplace.e8c13171270bbe4743a4b9d81487622ac808d3e20eaa1afe380294e637bd332d.js"></script>
 </body>
 </html>

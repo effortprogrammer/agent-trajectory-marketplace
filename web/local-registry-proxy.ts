@@ -34,6 +34,7 @@ const allowedRegistryRoutes: ReadonlyMap<string, ReadonlySet<string>> = new Map(
   ["/v1/marketplace/seller/sales/ledger", new Set(["GET"])],
   ["/v1/marketplace/seller/payout-request", new Set(["GET", "POST"])],
   ["/v1/marketplace/seller/payout-request/withdraw", new Set(["POST"])],
+  ["/v1/marketplace/seller/weekly-limits", new Set(["GET"])],
 ])
 const payoutRequestPaths = new Set([
   "/v1/marketplace/seller/payout-request",

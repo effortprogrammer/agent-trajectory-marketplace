@@ -248,8 +248,13 @@ grep -Fq '.digest == ("sha256:" + $manifest[0].archive.sha256)' "$WORKFLOW" || f
 grep -Fq 'b5d1a8278cb967c6caacde863d764abae5eaae053870084b0ac1659a7fd71674' "$WORKFLOW" || fail "release does not pin the waitlist contract revision"
 grep -Fq 'sha256sum --check web/assets.sha256' "$WORKFLOW" || fail "release does not verify the Marketplace web asset revision"
 (cd "$ROOT" && sha256sum --check web/assets.sha256 >/dev/null) || fail "Marketplace web asset manifest is stale"
+if (cd "$ROOT" && git check-ignore --quiet web/agent-onboarding.md); then
+  fail "agent onboarding Markdown is excluded from the release archive"
+fi
 grep -Fq '"https://getatm.io$marketplace_js_path"' "$WORKFLOW" || fail "release does not fetch deployed fingerprinted Marketplace assets"
 grep -Fq 'cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js"' "$WORKFLOW" || fail "release does not attest deployed Marketplace bytes"
+grep -Fq 'https://getatm.io/agent-onboarding.md' "$WORKFLOW" || fail "release does not fetch the agent onboarding guide"
+grep -Fq 'cmp web/agent-onboarding.md "$RUNNER_TEMP/agent-onboarding.md"' "$WORKFLOW" || fail "release does not attest agent onboarding guide bytes"
 grep -Fq '/legal/account-terms/2026-08-28' "$WORKFLOW" || fail "release does not fetch account terms"
 grep -Fq '/legal/account-privacy/2026-08-28' "$WORKFLOW" || fail "release does not fetch account privacy"
 grep -Fq 'cmp web/legal-account-terms-2026-08-28.html' "$WORKFLOW" || fail "release does not attest account terms bytes"

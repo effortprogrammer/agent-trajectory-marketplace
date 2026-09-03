@@ -1,4 +1,4 @@
-import { mountSellerConsole } from "./console.30ef6517ce93b5005a08e1db50a2a9854873abe9739a9a27e2d857936690cda4.js";
+import { mountSellerConsole } from "./console.a77e586539f1b38edeaa14f49b3541a605ae903a112480b410b833b216cad02a.js";
 
 const localPreview = location.hostname === "127.0.0.1" || location.hostname === "localhost" ||
   location.hostname === "[::1]";
@@ -141,13 +141,16 @@ for (const button of document.querySelectorAll("[data-copy-target]")) {
     try {
       await navigator.clipboard.writeText(target.textContent ?? "");
       button.textContent = "Copied";
-      if (status) status.textContent = "Command copied to clipboard";
+      button.dataset.copyState = "copied";
+      if (status) status.textContent = "Copied to clipboard";
     } catch {
       button.textContent = "Unavailable";
+      button.dataset.copyState = "unavailable";
       if (status) status.textContent = "Clipboard access unavailable";
     }
     button.addEventListener("blur", () => {
       button.textContent = "Copy";
+      button.dataset.copyState = "idle";
       if (status) status.textContent = "";
     }, { once: true });
   });
@@ -466,8 +469,13 @@ const requestJson = async (endpoint, options = {}) => {
   if (!response.ok) {
     const error = new Error("Registry request failed");
     error.status = response.status;
-    error.code = body?.ok === false && body?.error?.code === "account_required"
-      ? "account_required"
+    const code = body?.ok === false ? body?.error?.code : undefined;
+    error.code = code === "account_required" || code === "weekly_payout_limit_reached"
+      ? code
+      : undefined;
+    const retryAfter = response.headers.get("retry-after");
+    error.retryAfterSeconds = retryAfter !== null && /^\d+$/.test(retryAfter)
+      ? Number(retryAfter)
       : undefined;
     throw error;
   }

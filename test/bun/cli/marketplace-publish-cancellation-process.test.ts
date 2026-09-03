@@ -6,6 +6,11 @@ import { join } from "node:path"
 
 import { writeStoredAuthSession } from "../../../src/auth/store"
 import { encodeDatasetManifest } from "../../../src/marketplace/archive-contract"
+import {
+  sanitizedArtifactDigest,
+  sanitizedTraceBytes,
+} from "../../../src/marketplace/dataset-archive"
+import { encodeSelectionDocument } from "../../../src/marketplace/selection-contract"
 import { writeDatasetZip } from "../../../src/marketplace/stored-zip"
 import { officialGatewayProcessArguments, officialGatewayProcessEnvironment } from "../fixtures/gateway-process"
 
@@ -18,8 +23,11 @@ const fixtureRoot = (): string => {
   return root
 }
 
-const bundle = (root: string): string => {
-  const trace = Buffer.from(JSON.stringify({
+const bundle = (root: string): Readonly<{
+  readonly archivePath: string
+  readonly selectionPath: string
+}> => {
+  const source = Buffer.from(JSON.stringify({
     runtime: "codex",
     status: "collected",
     formatVersion: 2,
@@ -38,28 +46,62 @@ const bundle = (root: string): string => {
       },
     }],
   }), "utf8")
+  const trace = sanitizedTraceBytes(source)
   const label = `s-${"0".repeat(64)}`
   const path = `traces/${label}.atf.json`
+  const artifact = sanitizedArtifactDigest(source)
   const manifest = encodeDatasetManifest({
     artifacts: [{
-      byteCount: trace.length,
+      byteCount: artifact.byteCount,
       label,
       path,
-      sha256: createHash("sha256").update(trace).digest("hex"),
+      sha256: artifact.sha256,
     }],
     formatVersion: 1,
   })
-  const output = join(root, "candidate.zip")
-  writeFileSync(output, writeDatasetZip([
+  const archivePath = join(root, "candidate.zip")
+  const selectionPath = join(root, "selection.json")
+  writeFileSync(archivePath, writeDatasetZip([
     { data: manifest, name: "dataset-manifest.json" },
     { data: trace, name: path },
   ]))
-  return output
+  writeFileSync(selectionPath, encodeSelectionDocument({
+    root,
+    schemaVersion: 1,
+    traces: [{
+      artifactByteCount: artifact.byteCount,
+      artifactSha256: artifact.sha256,
+      byteCount: source.byteLength,
+      earliestTimestamp: "2026-09-01T00:00:00.000Z",
+      eventCount: 1,
+      runtime: "codex",
+      selector: label,
+      sha256: createHash("sha256").update(source).digest("hex"),
+      summary: {
+        counts: {
+          actions: 0,
+          errors: 0,
+          redacted: 0,
+          requests: 0,
+          results: 0,
+          truncated: 0,
+        },
+        errors: [],
+        requests: [],
+        touched: [],
+      },
+    }],
+  }))
+  return { archivePath, selectionPath }
 }
 
-const publishArguments = (path: string, server: string): readonly string[] => [
+const publishArguments = (
+  fixture: Readonly<{ readonly archivePath: string; readonly selectionPath: string }>,
+  server: string,
+): readonly string[] => [
   "marketplace", "seller", "candidate", "publish",
-  "--bundle", path,
+  "--bundle", fixture.archivePath,
+  "--selection", fixture.selectionPath,
   "--server", server,
 ]
 
