@@ -4,8 +4,8 @@ import {
   parseLegacySessionsResponse,
   parseSessionsResponse,
   parseWeeklyLimitsResponse,
-} from "./console-contract.81bcdd2a7914795e34adcd8fde88ddd5028b2ba36eea85a612428821cfe06bc5.js";
-import { mountPayoutConsole } from "./payout-console.eba67913e35af7969b6b2f53027bce62338dfb13499b9dd921c7c1a46650bc5e.js";
+} from "./console-contract.8eecdc5da5030b220945907dfec925791d894cf02d6b3f6f0ad09f04b693a71c.js";
+import { mountPayoutConsole } from "./payout-console.47549c63eb93fa066302c08fcbdc8d6581eb92ce2c4dbd49a23258de2bc9fd3f.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {

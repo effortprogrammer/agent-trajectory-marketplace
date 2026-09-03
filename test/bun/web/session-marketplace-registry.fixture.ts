@@ -138,9 +138,9 @@ export const startSessionRegistry = (): SessionRegistry => {
             ok: true,
             weeklyLimits: {
               currency: "USD",
-              limitMinor: 100_000,
-              payoutRemainingMinor: 60_000,
-              sessionValueRemainingMinor: 25_000,
+              limitMinor: 20_000,
+              payoutRemainingMinor: 12_000,
+              sessionValueRemainingMinor: 5_000,
               windowSeconds: 604_800,
             },
           })

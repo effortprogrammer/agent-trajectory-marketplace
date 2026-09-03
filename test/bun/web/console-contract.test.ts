@@ -113,9 +113,9 @@ test("weekly limit contract keeps both remaining USD windows bounded", () => {
     ok: true,
     weeklyLimits: {
       currency: "USD",
-      limitMinor: 100_000,
-      payoutRemainingMinor: 60_000,
-      sessionValueRemainingMinor: 25_000,
+      limitMinor: 20_000,
+      payoutRemainingMinor: 12_000,
+      sessionValueRemainingMinor: 5_000,
       windowSeconds: 604_800,
     },
   }
@@ -124,7 +124,7 @@ test("weekly limit contract keeps both remaining USD windows bounded", () => {
     ...response,
     weeklyLimits: {
       ...response.weeklyLimits,
-      payoutRemainingMinor: 100_001,
+      payoutRemainingMinor: 20_001,
     },
   })).toThrow()
 })

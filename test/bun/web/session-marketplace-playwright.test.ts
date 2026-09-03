@@ -298,13 +298,13 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect([desktopObservation, mobileObservation]).toEqual([
       {
         overflowFree: true,
-        payout: "$600.00 remaining",
-        sessionValue: "$250.00 remaining",
+        payout: "$120.00 remaining",
+        sessionValue: "$50.00 remaining",
       },
       {
         overflowFree: true,
-        payout: "$600.00 remaining",
-        sessionValue: "$250.00 remaining",
+        payout: "$120.00 remaining",
+        sessionValue: "$50.00 remaining",
       },
     ])
     expect(harness.registryRequests).toContainEqual({
@@ -735,9 +735,9 @@ describe("authenticated aggregate marketplace browser contract", () => {
               ok: true,
               weeklyLimits: {
                 currency: "USD",
-                limitMinor: 100_000,
-                payoutRemainingMinor: 100_000,
-                sessionValueRemainingMinor: 100_000,
+                limitMinor: 20_000,
+                payoutRemainingMinor: 20_000,
+                sessionValueRemainingMinor: 20_000,
                 windowSeconds: 604_800,
               },
             }

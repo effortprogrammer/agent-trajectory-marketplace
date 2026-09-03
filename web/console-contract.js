@@ -239,7 +239,7 @@ export const parseWeeklyLimitsResponse = (value) => {
   ], "weekly limits");
   if (
     limits.currency !== "USD"
-    || limits.limitMinor !== 100_000
+    || limits.limitMinor !== 20_000
     || limits.windowSeconds !== 604_800
   ) {
     fail("Invalid weekly limits");
