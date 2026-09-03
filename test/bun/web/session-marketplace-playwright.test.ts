@@ -777,6 +777,20 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("[data-copy-status]").innerText()).toBe("")
   })
 
+  test("keeps the onboarding control free of a secondary arrow action", async () => {
+    // Given: the seller landing page at a desktop viewport.
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    // When: the real landing page finishes loading.
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    // Then: Copy is the only action inside the onboarding control.
+    expect(await page.locator(".hero-install .copy-button").count()).toBe(1)
+    expect(await page.locator(".hero-tool-run").count()).toBe(0)
+    expect(await page.locator(".hero-tool-footer").count()).toBe(0)
+  })
+
   test("keeps buyer access and member sign-in as separate entry points", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)

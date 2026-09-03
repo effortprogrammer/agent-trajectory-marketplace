@@ -1909,12 +1909,6 @@ body {
   backdrop-filter: blur(14px);
 }
 
-.hero-tool-footer {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-}
-
 .hero-install .command-block {
   min-height: 3.5rem;
   border-color: rgba(255, 255, 255, 0.72);
@@ -1947,28 +1941,6 @@ body {
   border-color: var(--border);
   background: var(--text-primary);
   color: var(--surface);
-}
-
-.hero-tool-footer {
-  justify-content: flex-end;
-  margin-top: var(--space-3);
-}
-
-.hero-tool-run {
-  width: 2.25rem;
-  min-height: 2.25rem;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-pill);
-  background: var(--text-primary);
-  color: var(--surface);
-  font-size: 1.25rem;
-  transform: rotate(45deg);
-  transition: transform var(--duration-standard) var(--ease-standard);
-}
-
-.hero-tool-run:hover {
-  transform: rotate(45deg) translateY(-1px);
 }
 
 .hero-aurora {
@@ -2531,10 +2503,6 @@ body {
   .hero-install .copy-button {
     min-width: 3.75rem;
     grid-column: auto;
-  }
-
-  .hero-tool-footer {
-    margin-top: var(--space-2);
   }
 
   .runtime-strip {
