@@ -30,6 +30,7 @@ export const payoutRequestErrorMessages = Object.freeze({
   payout_request_conflict: "The payout request conflicts with an existing operation.",
   below_payout_threshold: "At least USD 100.00 is required to request payout.",
   rate_limited: "Too many payout request attempts. Try again later.",
+  weekly_payout_limit_reached: "The rolling weekly payout limit has been reached.",
   payout_request_creation_disabled: "Payout requests are temporarily unavailable.",
   payout_request_service_unavailable: "Payout request service is unavailable.",
 } as const)
@@ -107,7 +108,7 @@ const errorCodesByStatus = new Map<number, ReadonlySet<string>>([
   [403, new Set(["forbidden"])],
   [409, new Set(["open_request_exists", "request_not_withdrawable", "payout_request_conflict"])],
   [422, new Set(["below_payout_threshold"])],
-  [429, new Set(["rate_limited"])],
+  [429, new Set(["rate_limited", "weekly_payout_limit_reached"])],
   [503, new Set(["payout_request_creation_disabled", "payout_request_service_unavailable"])],
 ])
 

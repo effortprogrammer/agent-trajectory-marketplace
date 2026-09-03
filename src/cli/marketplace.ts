@@ -26,7 +26,10 @@ import {
 } from "../marketplace/selection-upload";
 import { createWalletBalanceClient } from "../marketplace/wallet-balance-client";
 import { createSellerSalesClient } from "../marketplace/seller-sales-client";
-import { createPayoutRequestClient } from "../marketplace/payout-request-client";
+import {
+  PayoutRequestClientError,
+  createPayoutRequestClient,
+} from "../marketplace/payout-request-client";
 import { readStoredAuthSession, storedAuthSessionStatus } from "../auth/store";
 import { runFrozenReview } from "../marketplace/review-loop";
 import type { ReviewIO } from "../marketplace/review-loop";
@@ -187,16 +190,26 @@ export const runMarketplaceCli = async (
     case "payout": {
       const credential = sellerSessionCredential();
       const client = createPayoutRequestClient(officialRegistryOrigin);
-      if (command.action === "status") {
-        console.log(JSON.stringify(await client.read({ credential, signal })));
+      try {
+        if (command.action === "status") {
+          console.log(JSON.stringify(await client.read({ credential, signal })));
+          return;
+        }
+        if (command.operationId === undefined) throw new MarketplaceCliError("invalid_command");
+        const response = command.action === "request"
+          ? await client.create({ credential, operationId: command.operationId, signal })
+          : await client.withdraw({ credential, operationId: command.operationId, signal });
+        console.log(JSON.stringify(response));
         return;
+      } catch (error) {
+        if (
+          error instanceof PayoutRequestClientError
+          && error.registry?.code === "weekly_payout_limit_reached"
+        ) {
+          throw new MarketplaceCliError("weekly_payout_limit_reached");
+        }
+        throw error;
       }
-      if (command.operationId === undefined) throw new MarketplaceCliError("invalid_command");
-      const response = command.action === "request"
-        ? await client.create({ credential, operationId: command.operationId, signal })
-        : await client.withdraw({ credential, operationId: command.operationId, signal });
-      console.log(JSON.stringify(response));
-      return;
     }
     case "wallet-balance": {
       const server = officialRegistryOrigin;
