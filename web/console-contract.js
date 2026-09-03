@@ -231,6 +231,7 @@ export const parseWeeklyLimitsResponse = (value) => {
   if (value.ok !== true) fail("Invalid weekly limits response");
   const limits = value.weeklyLimits;
   keys(limits, [
+    "scope",
     "currency",
     "limitMinor",
     "payoutRemainingMinor",
@@ -238,7 +239,8 @@ export const parseWeeklyLimitsResponse = (value) => {
     "windowSeconds",
   ], "weekly limits");
   if (
-    limits.currency !== "USD"
+    limits.scope !== "platform"
+    || limits.currency !== "USD"
     || limits.limitMinor !== 20_000
     || limits.windowSeconds !== 604_800
   ) {
