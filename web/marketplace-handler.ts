@@ -66,6 +66,11 @@ const fixedAssets = new Map<string, Asset>([
     file: "console.js",
     type: "text/javascript; charset=utf-8",
   }],
+  ["/agent-onboarding-prompt.txt", {
+    cacheControl: "no-store",
+    file: "agent-onboarding-prompt.txt",
+    type: "text/plain; charset=utf-8",
+  }],
   ["/robots.txt", {
     cacheControl: "public, max-age=300",
     file: "robots.txt",

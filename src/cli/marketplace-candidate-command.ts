@@ -52,7 +52,7 @@ export type CandidatePublishCommand = Readonly<{
   readonly apiKey?: string;
   readonly bundle: string;
   readonly command: "candidate-publish";
-  readonly selection?: string;
+  readonly selection: string;
 }>;
 
 export type CandidateStatusCommand = Readonly<{
@@ -226,12 +226,12 @@ export const parseCandidatePublish = (argumentsList: readonly string[]): Candida
     else return invalidCommand();
     index += 1;
   }
-  if (bundle === undefined) return invalidCommand();
+  if (bundle === undefined || selection === undefined) return invalidCommand();
   return {
     ...(apiKey === undefined ? {} : { apiKey }),
     bundle,
     command: "candidate-publish",
-    ...(selection === undefined ? {} : { selection }),
+    selection,
   };
 };
 

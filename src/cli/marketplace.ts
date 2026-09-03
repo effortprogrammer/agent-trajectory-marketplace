@@ -150,16 +150,14 @@ export const runMarketplaceCli = async (
     case "candidate-publish": {
       const server = officialRegistryOrigin;
       const bundle = readPublishBundle(command.bundle);
-      const membership = command.selection === undefined
-        ? undefined
-        : approvedMembership(bundle, command.selection);
+      const membership = approvedMembership(bundle, command.selection);
       const credential = resolveMarketplaceCredential(server, command.apiKey, "missing_publish_credential");
       const receipt = await createPublishClient(server).publish({
         bundle,
         credential,
         signal,
       });
-      console.log(JSON.stringify(membership === undefined ? receipt : { ...receipt, membership }));
+      console.log(JSON.stringify({ ...receipt, membership }));
       return;
     }
     case "candidate-status": {

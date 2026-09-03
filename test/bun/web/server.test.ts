@@ -41,6 +41,28 @@ test("binds every public asset URL to fingerprinted paths so releases cannot reu
   expect(consoleScript).toContain(`from "./${consoleContractPath}"`)
 })
 
+test("serves the canonical agent onboarding prompt as exact no-store bytes", async () => {
+  // Given: the public Marketplace handler and canonical onboarding asset path.
+  const handler = await createTestHandler()
+
+  // When: a coding agent requests the onboarding artifact.
+  const response = await handler(
+    new Request("https://getatm.io/agent-onboarding-prompt.txt"),
+  )
+
+  // Then: the fixed route returns the shipped bytes without caching.
+  expect(response.status).toBe(200)
+  expect(response.headers.get("cache-control")).toBe("no-store")
+  expect(response.headers.get("content-type")).toBe("text/plain; charset=utf-8")
+  expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+    new Uint8Array(
+      await Bun.file(
+        resolve(publicRoot, "web", "agent-onboarding-prompt.txt"),
+      ).arrayBuffer(),
+    ),
+  )
+})
+
 test("serves immutable versioned account policy documents linked from signup", async () => {
   const version = "2026-08-28"
   const termsPath = `/legal/account-terms/${version}`

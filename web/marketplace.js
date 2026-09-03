@@ -139,15 +139,28 @@ for (const button of document.querySelectorAll("[data-copy-target]")) {
     const status = button.parentElement?.querySelector("[data-copy-status]");
     if (!target) return;
     try {
-      await navigator.clipboard.writeText(target.textContent ?? "");
+      const source = button.dataset.copySource;
+      const content = source === undefined
+        ? target.textContent ?? ""
+        : await fetch(source, {
+          cache: "no-store",
+          headers: { accept: "text/plain" },
+        }).then((response) => {
+          if (!response.ok) throw new Error("copy source unavailable");
+          return response.text();
+        });
+      await navigator.clipboard.writeText(content);
       button.textContent = "Copied";
-      if (status) status.textContent = "Command copied to clipboard";
+      button.dataset.copyState = "copied";
+      if (status) status.textContent = "Agent onboarding prompt copied to clipboard";
     } catch {
       button.textContent = "Unavailable";
+      button.dataset.copyState = "unavailable";
       if (status) status.textContent = "Clipboard access unavailable";
     }
     button.addEventListener("blur", () => {
-      button.textContent = "Copy";
+      button.textContent = "Copy agent prompt";
+      button.dataset.copyState = "idle";
       if (status) status.textContent = "";
     }, { once: true });
   });

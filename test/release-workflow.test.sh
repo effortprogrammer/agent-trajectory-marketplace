@@ -250,6 +250,8 @@ grep -Fq 'sha256sum --check web/assets.sha256' "$WORKFLOW" || fail "release does
 (cd "$ROOT" && sha256sum --check web/assets.sha256 >/dev/null) || fail "Marketplace web asset manifest is stale"
 grep -Fq '"https://getatm.io$marketplace_js_path"' "$WORKFLOW" || fail "release does not fetch deployed fingerprinted Marketplace assets"
 grep -Fq 'cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js"' "$WORKFLOW" || fail "release does not attest deployed Marketplace bytes"
+grep -Fq 'https://getatm.io/agent-onboarding-prompt.txt' "$WORKFLOW" || fail "release does not fetch the agent onboarding prompt"
+grep -Fq 'cmp web/agent-onboarding-prompt.txt "$RUNNER_TEMP/agent-onboarding-prompt.txt"' "$WORKFLOW" || fail "release does not attest agent onboarding prompt bytes"
 grep -Fq '/legal/account-terms/2026-08-28' "$WORKFLOW" || fail "release does not fetch account terms"
 grep -Fq '/legal/account-privacy/2026-08-28' "$WORKFLOW" || fail "release does not fetch account privacy"
 grep -Fq 'cmp web/legal-account-terms-2026-08-28.html' "$WORKFLOW" || fail "release does not attest account terms bytes"

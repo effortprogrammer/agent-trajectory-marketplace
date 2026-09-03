@@ -1,0 +1,36 @@
+Install ATM from its latest official immutable GitHub release, then help me review my local coding-agent sessions and publish only the sessions I explicitly approve.
+
+Work autonomously except for the approval decisions below. Reply in my language. Do not expose credentials, raw secrets, authentication tokens, or private session content in chat.
+
+Follow this exact safety boundary:
+
+1. Check that Git and Bun 1.3 or newer are available. If a prerequisite is missing, explain what is missing and ask before installing that prerequisite.
+2. Choose absolute paths for an ATM install root and its collected-session output. Tell me those paths. Use only this official latest-release installer:
+
+   curl -fsSL https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/latest/download/install-agent.sh | bash -s -- --dir <ABSOLUTE_INSTALL_ROOT> --out <ABSOLUTE_SESSION_ROOT>
+
+3. Use the installed CLI at `<ABSOLUTE_INSTALL_ROOT>/current/dist/collector.js`. Do not change or broaden collection sources unless I explicitly ask. The installer starts native collection for supported runtimes; keep its credential redaction and local output boundaries intact.
+4. Before any authentication or upload, inspect the local choices with:
+
+   bun <ABSOLUTE_INSTALL_ROOT>/current/dist/collector.js marketplace seller sessions choose --root <ABSOLUTE_SESSION_ROOT> --json
+
+5. Summarize every ready session in a compact numbered list using only the bounded preview fields: runtime, date, topic, event count, selector, and approval value. Separately list blocked sessions and their admission reason. Do not paste raw transcripts. Offer to inspect any session locally with `marketplace seller sessions inspect <FULL_SELECTOR> --root <ABSOLUTE_SESSION_ROOT> --json`.
+6. Ask me which sessions to include and which to exclude. Do not assume that all ready sessions are approved. Resolve ambiguous answers by asking again. If I choose none or cancel, stop without authenticating, bundling, or uploading.
+7. Write a content-bound selection document containing only my chosen sessions:
+
+   bun <ABSOLUTE_INSTALL_ROOT>/current/dist/collector.js marketplace seller sessions choose --root <ABSOLUTE_SESSION_ROOT> --out <ABSOLUTE_SELECTION_JSON> --approve <FULL_SELECTOR>@<SOURCE_SHA256> [--approve <FULL_SELECTOR>@<SOURCE_SHA256> ...]
+
+8. Build only from that selection:
+
+   bun <ABSOLUTE_INSTALL_ROOT>/current/dist/collector.js marketplace seller candidate bundle --root <ABSOLUTE_SESSION_ROOT> --out <ABSOLUTE_BUNDLE_ZIP> --selection <ABSOLUTE_SELECTION_JSON>
+
+9. Show me the exact final included and excluded session lists and ask: “Upload exactly these approved sessions to ATM now?” Treat anything except an explicit yes as no. Do not authenticate or make a publish request before this confirmation.
+10. After explicit confirmation, check `auth status`. If authentication is needed, guide me through the official `auth login` or `auth signup` and `auth verify` flow without printing the code or token. Never put an API key on the command line unless I explicitly choose that.
+11. Publish with both the bundle and the same selection document:
+
+    bun <ABSOLUTE_INSTALL_ROOT>/current/dist/collector.js marketplace seller candidate publish --bundle <ABSOLUTE_BUNDLE_ZIP> --selection <ABSOLUTE_SELECTION_JSON>
+
+12. If ATM reports selection drift, membership mismatch, a changed session, or any invalid bundle request, do not bypass the check and do not rebuild with `--trace`. Return to local preview, ask for approval again, create a fresh selection, and rebuild.
+13. Report the final submission receipt and status URL. Do not request payout or perform any other seller action unless I separately ask.
+
+Start now with the prerequisite check and installation. Pause only when one of the explicit user decisions above is required.

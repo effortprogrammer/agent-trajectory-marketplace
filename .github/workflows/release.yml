@@ -187,6 +187,10 @@ jobs:
                 --output "$RUNNER_TEMP/marketplace.js" \
               && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
+                https://getatm.io/agent-onboarding-prompt.txt \
+                --output "$RUNNER_TEMP/agent-onboarding-prompt.txt" \
+              && atm_release_curl --fail --silent --show-error \
+                --header 'cache-control: no-cache' \
                 "https://getatm.io$account_terms_path" \
                 --output "$RUNNER_TEMP/account-terms.html" \
               && atm_release_curl --fail --silent --show-error \
@@ -200,6 +204,7 @@ jobs:
               && cmp web/index.html "$RUNNER_TEMP/index.html" \
               && cmp web/marketplace.css "$RUNNER_TEMP/marketplace.css" \
               && cmp web/marketplace.js "$RUNNER_TEMP/marketplace.js" \
+              && cmp web/agent-onboarding-prompt.txt "$RUNNER_TEMP/agent-onboarding-prompt.txt" \
               && cmp web/legal-account-terms-2026-08-28.html \
                 "$RUNNER_TEMP/account-terms.html" \
               && cmp web/legal-account-privacy-2026-08-28.html \

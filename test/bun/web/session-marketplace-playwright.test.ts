@@ -724,7 +724,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     )).toBe(false)
   })
 
-  test("copies the exact installer from the simplified seller hero", async () => {
+  test("copies the canonical agent onboarding prompt from the seller hero", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop, {
       permissions: ["clipboard-read", "clipboard-write"],
@@ -732,19 +732,47 @@ describe("authenticated aggregate marketplace browser contract", () => {
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
 
-    const command =
-      "curl -fsSL https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/latest/download/install-agent.sh | bash -s -- --dir atm"
+    const promptResponse = await page.request.get(
+      `${harness.appUrl}/agent-onboarding-prompt.txt`,
+    )
+    expect(promptResponse.status()).toBe(200)
+    const prompt = await promptResponse.text()
     expect(await page.locator(".corpus-console").count()).toBe(0)
     expect(await page.locator("#publish").count()).toBe(0)
     expect(await page.locator("#top .signal-button").getAttribute("href")).toBe(
       "#install-command",
     )
-    expect(await page.locator("#install-command").innerText()).toBe(command)
-    await page.locator('[data-copy-target="install-command"]').click()
-    expect(await page.evaluate<string>("navigator.clipboard.readText()")).toBe(command)
-    expect(await page.locator("[data-copy-status]").innerText()).toBe(
-      "Command copied to clipboard",
-    )
+    const button = page.locator('[data-copy-target="install-command"]')
+    expect(await page.locator("#install-command").innerText()).not.toBe(prompt)
+    await button.evaluate((element) => {
+      const Observer = element.ownerDocument.defaultView.MutationObserver
+      Reflect.set(element, "__atmCopySettled", new Promise<void>((resolve) => {
+        const observer = new Observer(() => {
+          if (element.dataset.copyState === "idle") return
+          observer.disconnect()
+          resolve()
+        })
+        observer.observe(element, {
+          attributeFilter: ["data-copy-state"],
+          attributes: true,
+        })
+      }))
+    })
+    await button.click()
+    await button.evaluate(async (element) => {
+      const settled = Reflect.get(element, "__atmCopySettled")
+      if (!(settled instanceof Promise)) {
+        throw new Error("copy observer unavailable")
+      }
+      await settled
+      Reflect.deleteProperty(element, "__atmCopySettled")
+    })
+    expect(await page.evaluate<string>("navigator.clipboard.readText()")).toBe(prompt)
+    expect(await button.getAttribute("data-copy-state")).toBe("copied")
+    expect(await page.locator("[data-copy-status]").innerText()).not.toBe("")
+    await button.evaluate((element) => element.blur())
+    expect(await button.getAttribute("data-copy-state")).toBe("idle")
+    expect(await page.locator("[data-copy-status]").innerText()).toBe("")
   })
 
   test("keeps buyer access and member sign-in as separate entry points", async () => {
