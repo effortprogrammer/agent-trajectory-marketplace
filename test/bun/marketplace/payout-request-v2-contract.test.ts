@@ -178,6 +178,26 @@ describe("payout request v2 contract", () => {
 		);
 	});
 
+	it("accepts only the canonical weekly gross-limit error at status 429", () => {
+		const canonical = Buffer.from(
+			'{"ok":false,"error":{"code":"weekly_payout_limit_reached","message":"The rolling weekly payout limit has been reached."}}',
+		);
+		const wrongMessage = Buffer.from(
+			'{"ok":false,"error":{"code":"weekly_payout_limit_reached","message":"Other message."}}',
+		);
+
+		expect(parsePayoutRequestV2Response(429, canonical)).toEqual({
+			error: {
+				code: "weekly_payout_limit_reached",
+				message: "The rolling weekly payout limit has been reached.",
+			},
+			ok: false,
+		});
+		expect(() => parsePayoutRequestV2Response(429, wrongMessage)).toThrow(
+			PayoutRequestV2ContractError,
+		);
+	});
+
 	it("rejects every frozen malformed frame", async () => {
 		// Given: malformed, reordered, numeric, and fee-mismatch frames.
 		const { reject } = await manifest();

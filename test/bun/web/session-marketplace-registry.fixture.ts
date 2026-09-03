@@ -20,6 +20,7 @@ export type RegistryRequest = Readonly<{
 
 export type PayoutFixture = Readonly<{
   body: unknown
+  retryAfter?: string
   status: number
 }>
 
@@ -36,12 +37,17 @@ export type SessionRegistry = Readonly<{
   url: string
 }>
 
-const json = (body: unknown, status = 200): Response => Response.json(body, {
+const json = (
+  body: unknown,
+  status = 200,
+  extraHeaders: Readonly<Record<string, string>> = {},
+): Response => Response.json(body, {
   headers: {
     "access-control-allow-headers": "authorization, content-type",
     "access-control-allow-methods": "GET, POST, OPTIONS",
     "access-control-allow-origin": "*",
     "cache-control": "no-store",
+    ...extraHeaders,
   },
   status,
 })
@@ -126,6 +132,20 @@ export const startSessionRegistry = (): SessionRegistry => {
           ? json(sellerEarnings)
           : json({ error: { code: "unauthorized" }, ok: false }, 401)
       }
+      if (url.pathname === "/v1/marketplace/seller/weekly-limits") {
+        return authorized
+          ? json({
+            ok: true,
+            weeklyLimits: {
+              currency: "USD",
+              limitMinor: 100_000,
+              payoutRemainingMinor: 60_000,
+              sessionValueRemainingMinor: 25_000,
+              windowSeconds: 604_800,
+            },
+          })
+          : json({ error: { code: "unauthorized" }, ok: false }, 401)
+      }
       if (
         url.pathname === "/v1/marketplace/seller/payout-request"
         || url.pathname === "/v1/marketplace/seller/payout-request/withdraw"
@@ -144,7 +164,13 @@ export const startSessionRegistry = (): SessionRegistry => {
           ? payoutResponses.shift()
           : payoutResponses[0]
         if (fixture === undefined) throw new Error("payout fixture queue is empty")
-        return json(fixture.body, fixture.status)
+        return json(
+          fixture.body,
+          fixture.status,
+          fixture.retryAfter === undefined
+            ? {}
+            : { "retry-after": fixture.retryAfter },
+        )
       }
       if (url.pathname === "/v1/auth/logout") {
         return logoutStatus === 200

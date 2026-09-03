@@ -1,4 +1,4 @@
-import { mountSellerConsole } from "./console.30ef6517ce93b5005a08e1db50a2a9854873abe9739a9a27e2d857936690cda4.js";
+import { mountSellerConsole } from "./console.31c2c397288de20d560171ca9163bbffbe3f3275ad962d6e0c185683c9969347.js";
 
 const localPreview = location.hostname === "127.0.0.1" || location.hostname === "localhost" ||
   location.hostname === "[::1]";
@@ -469,8 +469,13 @@ const requestJson = async (endpoint, options = {}) => {
   if (!response.ok) {
     const error = new Error("Registry request failed");
     error.status = response.status;
-    error.code = body?.ok === false && body?.error?.code === "account_required"
-      ? "account_required"
+    const code = body?.ok === false ? body?.error?.code : undefined;
+    error.code = code === "account_required" || code === "weekly_payout_limit_reached"
+      ? code
+      : undefined;
+    const retryAfter = response.headers.get("retry-after");
+    error.retryAfterSeconds = retryAfter !== null && /^\d+$/.test(retryAfter)
+      ? Number(retryAfter)
       : undefined;
     throw error;
   }

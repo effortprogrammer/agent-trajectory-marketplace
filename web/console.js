@@ -3,8 +3,9 @@ import {
   parseEarningsResponse,
   parseLegacySessionsResponse,
   parseSessionsResponse,
-} from "./console-contract.889ee8ad70774435ea8c707f96c9d2712ffa32eb77595cfd758a71ffb507b1e7.js";
-import { mountPayoutConsole } from "./payout-console.cc22c3db9d3bb4e30b35599cae598950af7de69fe37442c0a6adadbe87516811.js";
+  parseWeeklyLimitsResponse,
+} from "./console-contract.81bcdd2a7914795e34adcd8fde88ddd5028b2ba36eea85a612428821cfe06bc5.js";
+import { mountPayoutConsole } from "./payout-console.eba67913e35af7969b6b2f53027bce62338dfb13499b9dd921c7c1a46650bc5e.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {
@@ -109,6 +110,49 @@ const requestSessions = async (requestJson, headers) => {
   }
 };
 
+const requestWeeklyLimits = async (requestJson, headers) => {
+  try {
+    return parseWeeklyLimitsResponse(
+      await requestJson("/v1/marketplace/seller/weekly-limits", { headers }),
+    );
+  } catch (error) {
+    if (error?.status === 401) throw error;
+    return undefined;
+  }
+};
+
+const renderWeeklyLimits = (root, response) => {
+  if (!root) return;
+  root.hidden = false;
+  root.setAttribute("aria-busy", "false");
+  for (const skeleton of root.querySelectorAll(
+    ".seller-weekly-limit-skeleton",
+  )) {
+    skeleton.hidden = true;
+  }
+  const payout = root.querySelector("[data-weekly-payout-remaining]");
+  const sessionValue = root.querySelector(
+    "[data-weekly-session-value-remaining]",
+  );
+  if (payout) payout.hidden = false;
+  if (sessionValue) sessionValue.hidden = false;
+  if (response === undefined) {
+    root.dataset.state = "unavailable";
+    if (payout) payout.textContent = "Unavailable";
+    if (sessionValue) sessionValue.textContent = "Unavailable";
+    return;
+  }
+  root.dataset.state = "ready";
+  if (payout) {
+    payout.textContent =
+      `${formatPayoutAmount(response.weeklyLimits.payoutRemainingMinor)} remaining`;
+  }
+  if (sessionValue) {
+    sessionValue.textContent =
+      `${formatPayoutAmount(response.weeklyLimits.sessionValueRemainingMinor)} remaining`;
+  }
+};
+
 export const mountSellerConsole = async ({
   isCurrent = () => true,
   requestJson,
@@ -126,6 +170,23 @@ export const mountSellerConsole = async ({
   const payoutDialog = view.querySelector("[data-payout-dialog]");
   const payoutOpen = view.querySelector("[data-payout-open]");
   const payoutClose = view.querySelector("[data-payout-close]");
+  const weeklyLimits = view.querySelector("[data-weekly-limits]");
+  if (weeklyLimits) {
+    weeklyLimits.hidden = false;
+    weeklyLimits.dataset.state = "loading";
+    weeklyLimits.setAttribute("aria-busy", "true");
+    for (const skeleton of weeklyLimits.querySelectorAll(
+      ".seller-weekly-limit-skeleton",
+    )) {
+      skeleton.hidden = false;
+    }
+    for (const value of weeklyLimits.querySelectorAll(
+      "[data-weekly-payout-remaining], "
+      + "[data-weekly-session-value-remaining]",
+    )) {
+      value.hidden = true;
+    }
+  }
   let restorePayoutFocus = true;
   const closePayoutDialog = (restoreFocus = true) => {
     restorePayoutFocus = restoreFocus;
@@ -171,10 +232,11 @@ export const mountSellerConsole = async ({
   state.hidden = false; state.dataset.state = "loading"; state.textContent = "Loading seller sales...";
   chart.replaceChildren(element("div", "seller-console-skeleton")); sessions.replaceChildren();
   try {
-    const [me, sessionsBody, earningsBody] = await Promise.all([
+    const [me, sessionsBody, earningsBody, weeklyLimitsBody] = await Promise.all([
       requestJson("/v1/auth/me", { headers }),
       requestSessions(requestJson, headers),
       requestJson(`/v1/marketplace/seller/sales/earnings?from=${day(from)}&to=${day(today)}&interval=day`, { headers }),
+      requestWeeklyLimits(requestJson, headers),
     ]);
     if (!isCurrent()) return;
     if (me?.ok !== true || typeof me.account?.accountId !== "string") throw new TypeError("Invalid Registry account response");
@@ -185,6 +247,7 @@ export const mountSellerConsole = async ({
     total.textContent = cumulativeCredits === 0
       ? ""
       : `${formatCredits(cumulativeCredits)} cumulative`;
+    renderWeeklyLimits(weeklyLimits, weeklyLimitsBody);
     renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
     state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;
     await mountPayoutConsole({

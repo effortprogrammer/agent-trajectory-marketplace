@@ -1,7 +1,7 @@
 import {
   formatPayoutAmount,
   parsePayoutResponse,
-} from "./console-contract.889ee8ad70774435ea8c707f96c9d2712ffa32eb77595cfd758a71ffb507b1e7.js";
+} from "./console-contract.81bcdd2a7914795e34adcd8fde88ddd5028b2ba36eea85a612428821cfe06bc5.js";
 
 const labels = {
   approved: "Approved for operator processing.",
@@ -39,7 +39,7 @@ const render = (root, summary, actions) => {
   if (balance) balance.textContent = `${formatPayoutAmount(availableMinor)} available`;
   const copy = request === null
     ? state === "eligible"
-      ? `Your full ${formatPayoutAmount(availableMinor)} available balance can be held for payout.`
+      ? "Your available balance is eligible for a payout request."
       : null
     : labels[request.status];
   if (copy !== null) root.append(element("p", "seller-payout-status", copy));
@@ -53,7 +53,7 @@ const render = (root, summary, actions) => {
       && availableMinor >= thresholdMinor
   ) {
     const requestControl = control(
-      request === null ? `Request ${formatPayoutAmount(availableMinor)}` : "Request payout again",
+      request === null ? "Request payout" : "Request payout again",
       actions.request,
     );
     requestControl.dataset.payoutRequest = "";
@@ -142,11 +142,21 @@ export const mountPayoutConsole = async ({
     } catch (error) {
       if (!isCurrent() || showPayoutLogin(error)) return;
       if (error?.status !== undefined) retainedOperation = undefined;
+      const weeklyLimit = error?.code === "weekly_payout_limit_reached";
+      const retryMinutes = Number.isSafeInteger(error?.retryAfterSeconds)
+        ? Math.max(1, Math.ceil(error.retryAfterSeconds / 60))
+        : undefined;
       renderFailure(
         root,
-        error?.status === 503 ? "creation-disabled" : "request-failed",
+        error?.status === 503
+          ? "creation-disabled"
+          : weeklyLimit ? "weekly-limit-reached" : "request-failed",
         error?.status === 503
           ? "Payout requests are temporarily unavailable."
+          : weeklyLimit
+            ? retryMinutes === undefined
+              ? "Weekly payout capacity is exhausted for the current rolling window."
+              : `Weekly payout capacity is exhausted. Try again in ${retryMinutes} minutes.`
           : "Payout request could not be submitted.",
         load,
       );

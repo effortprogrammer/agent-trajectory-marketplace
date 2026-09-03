@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "frames": [
+    {
+      "name": "weekly-limits-200",
+      "method": "GET",
+      "path": "/v1/marketplace/seller/weekly-limits",
+      "status": 200,
+      "sha256": "3dfcd484b7d6a1183c7aee0b5ecca4a548ed64e4345d267e2534ceb6a71d7cfc",
+      "body": "{\"ok\":true,\"weeklyLimits\":{\"currency\":\"USD\",\"limitMinor\":100000,\"windowSeconds\":604800,\"sessionValueRemainingMinor\":25000,\"payoutRemainingMinor\":60000}}"
+    },
+    {
+      "name": "payout-weekly-limit-429",
+      "method": "POST",
+      "path": "/v2/marketplace/seller/payout-request",
+      "status": 429,
+      "sha256": "7b5b5c438ea0c47dad89b050271db1b9c79f6586caca7f5328a7677bad9feb15",
+      "body": "{\"ok\":false,\"error\":{\"code\":\"weekly_payout_limit_reached\",\"message\":\"The rolling weekly payout limit has been reached.\"}}"
+    }
+  ]
+}
