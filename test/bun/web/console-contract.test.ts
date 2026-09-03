@@ -112,6 +112,7 @@ test("weekly limit contract keeps both remaining USD windows bounded", () => {
   const response = {
     ok: true,
     weeklyLimits: {
+      scope: "platform",
       currency: "USD",
       limitMinor: 20_000,
       payoutRemainingMinor: 12_000,

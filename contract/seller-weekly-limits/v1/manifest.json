@@ -6,8 +6,8 @@
       "method": "GET",
       "path": "/v1/marketplace/seller/weekly-limits",
       "status": 200,
-      "sha256": "b479f791d9b96e4eaaf4f8526667cb137d55df132a6461f56a3a196e3cb56913",
-      "body": "{\"ok\":true,\"weeklyLimits\":{\"currency\":\"USD\",\"limitMinor\":20000,\"windowSeconds\":604800,\"sessionValueRemainingMinor\":5000,\"payoutRemainingMinor\":12000}}"
+      "sha256": "cf5d71d553f08eabcf9559e10796d032808ea104b868113fca7e9dae63be937c",
+      "body": "{\"ok\":true,\"weeklyLimits\":{\"scope\":\"platform\",\"currency\":\"USD\",\"limitMinor\":20000,\"windowSeconds\":604800,\"sessionValueRemainingMinor\":5000,\"payoutRemainingMinor\":12000}}"
     },
     {
       "name": "payout-weekly-limit-429",

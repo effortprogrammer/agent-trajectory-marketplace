@@ -1,4 +1,4 @@
-import { mountSellerConsole } from "./console.a77e586539f1b38edeaa14f49b3541a605ae903a112480b410b833b216cad02a.js";
+import { mountSellerConsole } from "./console.fcb1173bd07af26e8f6f3568840f2deb650a32d23db697edd499b70c59352bf7.js";
 
 const localPreview = location.hostname === "127.0.0.1" || location.hostname === "localhost" ||
   location.hostname === "[::1]";
