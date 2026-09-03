@@ -118,8 +118,8 @@ jobs:
                 --output "$RUNNER_TEMP/staging-marketplace.js" \
               && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
-                "$ORIGIN_URL/agent-onboarding-prompt.txt" \
-                --output "$RUNNER_TEMP/staging-agent-onboarding-prompt.txt" \
+                "$ORIGIN_URL/agent-onboarding.md" \
+                --output "$RUNNER_TEMP/staging-agent-onboarding.md" \
               && atm_release_curl --fail --silent --show-error \
                 --header 'cache-control: no-cache' \
                 "$ORIGIN_URL$account_terms_path" \
@@ -135,8 +135,8 @@ jobs:
               && cmp web/index.html "$RUNNER_TEMP/staging-index.html" \
               && cmp web/marketplace.css "$RUNNER_TEMP/staging-marketplace.css" \
               && cmp web/marketplace.js "$RUNNER_TEMP/staging-marketplace.js" \
-              && cmp web/agent-onboarding-prompt.txt \
-                "$RUNNER_TEMP/staging-agent-onboarding-prompt.txt" \
+              && cmp web/agent-onboarding.md \
+                "$RUNNER_TEMP/staging-agent-onboarding.md" \
               && cmp web/legal-account-terms-2026-08-28.html \
                 "$RUNNER_TEMP/staging-account-terms.html" \
               && cmp web/legal-account-privacy-2026-08-28.html \

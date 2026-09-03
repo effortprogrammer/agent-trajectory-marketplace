@@ -99,10 +99,10 @@ grep -Fq 'cmp web/marketplace.css' "$WORKFLOW" \
   || fail "staging CSS bytes are not attested"
 grep -Fq 'cmp web/marketplace.js' "$WORKFLOW" \
   || fail "staging JavaScript bytes are not attested"
-grep -Fq '/agent-onboarding-prompt.txt' "$WORKFLOW" \
-  || fail "staging agent onboarding prompt URL is not attested"
-grep -Fq 'cmp web/agent-onboarding-prompt.txt' "$WORKFLOW" \
-  || fail "staging agent onboarding prompt bytes are not attested"
+grep -Fq '/agent-onboarding.md' "$WORKFLOW" \
+  || fail "staging agent onboarding guide URL is not attested"
+grep -Fq 'cmp web/agent-onboarding.md' "$WORKFLOW" \
+  || fail "staging agent onboarding guide bytes are not attested"
 grep -Fq '/legal/account-terms/2026-08-28' "$WORKFLOW" \
   || fail "staging account terms URL is not attested"
 grep -Fq '/legal/account-privacy/2026-08-28' "$WORKFLOW" \

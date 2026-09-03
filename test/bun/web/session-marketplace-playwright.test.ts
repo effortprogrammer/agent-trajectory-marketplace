@@ -724,7 +724,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     )).toBe(false)
   })
 
-  test("copies the canonical agent onboarding prompt from the seller hero", async () => {
+  test("copies a short handoff to the downloadable onboarding guide", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop, {
       permissions: ["clipboard-read", "clipboard-write"],
@@ -732,18 +732,20 @@ describe("authenticated aggregate marketplace browser contract", () => {
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
 
-    const promptResponse = await page.request.get(
-      `${harness.appUrl}/agent-onboarding-prompt.txt`,
+    const guideResponse = await page.request.get(
+      `${harness.appUrl}/agent-onboarding.md`,
     )
-    expect(promptResponse.status()).toBe(200)
-    const prompt = await promptResponse.text()
+    expect(guideResponse.status()).toBe(200)
+    const guide = await guideResponse.text()
     expect(await page.locator(".corpus-console").count()).toBe(0)
     expect(await page.locator("#publish").count()).toBe(0)
     expect(await page.locator("#top .signal-button").getAttribute("href")).toBe(
       "#install-command",
     )
     const button = page.locator('[data-copy-target="install-command"]')
-    expect(await page.locator("#install-command").innerText()).not.toBe(prompt)
+    const handoff = await page.locator("#install-command").innerText()
+    expect(handoff).not.toBe(guide)
+    expect(await button.getAttribute("data-copy-source")).toBeNull()
     await button.evaluate((element) => {
       const Observer = element.ownerDocument.defaultView.MutationObserver
       Reflect.set(element, "__atmCopySettled", new Promise<void>((resolve) => {
@@ -767,7 +769,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
       await settled
       Reflect.deleteProperty(element, "__atmCopySettled")
     })
-    expect(await page.evaluate<string>("navigator.clipboard.readText()")).toBe(prompt)
+    expect(await page.evaluate<string>("navigator.clipboard.readText()")).toBe(handoff)
     expect(await button.getAttribute("data-copy-state")).toBe("copied")
     expect(await page.locator("[data-copy-status]").innerText()).not.toBe("")
     await button.evaluate((element) => element.blur())

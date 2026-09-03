@@ -48,3 +48,4 @@ temp/
 docs/
 *.md
 !README.md
+!web/agent-onboarding.md
