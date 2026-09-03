@@ -1,0 +1,1 @@
+{"ok":true,"request":{"requestId":"ireq-0000000000000001","quoteId":"iquote-0000000000000001","canonicalModel":"claude-fable-5","provider":"relay-alpha","status":"cancelled","ceilingCredits":32,"finalDebitCredits":0,"usage":null,"createdAt":"2030-01-01T03:04:05Z","finalizedAt":"2030-01-01T03:04:06Z"}}
