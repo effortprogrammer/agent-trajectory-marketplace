@@ -724,7 +724,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     )).toBe(false)
   })
 
-  test("copies the exact installer from the simplified seller hero", async () => {
+  test("copies a short handoff to the downloadable onboarding guide", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop, {
       permissions: ["clipboard-read", "clipboard-write"],
@@ -732,19 +732,63 @@ describe("authenticated aggregate marketplace browser contract", () => {
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
 
-    const command =
-      "curl -fsSL https://github.com/effortprogrammer/agent-trajectory-marketplace/releases/latest/download/install-agent.sh | bash -s -- --dir atm"
+    const guideResponse = await page.request.get(
+      `${harness.appUrl}/agent-onboarding.md`,
+    )
+    expect(guideResponse.status()).toBe(200)
+    const guide = await guideResponse.text()
     expect(await page.locator(".corpus-console").count()).toBe(0)
     expect(await page.locator("#publish").count()).toBe(0)
     expect(await page.locator("#top .signal-button").getAttribute("href")).toBe(
       "#install-command",
     )
-    expect(await page.locator("#install-command").innerText()).toBe(command)
-    await page.locator('[data-copy-target="install-command"]').click()
-    expect(await page.evaluate<string>("navigator.clipboard.readText()")).toBe(command)
-    expect(await page.locator("[data-copy-status]").innerText()).toBe(
-      "Command copied to clipboard",
-    )
+    const button = page.locator('[data-copy-target="install-command"]')
+    const handoff = await page.locator("#install-command").innerText()
+    expect(handoff).not.toBe(guide)
+    expect(await button.getAttribute("data-copy-source")).toBeNull()
+    await button.evaluate((element) => {
+      const Observer = element.ownerDocument.defaultView.MutationObserver
+      Reflect.set(element, "__atmCopySettled", new Promise<void>((resolve) => {
+        const observer = new Observer(() => {
+          if (element.dataset.copyState === "idle") return
+          observer.disconnect()
+          resolve()
+        })
+        observer.observe(element, {
+          attributeFilter: ["data-copy-state"],
+          attributes: true,
+        })
+      }))
+    })
+    await button.click()
+    await button.evaluate(async (element) => {
+      const settled = Reflect.get(element, "__atmCopySettled")
+      if (!(settled instanceof Promise)) {
+        throw new Error("copy observer unavailable")
+      }
+      await settled
+      Reflect.deleteProperty(element, "__atmCopySettled")
+    })
+    expect(await page.evaluate<string>("navigator.clipboard.readText()")).toBe(handoff)
+    expect(await button.getAttribute("data-copy-state")).toBe("copied")
+    expect(await page.locator("[data-copy-status]").innerText()).not.toBe("")
+    await button.evaluate((element) => element.blur())
+    expect(await button.getAttribute("data-copy-state")).toBe("idle")
+    expect(await page.locator("[data-copy-status]").innerText()).toBe("")
+  })
+
+  test("keeps the onboarding control free of a secondary arrow action", async () => {
+    // Given: the seller landing page at a desktop viewport.
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+
+    // When: the real landing page finishes loading.
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    // Then: Copy is the only action inside the onboarding control.
+    expect(await page.locator(".hero-install .copy-button").count()).toBe(1)
+    expect(await page.locator(".hero-tool-run").count()).toBe(0)
+    expect(await page.locator(".hero-tool-footer").count()).toBe(0)
   })
 
   test("keeps buyer access and member sign-in as separate entry points", async () => {

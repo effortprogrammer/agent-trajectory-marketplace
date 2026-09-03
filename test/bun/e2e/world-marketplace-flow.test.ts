@@ -163,19 +163,30 @@ describe("public Todo27 marketplace lifecycle", () => {
     try {
       const traces = join(workspace, "traces")
       const bundle = join(workspace, "candidate.zip")
+      const selection = join(workspace, "selection.json")
       mkdirSync(traces)
       writeFileSync(join(traces, "main.atf.json"), todo27Trace("reviewed Todo27 main trace"))
       writeFileSync(join(traces, "retry.atf.json"), todo27Trace("reviewed Todo27 retry trace"))
 
+      const previewed = await run([
+        process.execPath, "dist/collector.js", "marketplace", "seller", "candidate", "bundle",
+        "--root", traces, "--print-selection",
+      ])
+      expect(previewed).toEqual({
+        exitCode: 0,
+        stderr: "",
+        stdout: expect.stringContaining('"schemaVersion":1'),
+      })
+      writeFileSync(selection, previewed.stdout)
       const bundled = await run([
         process.execPath, "dist/collector.js", "marketplace", "seller", "candidate", "bundle",
-        "--root", traces, "--out", bundle, "--trace", "main.atf.json", "--trace", "retry.atf.json",
+        "--root", traces, "--out", bundle, "--selection", selection,
       ])
       expect(bundled).toEqual({ exitCode: 0, stderr: "", stdout: expect.stringContaining('"traceCount":2') })
 
       const published = await run([
         process.execPath, "dist/collector.js", "marketplace", "seller", "candidate", "publish",
-        "--bundle", bundle, "--api-key", supplied.apiKey,
+        "--bundle", bundle, "--selection", selection, "--api-key", supplied.apiKey,
       ], supplied.server)
       expect(published).toEqual({
         exitCode: 0,
@@ -183,6 +194,10 @@ describe("public Todo27 marketplace lifecycle", () => {
         stdout: expect.any(String),
       })
       expect(JSON.parse(published.stdout)).toEqual({
+        membership: [
+          expect.stringMatching(/^s-[0-9a-f]{64}$/),
+          expect.stringMatching(/^s-[0-9a-f]{64}$/),
+        ],
         protocolVersion: 1,
         submissionId: expect.stringMatching(/^sub_/),
         status: "accepted",

@@ -141,13 +141,16 @@ for (const button of document.querySelectorAll("[data-copy-target]")) {
     try {
       await navigator.clipboard.writeText(target.textContent ?? "");
       button.textContent = "Copied";
-      if (status) status.textContent = "Command copied to clipboard";
+      button.dataset.copyState = "copied";
+      if (status) status.textContent = "Copied to clipboard";
     } catch {
       button.textContent = "Unavailable";
+      button.dataset.copyState = "unavailable";
       if (status) status.textContent = "Clipboard access unavailable";
     }
     button.addEventListener("blur", () => {
       button.textContent = "Copy";
+      button.dataset.copyState = "idle";
       if (status) status.textContent = "";
     }, { once: true });
   });

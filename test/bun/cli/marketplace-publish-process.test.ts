@@ -5,6 +5,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { encodeDatasetManifest } from "../../../src/marketplace/archive-contract"
+import {
+  sanitizedArtifactDigest,
+  sanitizedTraceBytes,
+} from "../../../src/marketplace/dataset-archive"
+import { encodeSelectionDocument } from "../../../src/marketplace/selection-contract"
 import { writeDatasetZip } from "../../../src/marketplace/stored-zip"
 import { writeStoredAuthSession } from "../../../src/auth/store"
 import { parsePublishFrame } from "../../../src/marketplace/publish-frame"
@@ -21,8 +26,12 @@ const fixtureRoot = (): string => {
 const bundle = (
   root: string,
   model = "claude-fable-5",
-): string => {
-  const trace = Buffer.from(JSON.stringify({
+): Readonly<{
+  readonly archivePath: string
+  readonly selectionPath: string
+  readonly selector: string
+}> => {
+  const source = Buffer.from(JSON.stringify({
     runtime: "codex",
     status: "collected",
     formatVersion: 2,
@@ -41,15 +50,53 @@ const bundle = (
       },
     }],
   }), "utf8")
+  const trace = sanitizedTraceBytes(source)
   const label = `s-${"0".repeat(64)}`
   const path = `traces/${label}.atf.json`
+  const artifact = sanitizedArtifactDigest(source)
   const manifest = encodeDatasetManifest({
-    artifacts: [{ byteCount: trace.length, label, path, sha256: createHash("sha256").update(trace).digest("hex") }],
+    artifacts: [{
+      byteCount: artifact.byteCount,
+      label,
+      path,
+      sha256: artifact.sha256,
+    }],
     formatVersion: 1,
   })
-  const output = join(root, "candidate.zip")
-  writeFileSync(output, writeDatasetZip([{ data: manifest, name: "dataset-manifest.json" }, { data: trace, name: path }]))
-  return output
+  const archivePath = join(root, "candidate.zip")
+  const selectionPath = join(root, "selection.json")
+  writeFileSync(archivePath, writeDatasetZip([
+    { data: manifest, name: "dataset-manifest.json" },
+    { data: trace, name: path },
+  ]))
+  writeFileSync(selectionPath, encodeSelectionDocument({
+    root,
+    schemaVersion: 1,
+    traces: [{
+      artifactByteCount: artifact.byteCount,
+      artifactSha256: artifact.sha256,
+      byteCount: source.byteLength,
+      earliestTimestamp: "2026-09-01T00:00:00.000Z",
+      eventCount: 1,
+      runtime: "codex",
+      selector: label,
+      sha256: createHash("sha256").update(source).digest("hex"),
+      summary: {
+        counts: {
+          actions: 0,
+          errors: 0,
+          redacted: 0,
+          requests: 0,
+          results: 0,
+          truncated: 0,
+        },
+        errors: [],
+        requests: [],
+        touched: [],
+      },
+    }],
+  }))
+  return { archivePath, selectionPath, selector: label }
 }
 
 const runCli = async (argumentsList: readonly string[], environment: Readonly<Record<string, string | undefined>>): Promise<Readonly<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }>> => {
@@ -109,10 +156,11 @@ describe("marketplace candidate publish process boundary", () => {
     let hits = 0
     const server = Bun.serve({ fetch: () => { hits += 1; return new Response(null, { status: 500 }) }, hostname: "127.0.0.1", port: 0 })
     const base = { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root, TRAJECTORY_REGISTRY_API_KEY: "" }
+    const candidate = bundle(root)
 
     // When: the built CLI receives an invalid archive then a valid archive without a credential.
-    const invalid = await runCli(["marketplace", "seller", "candidate", "publish", "--bundle", join(root, "missing.zip"), "--server", `http://127.0.0.1:${server.port}`], base)
-    const missingCredential = await runCli(["marketplace", "seller", "candidate", "publish", "--bundle", bundle(root), "--server", `http://127.0.0.1:${server.port}`], base)
+    const invalid = await runCli(["marketplace", "seller", "candidate", "publish", "--bundle", join(root, "missing.zip"), "--selection", candidate.selectionPath, "--server", `http://127.0.0.1:${server.port}`], base)
+    const missingCredential = await runCli(["marketplace", "seller", "candidate", "publish", "--bundle", candidate.archivePath, "--selection", candidate.selectionPath, "--server", `http://127.0.0.1:${server.port}`], base)
     server.stop(true)
 
     // Then: both stable local failures occur without any request.
@@ -120,6 +168,43 @@ describe("marketplace candidate publish process boundary", () => {
       hits: 0,
       invalid: '{"error":"invalid_bundle_request"}\n',
       missing: '{"error":"missing_publish_credential"}\n',
+    })
+  })
+
+  test("missing approval selection rejects before credentials and transport", async () => {
+    // Given: a valid bundle, valid credential, and live loopback request counter.
+    const root = fixtureRoot()
+    let hits = 0
+    const server = Bun.serve({
+      fetch: () => {
+        hits += 1
+        return new Response(null, { status: 500 })
+      },
+      hostname: "127.0.0.1",
+      port: 0,
+    })
+    const candidate = bundle(root)
+
+    // When: publication omits the content-bound approval selection.
+    const result = await runCli([
+      "marketplace", "seller", "candidate", "publish",
+      "--bundle", candidate.archivePath,
+      "--server", `http://127.0.0.1:${server.port}`,
+      "--api-key", "valid-local-key",
+    ], {
+      ...process.env,
+      TRAJECTORY_MARKETPLACE_CONFIG_HOME: root,
+    })
+    server.stop(true)
+
+    // Then: the CLI rejects locally without one upload request.
+    expect({ hits, result }).toEqual({
+      hits: 0,
+      result: {
+        exitCode: 1,
+        stderr: '{"error":"invalid_command"}\n',
+        stdout: "",
+      },
     })
   })
 
@@ -135,12 +220,13 @@ describe("marketplace candidate publish process boundary", () => {
       hostname: "127.0.0.1",
       port: 0,
     })
-    const archive = bundle(root, "unsupported-model")
+    const candidate = bundle(root, "unsupported-model")
 
     // When: the built CLI receives valid credentials but a disallowed archive.
     const result = await runCli([
       "marketplace", "seller", "candidate", "publish",
-      "--bundle", archive,
+      "--bundle", candidate.archivePath,
+      "--selection", candidate.selectionPath,
       "--server", `http://127.0.0.1:${server.port}`,
       "--api-key", "valid-local-key",
     ], {
@@ -172,10 +258,11 @@ describe("marketplace candidate publish process boundary", () => {
       server: `http://127.0.0.1:${server.port}`,
       tokenType: "Bearer",
     }, { storePath: join(root, "agent-trajectory-marketplace", "auth.json") })
+    const candidate = bundle(root)
 
     // When: the built CLI receives an explicitly supplied whitespace-padded API key.
     const result = await runCli([
-      "marketplace", "seller", "candidate", "publish", "--bundle", bundle(root), "--server", `http://127.0.0.1:${server.port}`, "--api-key", " invalid-flag ",
+      "marketplace", "seller", "candidate", "publish", "--bundle", candidate.archivePath, "--selection", candidate.selectionPath, "--server", `http://127.0.0.1:${server.port}`, "--api-key", " invalid-flag ",
     ], { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root, TRAJECTORY_REGISTRY_API_KEY: "environment-sentinel" })
     server.stop(true)
 
@@ -212,9 +299,11 @@ describe("marketplace candidate publish process boundary", () => {
       TRAJECTORY_MARKETPLACE_CONFIG_HOME: root,
     }
     delete environment["TRAJECTORY_REGISTRY_API_KEY"]
+    const candidate = bundle(root)
     const result = await runCli([
       "marketplace", "seller", "candidate", "publish",
-      "--bundle", bundle(root),
+      "--bundle", candidate.archivePath,
+      "--selection", candidate.selectionPath,
       "--server", `http://127.0.0.1:${server.port}`,
     ], environment)
     server.stop(true)
@@ -229,7 +318,8 @@ describe("marketplace candidate publish process boundary", () => {
   test("built CLI posts one exact frame and prints strict accepted receipt", async () => {
     // Given: a reviewed dataset bundle and loopback registry receipt.
     const root = fixtureRoot()
-    const archivePath = bundle(root)
+    const candidate = bundle(root)
+    const archivePath = candidate.archivePath
     const archive = Bun.file(archivePath)
     let authorization = ""
     let contentType = ""
@@ -255,7 +345,7 @@ describe("marketplace candidate publish process boundary", () => {
 
     // When: the built CLI publishes with three distinct credential sources.
     const result = await runCli([
-      "marketplace", "seller", "candidate", "publish", "--bundle", archivePath, "--server", `http://127.0.0.1:${server.port}`, "--api-key", "flag-sentinel",
+      "marketplace", "seller", "candidate", "publish", "--bundle", archivePath, "--selection", candidate.selectionPath, "--server", `http://127.0.0.1:${server.port}`, "--api-key", "flag-sentinel",
     ], { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root, TRAJECTORY_REGISTRY_API_KEY: "environment-sentinel" })
     server.stop(true)
 
@@ -269,7 +359,13 @@ describe("marketplace candidate publish process boundary", () => {
       frameArchive: new Uint8Array(await archive.arrayBuffer()),
       result: { exitCode: 0, stderr: "" },
     })
-    expect(result.stdout).toBe(`${JSON.stringify({ protocolVersion: 1, submissionId, status: "accepted", statusUrl: `/v1/marketplace/seller/candidates/${submissionId}` })}\n`)
+    expect(result.stdout).toBe(`${JSON.stringify({
+      protocolVersion: 1,
+      submissionId,
+      status: "accepted",
+      statusUrl: `/v1/marketplace/seller/candidates/${submissionId}`,
+      membership: [candidate.selector],
+    })}\n`)
     expect(`${result.stdout}${result.stderr}`).not.toContain("sentinel")
   })
 })
