@@ -10,6 +10,14 @@
 .seller-panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); border-bottom: 1px solid var(--border-quiet); padding: var(--space-4) var(--space-5); }
 .seller-panel-heading h2 { font-family: var(--font-display); font-size: 1.25rem; font-weight: 500; }
 .seller-panel-heading span { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--type-mono-sm); }
+.seller-weekly-limits-panel { margin-top: var(--space-8); }
+.seller-weekly-limits-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr)); gap: var(--space-3); padding: var(--space-4); }
+.seller-weekly-limit-card { min-width: 0; display: grid; gap: var(--space-2); border-radius: var(--radius-control); background: var(--surface-soft); padding: var(--space-5); }
+.seller-weekly-limit-card p, .seller-weekly-limit-card span { color: var(--text-secondary); font-size: var(--type-body-sm); }
+.seller-weekly-limit-card strong { color: var(--accent-deep); font-family: var(--font-mono); font-size: var(--type-h3); font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; overflow-wrap: anywhere; }
+.seller-weekly-limit-context { color: var(--text-muted) !important; font-family: var(--font-mono); font-size: var(--type-mono-sm) !important; }
+.seller-weekly-limit-skeleton { width: 70%; height: 1.8rem; display: block; border-radius: var(--radius-control); background: linear-gradient(90deg, var(--surface-soft), var(--border), var(--surface-soft)); background-size: 200% 100%; animation: skeleton-sweep 1.8s var(--ease-standard) infinite; }
+.seller-weekly-limits-panel[data-state="unavailable"] .seller-weekly-limit-card strong { color: var(--status-error); font-size: var(--type-body); }
 .seller-chart-panel { margin: var(--space-8) 0 var(--space-4); }
 .seller-chart-wrap { min-height: 15rem; padding: var(--space-5) var(--space-5) var(--space-3); }
 .seller-chart-wrap svg { display: block; width: 100%; height: auto; }
@@ -43,4 +51,4 @@
 .seller-payout > button { justify-self: start; }
 .is-console-view .skip-link { display: none; }
 .is-console-view [data-landing-view], .is-console-view .marketplace-footer { display: none; }
-@media (max-width: 640px) { .seller-console { padding-top: var(--space-24); } .seller-console-shell { width: min(100% - var(--space-8), 72rem); } .seller-console-heading h1 { font-size: 2.25rem; } .seller-pricing-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .seller-payout-dialog h2 { font-size: var(--type-h3); line-height: 1.08; } .seller-payout-balance { align-items: flex-start; flex-direction: column; gap: var(--space-2); } }
+@media (max-width: 640px) { .seller-console { padding-top: var(--space-24); } .seller-console-shell { width: min(100% - var(--space-8), 72rem); } .seller-console-heading h1 { font-size: 2.25rem; } .seller-weekly-limits-panel .seller-panel-heading { align-items: flex-start; flex-direction: column; gap: var(--space-1); } .seller-weekly-limits-panel .seller-panel-heading span { white-space: nowrap; } .seller-pricing-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .seller-payout-dialog h2 { font-size: var(--type-h3); line-height: 1.08; } .seller-payout-balance { align-items: flex-start; flex-direction: column; gap: var(--space-2); } }

@@ -7,6 +7,7 @@ const {
   parseLegacySessionsResponse,
   parseLedgerResponse,
   parseSessionsResponse,
+  parseWeeklyLimitsResponse,
 } = consoleContract
 
 const sessions = {
@@ -105,6 +106,27 @@ test("payout contract accepts every frozen state and formats USD minor units", (
   for (const response of responses) expect(parse(response)).toEqual(response)
   expect(format(10_000)).toBe("$100.00")
   expect(format(15_000)).toBe("$150.00")
+})
+
+test("weekly limit contract keeps both remaining USD windows bounded", () => {
+  const response = {
+    ok: true,
+    weeklyLimits: {
+      currency: "USD",
+      limitMinor: 20_000,
+      payoutRemainingMinor: 12_000,
+      sessionValueRemainingMinor: 5_000,
+      windowSeconds: 604_800,
+    },
+  }
+  expect(parseWeeklyLimitsResponse(response)).toEqual(response)
+  expect(() => parseWeeklyLimitsResponse({
+    ...response,
+    weeklyLimits: {
+      ...response.weeklyLimits,
+      payoutRemainingMinor: 20_001,
+    },
+  })).toThrow()
 })
 
 test("payout contract rejects unknown fields and invalid state nullability", () => {

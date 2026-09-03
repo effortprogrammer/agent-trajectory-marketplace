@@ -226,6 +226,35 @@ export const parsePayoutResponse = (value) => {
   return value;
 };
 
+export const parseWeeklyLimitsResponse = (value) => {
+  keys(value, ["ok", "weeklyLimits"], "weekly limits response");
+  if (value.ok !== true) fail("Invalid weekly limits response");
+  const limits = value.weeklyLimits;
+  keys(limits, [
+    "currency",
+    "limitMinor",
+    "payoutRemainingMinor",
+    "sessionValueRemainingMinor",
+    "windowSeconds",
+  ], "weekly limits");
+  if (
+    limits.currency !== "USD"
+    || limits.limitMinor !== 20_000
+    || limits.windowSeconds !== 604_800
+  ) {
+    fail("Invalid weekly limits");
+  }
+  credits(limits.payoutRemainingMinor, "payoutRemainingMinor");
+  credits(limits.sessionValueRemainingMinor, "sessionValueRemainingMinor");
+  if (
+    limits.payoutRemainingMinor > limits.limitMinor
+    || limits.sessionValueRemainingMinor > limits.limitMinor
+  ) {
+    fail("Invalid weekly limit capacity");
+  }
+  return value;
+};
+
 export const formatPayoutAmount = (minor) => {
   credits(minor, "minor");
   return new Intl.NumberFormat("en-US", {
