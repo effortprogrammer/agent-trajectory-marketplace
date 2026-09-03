@@ -1,6 +1,6 @@
 {
   "name": "agent-trajectory-marketplace",
-  "version": "2026.09.02.1",
+  "version": "2026.09.03.1",
   "private": true,
   "packageManager": "bun@1.3.14",
   "description": "Bun CLI for collecting and publishing credential-redacted agent trajectories",
