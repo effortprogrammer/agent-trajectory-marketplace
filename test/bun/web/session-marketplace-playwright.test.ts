@@ -734,6 +734,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
             : pathname.endsWith("/weekly-limits") ? {
               ok: true,
               weeklyLimits: {
+                scope: "platform",
                 currency: "USD",
                 limitMinor: 20_000,
                 payoutRemainingMinor: 20_000,

@@ -4,8 +4,8 @@ import {
   parseLegacySessionsResponse,
   parseSessionsResponse,
   parseWeeklyLimitsResponse,
-} from "./console-contract.8eecdc5da5030b220945907dfec925791d894cf02d6b3f6f0ad09f04b693a71c.js";
-import { mountPayoutConsole } from "./payout-console.47549c63eb93fa066302c08fcbdc8d6581eb92ce2c4dbd49a23258de2bc9fd3f.js";
+} from "./console-contract.38723a0db02104d5c0c235e76cdf6da1b52aaa3a20b22cc5b81a1f82b5a5f853.js";
+import { mountPayoutConsole } from "./payout-console.387ea2fa2944767f93e7b7fe294f5f2cc0cc1b738777ed45c0a1851813a6d4f3.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {

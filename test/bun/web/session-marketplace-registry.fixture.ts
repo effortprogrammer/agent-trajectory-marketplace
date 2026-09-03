@@ -137,6 +137,7 @@ export const startSessionRegistry = (): SessionRegistry => {
           ? json({
             ok: true,
             weeklyLimits: {
+              scope: "platform",
               currency: "USD",
               limitMinor: 20_000,
               payoutRemainingMinor: 12_000,
