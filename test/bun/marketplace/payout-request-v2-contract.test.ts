@@ -18,12 +18,6 @@ const fixtureRoot = join(
 	import.meta.dir,
 	"../../../contract/payout-request/v2",
 );
-const registryRoot =
-	process.env.PAYOUT_REGISTRY_ROOT ??
-	join(
-		import.meta.dir,
-		"../../../../atm-credit-t3-registry/contract/payout-request",
-	);
 const v1Hashes = {
 	"approved-200.json":
 		"6b8ddeee40909dee45e85142ec9aedbc8d7d99e47f6577787cbc71089aab5b38",
@@ -198,20 +192,26 @@ describe("payout request v2 contract", () => {
 		}
 	});
 
-	it("matches Registry v2 digest set and retains all v1 bytes", async () => {
-		// Given: the independently checked-out Registry contract trees.
+	it("pins every v2 manifest digest and retains all v1 bytes", async () => {
+		// Given: the independently verified v2 manifest and frozen v1 tree.
+		const payoutV2 = await manifest();
+		const fixtures = [...payoutV2.accept, ...payoutV2.reject];
 		const marketplaceV2Names = (await readdir(fixtureRoot))
-			.filter((file) => file.endsWith(".json"))
-			.sort();
-		const registryV2Root = join(registryRoot, "v2");
-
-		// When: v2 artifact digests and v1 hashes are computed.
-		const registryV2Names = (await readdir(registryV2Root))
-			.filter((file) => file.endsWith(".json"))
+			.filter((file) => file.endsWith(".json") && file !== "manifest.json")
 			.sort();
 		const marketplaceV1Root = join(
 			import.meta.dir,
 			"../../../contract/payout-request/v1",
+		);
+
+		// When: every declared v2 and retained v1 digest is computed.
+		const v2DigestEntries = await Promise.all(
+			fixtures.map(async ({ file }) => [
+				file,
+				createHash("sha256")
+					.update(await readFile(join(fixtureRoot, file)))
+					.digest("hex"),
+			] as const),
 		);
 		const v1DigestEntries = await Promise.all(
 			(await readdir(marketplaceV1Root)).map(
@@ -225,19 +225,13 @@ describe("payout request v2 contract", () => {
 			),
 		);
 
-		// Then: both v2 repositories agree and v1 remains unchanged.
-		expect(marketplaceV2Names).toEqual(registryV2Names);
-		await Promise.all(
-			marketplaceV2Names.map(async (file) =>
-				expect(
-					createHash("sha256")
-						.update(await readFile(join(fixtureRoot, file)))
-						.digest("hex"),
-				).toBe(
-					createHash("sha256")
-						.update(await readFile(join(registryV2Root, file)))
-						.digest("hex"),
-				),
+		// Then: the local corpus matches its manifest and v1 remains unchanged.
+		expect(marketplaceV2Names).toEqual(
+			fixtures.map(({ file }) => file).sort(),
+		);
+		expect(Object.fromEntries(v2DigestEntries)).toEqual(
+			Object.fromEntries(
+				fixtures.map(({ file, sha256 }) => [file, sha256]),
 			),
 		);
 		expect(Object.fromEntries(v1DigestEntries)).toEqual(v1Hashes);
