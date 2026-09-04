@@ -155,6 +155,10 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("[data-supply-locked]").isVisible()).toBe(true)
     expect(await page.getByTestId("public-token-count").count()).toBe(1)
     expect(await page.getByTestId("public-token-count").innerText()).toBe("39,048,328")
+    expect(await page.getByTestId("public-payout-remaining").count()).toBe(1)
+    expect(await page.getByTestId("public-payout-remaining").innerText()).toBe(
+      "$120.00 remaining",
+    )
     expect(await page.locator("[data-public-token-note]").isVisible()).toBe(true)
     expect(await page.getByTestId("public-token-count").evaluate((element) => {
       const view = element.ownerDocument.defaultView
@@ -166,12 +170,20 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.locator("[data-authenticated-content]:visible").count()).toBe(0)
     expect(await page.getByTestId("aggregate-status").isVisible()).toBe(false)
     expect(await page.locator("[data-session-count]:visible, [data-token-count]:visible").count()).toBe(0)
-    expect(harness.registryRequests).toEqual([{
-      authorization: null,
-      body: undefined,
-      method: "GET",
-      path: "/v1/marketplace/public-stats",
-    }])
+    expect(harness.registryRequests).toEqual([
+      {
+        authorization: null,
+        body: undefined,
+        method: "GET",
+        path: "/v1/marketplace/public-stats",
+      },
+      {
+        authorization: null,
+        body: undefined,
+        method: "GET",
+        path: "/v1/marketplace/public-payout-capacity",
+      },
+    ])
   })
 
   test("renders exact large public token totals without horizontal overflow", async () => {
@@ -204,6 +216,37 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(
       await page.locator("[data-public-token-note]").isVisible(),
     ).toBe(false)
+  })
+
+  test("isolates invalid public payout capacity from token volume", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPublicPayoutCapacity({
+      ok: true,
+      payoutCapacity: {
+        currency: "USD",
+        limitMinor: 20_000,
+        payoutRemainingMinor: 20_001,
+        scope: "platform",
+        windowSeconds: 604_800,
+      },
+    })
+    const page = await harness.newPage(mobile)
+
+    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+
+    expect(await page.getByTestId("public-token-count").innerText()).toBe(
+      "39,048,328",
+    )
+    expect(await page.getByTestId("public-payout-remaining").innerText()).toBe(
+      "Unavailable",
+    )
+    expect(await page.locator("[data-public-token-note]").isVisible()).toBe(true)
+    expect(await page.locator("[data-public-payout-note]").isVisible()).toBe(false)
+    expect(
+      await page.locator("html").evaluate((element) =>
+        element.scrollWidth <= element.clientWidth
+      ),
+    ).toBe(true)
   })
 
   test("keeps seller sales requests and navigation unavailable to anonymous visitors", async () => {
@@ -1685,12 +1728,20 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(new URL(page.url()).pathname).toBe("/index.html")
     expect(await page.locator("[data-auth-gate]").isVisible()).toBe(false)
     expect(await page.locator("#top").isVisible()).toBe(true)
-    expect(harness.registryRequests).toEqual([{
-      authorization: null,
-      body: undefined,
-      method: "GET",
-      path: "/v1/marketplace/public-stats",
-    }])
+    expect(harness.registryRequests).toEqual([
+      {
+        authorization: null,
+        body: undefined,
+        method: "GET",
+        path: "/v1/marketplace/public-stats",
+      },
+      {
+        authorization: null,
+        body: undefined,
+        method: "GET",
+        path: "/v1/marketplace/public-payout-capacity",
+      },
+    ])
   })
 
   test("keeps the public landing and explicit sign-in usable on mobile", async () => {

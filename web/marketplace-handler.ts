@@ -85,6 +85,7 @@ const fingerprintedAssetSpecs = [
   { file: "console.js", type: "text/javascript; charset=utf-8" },
   { file: "console-contract.js", type: "text/javascript; charset=utf-8" },
   { file: "payout-console.js", type: "text/javascript; charset=utf-8" },
+  { file: "public-payout-capacity.js", type: "text/javascript; charset=utf-8" },
 ] as const
 
 const createAssetMap = async (root: string): Promise<ReadonlyMap<string, Asset>> => {

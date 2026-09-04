@@ -28,6 +28,7 @@ const allowedRegistryRoutes: ReadonlyMap<string, ReadonlySet<string>> = new Map(
   ["/v1/auth/logout", new Set(["POST"])],
   ["/v1/auth/me", new Set(["GET"])],
   ["/v1/marketplace/stats", new Set(["GET"])],
+  ["/v1/marketplace/public-payout-capacity", new Set(["GET"])],
   ["/v1/marketplace/seller/sales/sessions", new Set(["GET"])],
   ["/v2/marketplace/seller/sales/sessions", new Set(["GET"])],
   ["/v1/marketplace/seller/sales/earnings", new Set(["GET"])],
