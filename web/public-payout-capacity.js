@@ -64,11 +64,11 @@ export const mountPublicPayoutCapacity = async (endpoint) => {
     });
     if (!response.ok) throw new Error("Registry payout capacity unavailable");
     const capacity = parsePublicPayoutCapacity(await response.json());
-    const remaining = `${usd(capacity.payoutRemainingMinor)} remaining`;
-    value.textContent = remaining;
+    const amount = usd(capacity.payoutRemainingMinor);
+    value.textContent = amount;
     value.setAttribute(
       "aria-label",
-      `${remaining} of ${usd(capacity.limitMinor)} platform-wide over a rolling 7-day window`,
+      `${amount} of ${usd(capacity.limitMinor)} weekly payout capacity`,
     );
     value.hidden = false;
     skeleton.hidden = true;

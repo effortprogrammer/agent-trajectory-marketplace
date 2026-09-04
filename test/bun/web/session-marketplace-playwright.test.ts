@@ -157,7 +157,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.getByTestId("public-token-count").innerText()).toBe("39,048,328")
     expect(await page.getByTestId("public-payout-remaining").count()).toBe(1)
     expect(await page.getByTestId("public-payout-remaining").innerText()).toBe(
-      "$120.00 remaining",
+      "$120.00",
     )
     expect(await page.locator("[data-public-token-note]").isVisible()).toBe(true)
     expect(await page.getByTestId("public-token-count").evaluate((element) => {
