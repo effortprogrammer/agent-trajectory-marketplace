@@ -1,4 +1,5 @@
 import { mountSellerConsole } from "./console.fcb1173bd07af26e8f6f3568840f2deb650a32d23db697edd499b70c59352bf7.js";
+import { mountPublicPayoutCapacity } from "./public-payout-capacity.d7f5b87acf551475ce8caeca8445458357d826e7731fdae5ded0382e7bd357ff.js";
 
 const localPreview = location.hostname === "127.0.0.1" || location.hostname === "localhost" ||
   location.hostname === "[::1]";
@@ -6,6 +7,9 @@ const registry = localPreview ? "/api/registry" : "https://gateway.getatm.io";
 const publicStatsEndpoint = localPreview
   ? "/api/public-stats"
   : `${registry}/v1/marketplace/public-stats`;
+const publicPayoutCapacityEndpoint = localPreview
+  ? "/api/registry/v1/marketplace/public-payout-capacity"
+  : `${registry}/v1/marketplace/public-payout-capacity`;
 const waitlistAcknowledgmentKey = "atm.marketplace.waitlist-ack-v1";
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -863,3 +867,4 @@ document.body.classList.remove("no-js");
 setAuthMode("waitlist");
 showPublicAccess();
 void loadPublicTokenTotal();
+void mountPublicPayoutCapacity(publicPayoutCapacityEndpoint);
