@@ -30,6 +30,7 @@
   --type-label: 0.75rem;
   --type-data: clamp(2.8rem, 7vw, 6.5rem);
   --type-data-compact: clamp(2.6rem, 4.4vw, 4.5rem);
+  --type-data-public-payout: clamp(1.375rem, 2.2vw, 1.5rem);
   --type-mono-sm: 0.75rem;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -1088,7 +1089,7 @@ button {
   gap: var(--space-4);
 }
 
-.public-token-total {
+.public-aggregate-card {
   min-width: 0;
   display: grid;
   gap: var(--space-2);
@@ -1098,30 +1099,36 @@ button {
   padding: var(--space-5);
 }
 
-.supply-locked .public-token-total p {
+.supply-locked .public-aggregate-card p {
   margin-top: 0;
 }
 
-.public-token-total .metric-skeleton {
+.public-aggregate-card .metric-skeleton {
   width: 80%;
   height: var(--space-12);
 }
 
-.public-token-total .metric-value {
+.public-aggregate-card .metric-value {
   font-size: clamp(1.75rem, 2.5vw, 2rem);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   overflow-wrap: normal;
 }
 
-.public-token-total .metric-note {
+.public-aggregate-card [data-public-payout-remaining] {
+  font-size: var(--type-data-public-payout);
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+.public-aggregate-card .metric-note {
   color: var(--text-muted);
   font-size: var(--type-label);
   line-height: 1.45;
 }
 
-.public-token-total.is-error .metric-value {
-  color: var(--text-secondary);
+.public-aggregate-card.is-error .metric-value {
+  color: var(--status-error);
   font-size: var(--type-body);
 }
 
@@ -2098,7 +2105,7 @@ body {
   font-weight: 500;
 }
 
-.public-token-total,
+.public-aggregate-card,
 .metric-card {
   border-color: var(--border);
   border-radius: var(--radius-surface);

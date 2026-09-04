@@ -30,12 +30,18 @@ test("binds every public asset URL to fingerprinted paths so releases cannot reu
   const marketplaceScriptPath = await fingerprintedAssetPath("marketplace.js")
   const consoleScriptPath = await fingerprintedAssetPath("console.js")
   const consoleContractPath = await fingerprintedAssetPath("console-contract.js")
+  const publicPayoutCapacityPath = await fingerprintedAssetPath(
+    "public-payout-capacity.js",
+  )
 
   expect(html).toContain(`href="${marketplaceStylesheet}"`)
   expect(html).toContain(`href="${consoleStylesheet}"`)
   expect(html).toContain(`src="${marketplaceScriptPath}"`)
   expect(marketplaceScript).toContain(
     `import { mountSellerConsole } from "./${consoleScriptPath}";`,
+  )
+  expect(marketplaceScript).toContain(
+    `import { mountPublicPayoutCapacity } from "./${publicPayoutCapacityPath}";`,
   )
   expect(marketplaceScript).not.toContain(`import("./${consoleScriptPath}")`)
   expect(consoleScript).toContain(`from "./${consoleContractPath}"`)

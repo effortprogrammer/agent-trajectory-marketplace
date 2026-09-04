@@ -32,6 +32,7 @@ export type SessionRegistry = Readonly<{
   server: Bun.Server<undefined>
   setLogoutStatus: (status: number) => void
   setPayoutResponses: (...responses: PayoutFixture[]) => void
+  setPublicPayoutCapacity: (value: unknown) => void
   setPublicTokenTotal: (value: number | string) => void
   setVerifyAccountRequired: () => void
   url: string
@@ -61,6 +62,16 @@ export const startSessionRegistry = (): SessionRegistry => {
   const requests: RegistryRequest[] = []
   let logoutStatus = 200
   let publicTokenTotal: number | string = "39048328"
+  let publicPayoutCapacity: unknown = {
+    ok: true,
+    payoutCapacity: {
+      currency: "USD",
+      limitMinor: 20_000,
+      payoutRemainingMinor: 12_000,
+      scope: "platform",
+      windowSeconds: 604_800,
+    },
+  }
   let verifyAccountRequired = false
   let challengeGate: Promise<void> | undefined
   let challengeRelease: (() => void) | undefined
@@ -181,6 +192,9 @@ export const startSessionRegistry = (): SessionRegistry => {
       if (url.pathname === "/v1/marketplace/public-stats") {
         return json({ tradeableTokens: publicTokenTotal })
       }
+      if (url.pathname === "/v1/marketplace/public-payout-capacity") {
+        return json(publicPayoutCapacity)
+      }
       if (url.pathname === "/v1/marketplace/stats") {
         return authorized
           ? json({
@@ -245,6 +259,9 @@ export const startSessionRegistry = (): SessionRegistry => {
         throw new Error("at least one payout fixture is required")
       }
       payoutResponses = [...responses]
+    },
+    setPublicPayoutCapacity: (value) => {
+      publicPayoutCapacity = value
     },
     setPublicTokenTotal: (value) => {
       publicTokenTotal = value

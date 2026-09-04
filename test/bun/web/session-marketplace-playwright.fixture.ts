@@ -30,6 +30,7 @@ export interface SessionUiHarness {
   readonly registryRequests: RegistryRequest[]
   readonly setLogoutStatus: (status: number) => void
   readonly setPayoutResponses: (...responses: PayoutFixture[]) => void
+  readonly setPublicPayoutCapacity: (value: unknown) => void
   readonly setPublicTokenTotal: (value: number | string) => void
   readonly setVerifyAccountRequired: () => void
   readonly newPage: (
@@ -183,6 +184,7 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
       registryRequests: registry.requests,
       setLogoutStatus: registry.setLogoutStatus,
       setPayoutResponses: registry.setPayoutResponses,
+      setPublicPayoutCapacity: registry.setPublicPayoutCapacity,
       setPublicTokenTotal: registry.setPublicTokenTotal,
       setVerifyAccountRequired: registry.setVerifyAccountRequired,
       newPage: async (viewport, options = {}) => {
