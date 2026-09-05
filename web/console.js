@@ -5,7 +5,7 @@ import {
   parseSessionsResponse,
   parseWeeklyLimitsResponse,
 } from "./console-contract.799162ebbe8dcf5683e138ca389be898fda29d96c6d45915fabd393c28d38df9.js";
-import { mountPayoutConsole } from "./payout-console.bbe4b016a3eea1cd8dc6f1b629be6cf61a80e562423f1c75bb6072f8af1458fc.js";
+import { mountPayoutConsole } from "./payout-console.136557f17c2267d30f19785de4183d6adefde8521e0b07a89e548ce75d4c22ff.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {
@@ -231,6 +231,13 @@ export const mountSellerConsole = async ({
   const headers = { authorization: `Bearer ${session.accessToken}` };
   state.hidden = false; state.dataset.state = "loading"; state.textContent = "Loading seller sales...";
   chart.replaceChildren(element("div", "seller-console-skeleton")); sessions.replaceChildren();
+  const payoutReady = mountPayoutConsole({
+    isCurrent,
+    requestJson,
+    root: payout,
+    session,
+    showLogin: showConsoleLogin,
+  });
   try {
     const [me, sessionsBody, earningsBody, weeklyLimitsBody] = await Promise.all([
       requestJson("/v1/auth/me", { headers }),
@@ -250,16 +257,11 @@ export const mountSellerConsole = async ({
     renderWeeklyLimits(weeklyLimits, weeklyLimitsBody);
     renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
     state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;
-    await mountPayoutConsole({
-      isCurrent,
-      requestJson,
-      root: payout,
-      session,
-      showLogin: showConsoleLogin,
-    });
   } catch (error) {
     if (!isCurrent()) return;
     if (error?.status === 401) { showConsoleLogin(); return; }
     state.hidden = false; state.dataset.state = "error"; state.textContent = "Seller sales are unavailable. Try again shortly."; announcement.textContent = "Seller console could not load.";
+  } finally {
+    await payoutReady;
   }
 };

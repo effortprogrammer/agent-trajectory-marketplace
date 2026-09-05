@@ -203,6 +203,57 @@ describe("authenticated aggregate marketplace browser contract", () => {
     ).toBe(true)
   })
 
+  test.each([desktop, mobile])("shows credited wallet balance on the seller page at %j", async (viewport) => {
+    harness = await startSessionUiHarness()
+    harness.setPayoutResponses({ body: payoutSuccess(null, 6_029, 0), status: 200 })
+    const page = await harness.newPage(viewport)
+    await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+    await authenticate(page)
+    const payoutResponse = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/registry/v1/marketplace/seller/payout-request",
+    )
+    await page.getByTestId("seller-console-link").click()
+    expect((await payoutResponse).status()).toBe(200)
+    expect(await page.locator("[data-console-wallet-balance]").count()).toBe(1)
+    await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+    expect(await page.locator("[data-console-wallet-balance]").innerText()).toBe("$60.29")
+    expect(await page.locator("[data-payout-dialog]").isVisible()).toBe(false)
+    expect(await page.locator("html").evaluate((node) =>
+      node.scrollWidth <= node.clientWidth,
+    )).toBe(true)
+    await page.getByTestId("seller-payout-button").click()
+    expect(await page.locator("[data-payout-balance]").innerText()).toBe("$60.29 available")
+  })
+
+  test("loads wallet balance even when the sales chart request fails", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPayoutResponses({ body: payoutSuccess(null, 6_029, 0), status: 200 })
+    const page = await harness.newPage(desktop)
+    await page.route("**/v1/marketplace/seller/sales/earnings?*", (route) =>
+      route.fulfill({ body: "{}", contentType: "application/json", status: 503 }),
+    )
+    await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+    await authenticate(page)
+    await page.getByTestId("seller-console-link").click()
+    await page.locator('[data-console-state][data-state="error"]').waitFor()
+    await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+    expect(await page.locator("[data-console-wallet-balance]").innerText()).toBe("$60.29")
+  })
+
+  test("never fabricates a zero wallet balance when the server is unavailable", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPayoutResponses({
+      body: payoutError("service_unavailable", "Payout requests are unavailable."),
+      status: 503,
+    })
+    const page = await harness.newPage(desktop)
+    await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+    await authenticate(page)
+    await page.getByTestId("seller-console-link").click()
+    await page.locator('[data-console-wallet][data-wallet-state="unavailable"]').waitFor()
+    expect(await page.locator("[data-console-wallet-balance]").innerText()).not.toContain("$0.00")
+  })
+
   test("hides the acceptance note when public token stats are unavailable", async () => {
     harness = await startSessionUiHarness()
     harness.setPublicTokenTotal("invalid")
