@@ -5,7 +5,7 @@ import {
   parseSessionsResponse,
   parseWeeklyLimitsResponse,
 } from "./console-contract.799162ebbe8dcf5683e138ca389be898fda29d96c6d45915fabd393c28d38df9.js";
-import { mountPayoutConsole } from "./payout-console.bbe4b016a3eea1cd8dc6f1b629be6cf61a80e562423f1c75bb6072f8af1458fc.js";
+import { mountWalletBalance } from "./payout-console.4aa2e1fbee30037c677b0a9eab2c648424ff6a065d99b345d8ba2e5dca572287.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {
@@ -166,10 +166,7 @@ export const mountSellerConsole = async ({
   const chart = view.querySelector("[data-console-chart]");
   const sessions = view.querySelector("[data-console-sessions]");
   const total = view.querySelector("[data-console-total]");
-  const payout = view.querySelector("[data-console-payout]");
-  const payoutDialog = view.querySelector("[data-payout-dialog]");
-  const payoutOpen = view.querySelector("[data-payout-open]");
-  const payoutClose = view.querySelector("[data-payout-close]");
+  const wallet = view.querySelector("[data-console-wallet]");
   const weeklyLimits = view.querySelector("[data-weekly-limits]");
   if (weeklyLimits) {
     weeklyLimits.hidden = false;
@@ -187,50 +184,20 @@ export const mountSellerConsole = async ({
       value.hidden = true;
     }
   }
-  let restorePayoutFocus = true;
-  const closePayoutDialog = (restoreFocus = true) => {
-    restorePayoutFocus = restoreFocus;
-    if (payoutDialog.open) payoutDialog.close();
-  };
-  const showConsoleLogin = () => {
-    closePayoutDialog(false);
-    showLogin();
-  };
-  payoutOpen.onclick = () => {
-    restorePayoutFocus = true;
-    if (!payoutDialog.open) payoutDialog.showModal();
-    payoutOpen.setAttribute("aria-expanded", "true");
-    document.body.classList.add("is-payout-open");
-    const focusTarget = payoutDialog.querySelector(
-      "[data-payout-request], [data-payout-cancel], [data-payout-refresh]",
-    ) ?? payoutClose;
-    focusTarget.focus({ preventScroll: true });
-  };
-  payoutClose.onclick = () => closePayoutDialog();
-  payoutDialog.onclick = (event) => {
-    if (event.target === payoutDialog) closePayoutDialog();
-  };
-  payoutDialog.oncancel = () => {
-    restorePayoutFocus = true;
-  };
-  payoutDialog.onclose = () => {
-    payoutOpen.setAttribute("aria-expanded", "false");
-    document.body.classList.remove("is-payout-open");
-    if (
-      restorePayoutFocus
-      && isCurrent()
-      && payoutOpen.isConnected
-      && payoutOpen.getClientRects().length > 0
-    ) {
-      payoutOpen.focus({ preventScroll: true });
-    }
-    restorePayoutFocus = true;
-  };
   const today = new Date(); const from = new Date(today); from.setUTCDate(from.getUTCDate() - 30);
   const day = (value) => value.toISOString().slice(0, 10);
   const headers = { authorization: `Bearer ${session.accessToken}` };
   state.hidden = false; state.dataset.state = "loading"; state.textContent = "Loading seller sales...";
   chart.replaceChildren(element("div", "seller-console-skeleton")); sessions.replaceChildren();
+  const walletReady = wallet === null
+    ? Promise.resolve()
+    : mountWalletBalance({
+      isCurrent,
+      requestJson,
+      root: wallet,
+      session,
+      showLogin,
+    });
   try {
     const [me, sessionsBody, earningsBody, weeklyLimitsBody] = await Promise.all([
       requestJson("/v1/auth/me", { headers }),
@@ -250,16 +217,11 @@ export const mountSellerConsole = async ({
     renderWeeklyLimits(weeklyLimits, weeklyLimitsBody);
     renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
     state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;
-    await mountPayoutConsole({
-      isCurrent,
-      requestJson,
-      root: payout,
-      session,
-      showLogin: showConsoleLogin,
-    });
   } catch (error) {
     if (!isCurrent()) return;
-    if (error?.status === 401) { showConsoleLogin(); return; }
+    if (error?.status === 401) { showLogin(); return; }
     state.hidden = false; state.dataset.state = "error"; state.textContent = "Seller sales are unavailable. Try again shortly."; announcement.textContent = "Seller console could not load.";
+  } finally {
+    await walletReady;
   }
 };
