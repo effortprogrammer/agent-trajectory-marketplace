@@ -5,15 +5,20 @@ import type { PublishBundle } from "./publish-bundle"
 import { createPublishFrameBody } from "./publish-frame"
 import { PublishWireContractError, parsePublishResponse } from "./publish-contract"
 import type { PublishErrorCode, PublishReceipt } from "./publish-contract"
+import { uploadConsentPolicyJson } from "./upload-consent"
+import { CommercialUseConsent } from "./upload-consent"
 
 const responseLimitBytes = 64 * 1024
 const publishTimeoutMs = 15 * 60 * 1000
+const consentPolicyPath = "/v1/marketplace/seller/upload-consent-policy"
 const publishPath = "/v1/marketplace/seller/candidates"
 
 type PublishClientErrorCode =
   | PublishErrorCode
   | "cancelled"
   | "invalid_response"
+  | "invalid_upload_consent"
+  | "invalid_upload_consent_policy"
   | "missing_publish_credential"
   | "redirect_rejected"
   | "request_failed"
@@ -27,6 +32,7 @@ export class PublishClientError extends Error {
 
 type PublishRequest = Readonly<{
   readonly bundle: PublishBundle
+  readonly consent: CommercialUseConsent
   readonly credential: string
   readonly signal?: AbortSignal
 }>
@@ -68,12 +74,27 @@ const boundedBody = async (response: Response): Promise<Uint8Array> => {
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), length)
 }
 
+const assertCurrentConsentPolicy = async (response: Response): Promise<void> => {
+  if (response.status !== 200) {
+    await response.body?.cancel()
+    throw new PublishClientError("invalid_upload_consent_policy", response.status)
+  }
+  await assertDeclaredResponseLength(response)
+  const body = Buffer.from(await boundedBody(response))
+  if (!body.equals(uploadConsentPolicyJson)) {
+    throw new PublishClientError("invalid_upload_consent_policy", response.status)
+  }
+}
+
 export const createPublishClient = (serverInput: unknown): PublishClient => {
   const server = normalizeAuthServerUrl(serverInput)
   return {
     publish: async (request): Promise<PublishReceipt> => {
       if (!validPublishCredential(request.credential)) {
         throw new PublishClientError("missing_publish_credential", 0)
+      }
+      if (!(request.consent instanceof CommercialUseConsent) || !request.consent.matches(request.bundle)) {
+        throw new PublishClientError("invalid_upload_consent", 0)
       }
       const callerAborted = (): boolean => request.signal?.aborted === true
       if (callerAborted()) throw new PublishClientError("cancelled", 0)
@@ -83,6 +104,17 @@ export const createPublishClient = (serverInput: unknown): PublishClient => {
         : AbortSignal.any([request.signal, timeoutSignal])
       let responseStatus = 0
       try {
+        const policyResponse = await ky(`${server}${consentPolicyPath}`, {
+          headers: { accept: "application/json" },
+          method: "GET", redirect: "manual", retry: 0, signal, throwHttpErrors: false, timeout: publishTimeoutMs,
+        })
+        responseStatus = policyResponse.status
+        if (policyResponse.status >= 300 && policyResponse.status < 400) {
+          await policyResponse.body?.cancel()
+          throw new PublishClientError("invalid_upload_consent_policy", policyResponse.status)
+        }
+        await assertCurrentConsentPolicy(policyResponse)
+        responseStatus = 0
         const archiveSha256 = request.bundle.candidate.archiveSha256
         const frame = createPublishFrameBody(request.bundle)
         const response = await ky(`${server}${publishPath}`, {
@@ -92,6 +124,7 @@ export const createPublishClient = (serverInput: unknown): PublishClient => {
             "content-length": String(frame.contentLength),
             "content-type": "application/octet-stream",
             "idempotency-key": `archive-${archiveSha256}`,
+            "x-atm-upload-consent": request.consent.headerValue(),
           },
           method: "POST", redirect: "manual", retry: 0, signal, throwHttpErrors: false, timeout: publishTimeoutMs,
         })
@@ -105,6 +138,9 @@ export const createPublishClient = (serverInput: unknown): PublishClient => {
         if ("code" in parsed) throw new PublishClientError(parsed.code, response.status)
         if (!("statusUrl" in parsed) || parsed.status !== "accepted") {
           throw new PublishClientError("unexpected_response", response.status)
+        }
+        if (response.headers.get("x-atm-upload-consent-sha256") !== request.consent.sha256) {
+          throw new PublishClientError("invalid_upload_consent", response.status)
         }
         return parsed
       } catch (error) {

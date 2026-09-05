@@ -51,7 +51,9 @@ export type CandidateSearchCommand = Readonly<{
 export type CandidatePublishCommand = Readonly<{
   readonly apiKey?: string;
   readonly bundle: string;
+  readonly commercialUse?: "yes" | "no";
   readonly command: "candidate-publish";
+  readonly consentPolicy?: string;
   readonly selection: string;
 }>;
 
@@ -215,6 +217,8 @@ export const parseCandidateSearch = (argumentsList: readonly string[]): Candidat
 export const parseCandidatePublish = (argumentsList: readonly string[]): CandidateCommand => {
   let apiKey: string | undefined;
   let bundle: string | undefined;
+  let commercialUse: "yes" | "no" | undefined;
+  let consentPolicy: string | undefined;
   let selection: string | undefined;
   for (let index = 0; index < argumentsList.length; index += 1) {
     const option = argumentsList[index];
@@ -222,6 +226,8 @@ export const parseCandidatePublish = (argumentsList: readonly string[]): Candida
     if (value === undefined || value.startsWith("--")) return invalidCommand();
     if (option === "--bundle" && bundle === undefined && isAbsolutePath(value)) bundle = value;
     else if (option === "--api-key" && apiKey === undefined && value.length > 0) apiKey = value;
+    else if (option === "--commercial-use" && commercialUse === undefined && (value === "yes" || value === "no")) commercialUse = value;
+    else if (option === "--consent-policy" && consentPolicy === undefined && value.length > 0) consentPolicy = value;
     else if (option === "--selection" && selection === undefined && isAbsolutePath(value)) selection = value;
     else return invalidCommand();
     index += 1;
@@ -229,8 +235,10 @@ export const parseCandidatePublish = (argumentsList: readonly string[]): Candida
   if (bundle === undefined || selection === undefined) return invalidCommand();
   return {
     ...(apiKey === undefined ? {} : { apiKey }),
+    ...(commercialUse === undefined ? {} : { commercialUse }),
     bundle,
     command: "candidate-publish",
+    ...(consentPolicy === undefined ? {} : { consentPolicy }),
     selection,
   };
 };

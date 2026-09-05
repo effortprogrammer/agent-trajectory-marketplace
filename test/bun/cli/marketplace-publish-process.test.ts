@@ -13,6 +13,7 @@ import { encodeSelectionDocument } from "../../../src/marketplace/selection-cont
 import { writeDatasetZip } from "../../../src/marketplace/stored-zip"
 import { writeStoredAuthSession } from "../../../src/auth/store"
 import { parsePublishFrame } from "../../../src/marketplace/publish-frame"
+import { uploadConsentPolicy, uploadConsentPolicyJson } from "../../../src/marketplace/upload-consent"
 import { officialGatewayProcessArguments, officialGatewayProcessEnvironment } from "../fixtures/gateway-process"
 
 const roots: string[] = []
@@ -117,6 +118,33 @@ const runCli = async (argumentsList: readonly string[], environment: Readonly<Re
   return { exitCode, stderr, stdout }
 }
 
+const runTtyCli = async (
+  argumentsList: readonly string[],
+  environment: Readonly<Record<string, string | undefined>>,
+  reply: "abort" | "blank" | "eof" | "no" | "yes",
+): Promise<Readonly<{ readonly exitCode: number; readonly output: string; readonly promptSeen: boolean }>> => {
+  const serverIndex = argumentsList.indexOf("--server")
+  const invocation = officialGatewayProcessArguments(
+    [process.execPath, "dist/collector.js", ...(serverIndex < 0
+      ? argumentsList
+      : argumentsList.filter((_, index) => index !== serverIndex && index !== serverIndex + 1))],
+    serverIndex < 0 ? undefined : argumentsList[serverIndex + 1],
+  )
+  const child = Bun.spawn(["python3", "test/bun/fixtures/tty-driver.py", reply, ...invocation.argumentsList], {
+    cwd: process.cwd(),
+    env: { ...environment, ...officialGatewayProcessEnvironment(invocation.target) },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const [exitCode, stderr, stdout] = await Promise.all([
+    child.exited,
+    new Response(child.stderr).text(),
+    new Response(child.stdout).text(),
+  ])
+  if (exitCode !== 0) throw new Error(stderr)
+  return JSON.parse(stdout) as Readonly<{ readonly exitCode: number; readonly output: string; readonly promptSeen: boolean }>
+}
+
 beforeAll(() => {
   const build = Bun.spawnSync([process.execPath, "run", "build:collector"], { cwd: process.cwd(), stderr: "pipe", stdout: "pipe" })
   if (build.exitCode !== 0) throw new Error(new TextDecoder().decode(build.stderr))
@@ -145,7 +173,7 @@ describe("marketplace candidate publish process boundary", () => {
       result: { exitCode: 0, stderr: "" },
     })
     expect(result.stdout).toContain("trajectory marketplace seller candidate publish")
-    for (const option of ["--bundle", "--api-key"]) expect(result.stdout).toContain(option)
+    for (const option of ["--bundle", "--api-key", "--commercial-use yes", "--consent-policy session-commercial-use-v1"]) expect(result.stdout).toContain(option)
     expect(result.stdout).not.toContain("--server")
     expect(`${result.stdout}${result.stderr}`).not.toContain("environment-sentinel")
   })
@@ -160,14 +188,14 @@ describe("marketplace candidate publish process boundary", () => {
 
     // When: the built CLI receives an invalid archive then a valid archive without a credential.
     const invalid = await runCli(["marketplace", "seller", "candidate", "publish", "--bundle", join(root, "missing.zip"), "--selection", candidate.selectionPath, "--server", `http://127.0.0.1:${server.port}`], base)
-    const missingCredential = await runCli(["marketplace", "seller", "candidate", "publish", "--bundle", candidate.archivePath, "--selection", candidate.selectionPath, "--server", `http://127.0.0.1:${server.port}`], base)
+    const missingCredential = await runCli(["marketplace", "seller", "candidate", "publish", "--bundle", candidate.archivePath, "--selection", candidate.selectionPath, "--commercial-use", "yes", "--consent-policy", "session-commercial-use-v1", "--server", `http://127.0.0.1:${server.port}`], base)
     server.stop(true)
 
     // Then: both stable local failures occur without any request.
     expect({ hits, invalid: invalid.stderr, missing: missingCredential.stderr }).toEqual({
       hits: 0,
       invalid: '{"error":"invalid_bundle_request"}\n',
-      missing: '{"error":"missing_publish_credential"}\n',
+      missing: `${uploadConsentPolicy.text}\n{"error":"missing_publish_credential"}\n`,
     })
   })
 
@@ -262,14 +290,14 @@ describe("marketplace candidate publish process boundary", () => {
 
     // When: the built CLI receives an explicitly supplied whitespace-padded API key.
     const result = await runCli([
-      "marketplace", "seller", "candidate", "publish", "--bundle", candidate.archivePath, "--selection", candidate.selectionPath, "--server", `http://127.0.0.1:${server.port}`, "--api-key", " invalid-flag ",
+      "marketplace", "seller", "candidate", "publish", "--bundle", candidate.archivePath, "--selection", candidate.selectionPath, "--commercial-use", "yes", "--consent-policy", "session-commercial-use-v1", "--server", `http://127.0.0.1:${server.port}`, "--api-key", " invalid-flag ",
     ], { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root, TRAJECTORY_REGISTRY_API_KEY: "environment-sentinel" })
     server.stop(true)
 
     // Then: explicit invalid input fails locally instead of selecting either fallback credential.
     expect({ hits, result }).toEqual({
       hits: 0,
-      result: { exitCode: 1, stderr: '{"error":"missing_publish_credential"}\n', stdout: "" },
+      result: { exitCode: 1, stderr: `${uploadConsentPolicy.text}\n{"error":"missing_publish_credential"}\n`, stdout: "" },
     })
   })
 
@@ -304,6 +332,7 @@ describe("marketplace candidate publish process boundary", () => {
       "marketplace", "seller", "candidate", "publish",
       "--bundle", candidate.archivePath,
       "--selection", candidate.selectionPath,
+      "--commercial-use", "yes", "--consent-policy", "session-commercial-use-v1",
       "--server", `http://127.0.0.1:${server.port}`,
     ], environment)
     server.stop(true)
@@ -311,8 +340,98 @@ describe("marketplace candidate publish process boundary", () => {
     // Then: the invalid stored value is rejected with the stable local credential error and zero requests.
     expect({ hits, result }).toEqual({
       hits: 0,
-      result: { exitCode: 1, stderr: '{"error":"missing_publish_credential"}\n', stdout: "" },
+      result: { exitCode: 1, stderr: `${uploadConsentPolicy.text}\n{"error":"missing_publish_credential"}\n`, stdout: "" },
     })
+  })
+
+  test("missing, declined, and invalid commercial consent stop before credentials or transport", async () => {
+    const root = fixtureRoot()
+    const candidate = bundle(root)
+    let hits = 0
+    const server = Bun.serve({
+      fetch: () => {
+        hits += 1
+        return new Response(null, { status: 500 })
+      },
+      hostname: "127.0.0.1",
+      port: 0,
+    })
+    const base = {
+      ...process.env,
+      TRAJECTORY_MARKETPLACE_CONFIG_HOME: root,
+      TRAJECTORY_REGISTRY_API_KEY: "credential-sentinel",
+    }
+    const invocation = (extra: readonly string[]) => [
+      "marketplace", "seller", "candidate", "publish",
+      "--bundle", candidate.archivePath,
+      "--selection", candidate.selectionPath,
+      ...extra,
+      "--server", `http://127.0.0.1:${server.port}`,
+    ]
+
+    const [missing, declined, invalid] = await Promise.all([
+      runCli(invocation([]), base),
+      runCli(invocation(["--commercial-use", "no"]), base),
+      runCli(invocation(["--commercial-use", "yes", "--consent-policy", "wrong-policy"]), base),
+    ])
+    server.stop(true)
+
+    expect({ hits, missing: missing.stderr, declined: declined.stderr, invalid: invalid.stderr }).toEqual({
+      hits: 0,
+      missing: '{"error":"commercial_use_consent_required"}\n',
+      declined: '{"error":"commercial_use_consent_declined"}\n',
+      invalid: '{"error":"invalid_commercial_use_consent"}\n',
+    })
+    expect(`${missing.stdout}${declined.stdout}${invalid.stdout}`).not.toContain("credential-sentinel")
+  })
+
+  test("real TTY consent accepts only yes and blocks no, blank, EOF, and interrupt before upload", async () => {
+    const root = fixtureRoot()
+    const candidate = bundle(root)
+    const submissionId = `sub_${"0".repeat(26)}`
+    let posts = 0
+    const server = Bun.serve({
+      fetch: async (request) => {
+        if (request.method === "GET") return new Response(uploadConsentPolicyJson, { status: 200 })
+        posts += 1
+        await request.arrayBuffer()
+        return Response.json({
+          protocolVersion: 1,
+          submissionId,
+          status: "accepted",
+          statusUrl: `/v1/marketplace/seller/candidates/${submissionId}`,
+        }, {
+          headers: { "x-atm-upload-consent-sha256": createHash("sha256").update(Buffer.from(request.headers.get("x-atm-upload-consent") ?? "", "base64url")).digest("hex") },
+          status: 202,
+        })
+      },
+      hostname: "127.0.0.1",
+      port: 0,
+    })
+    const argumentsList = [
+      "marketplace", "seller", "candidate", "publish",
+      "--bundle", candidate.archivePath,
+      "--selection", candidate.selectionPath,
+      "--server", `http://127.0.0.1:${server.port}`,
+      "--api-key", "tty-test-key",
+    ]
+    const environment = { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root }
+    const outcomes: Array<Readonly<{ readonly kind: string; readonly exitCode: number; readonly output: string }>> = []
+    for (const kind of ["yes", "no", "blank", "eof", "abort"] as const) {
+      const complete = await runTtyCli(argumentsList, environment, kind)
+      expect(complete.promptSeen).toBe(true)
+      outcomes.push({ kind, ...complete })
+    }
+    server.stop(true)
+
+    expect(posts).toBe(1)
+    expect(outcomes.map(({ kind, exitCode, output }) => ({ kind, exitCode, accepted: output.includes(`"submissionId":"${submissionId}"`), declined: output.includes('"error":"commercial_use_consent_declined"'), cancelled: output.includes('"error":"cancelled"') }))).toEqual([
+      { kind: "yes", exitCode: 0, accepted: true, declined: false, cancelled: false },
+      { kind: "no", exitCode: 1, accepted: false, declined: true, cancelled: false },
+      { kind: "blank", exitCode: 1, accepted: false, declined: true, cancelled: false },
+      { kind: "eof", exitCode: 1, accepted: false, declined: true, cancelled: false },
+      { kind: "abort", exitCode: 1, accepted: false, declined: false, cancelled: true },
+    ])
   })
 
   test("built CLI posts one exact frame and prints strict accepted receipt", async () => {
@@ -324,15 +443,21 @@ describe("marketplace candidate publish process boundary", () => {
     let authorization = ""
     let contentType = ""
     let idempotencyKey = ""
+    let consentHeader = ""
     let body = new Uint8Array()
     const submissionId = `sub_${"0".repeat(26)}`
     const server = Bun.serve({
       fetch: async (request) => {
+        if (request.method === "GET") return new Response(uploadConsentPolicyJson, { status: 200 })
         authorization = request.headers.get("authorization") ?? ""
         contentType = request.headers.get("content-type") ?? ""
         idempotencyKey = request.headers.get("idempotency-key") ?? ""
+        consentHeader = request.headers.get("x-atm-upload-consent") ?? ""
         body = new Uint8Array(await request.arrayBuffer())
-        return Response.json({ protocolVersion: 1, submissionId, status: "accepted", statusUrl: `/v1/marketplace/seller/candidates/${submissionId}` }, { status: 202 })
+        return Response.json({ protocolVersion: 1, submissionId, status: "accepted", statusUrl: `/v1/marketplace/seller/candidates/${submissionId}` }, {
+          headers: { "x-atm-upload-consent-sha256": createHash("sha256").update(Buffer.from(request.headers.get("x-atm-upload-consent") ?? "", "base64url")).digest("hex") },
+          status: 202,
+        })
       }, hostname: "127.0.0.1", port: 0,
     })
     writeStoredAuthSession({
@@ -345,8 +470,7 @@ describe("marketplace candidate publish process boundary", () => {
 
     // When: the built CLI publishes with three distinct credential sources.
     const result = await runCli([
-      "marketplace", "seller", "candidate", "publish", "--bundle", archivePath, "--selection", candidate.selectionPath, "--server", `http://127.0.0.1:${server.port}`, "--api-key", "flag-sentinel",
-    ], { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root, TRAJECTORY_REGISTRY_API_KEY: "environment-sentinel" })
+      "marketplace", "seller", "candidate", "publish", "--bundle", archivePath, "--selection", candidate.selectionPath, "--commercial-use", "yes", "--consent-policy", "session-commercial-use-v1", "--server", `http://127.0.0.1:${server.port}`, "--api-key", "flag-sentinel",    ], { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root, TRAJECTORY_REGISTRY_API_KEY: "environment-sentinel" })
     server.stop(true)
 
     // Then: only the flag credential is sent and no private data reaches terminal output.
@@ -357,8 +481,17 @@ describe("marketplace candidate publish process boundary", () => {
       idempotencyKey: `archive-${createHash("sha256").update(new Uint8Array(await archive.arrayBuffer())).digest("hex")}`,
       frameBytes: expect.any(Number),
       frameArchive: new Uint8Array(await archive.arrayBuffer()),
-      result: { exitCode: 0, stderr: "" },
+      result: { exitCode: 0, stderr: `${uploadConsentPolicy.text}\n` },
     })
+    expect(Buffer.from(consentHeader, "base64url")).toEqual(Buffer.from(JSON.stringify({
+      policyVersion: uploadConsentPolicy.policyVersion,
+      policySha256: uploadConsentPolicy.policySha256,
+      archiveSha256: frame.candidate.archiveSha256,
+      manifestSha256: frame.candidate.manifestSha256,
+      commercialUse: true,
+      rightsConfirmed: true,
+      publicExamples: false,
+    }), "utf8"))
     expect(result.stdout).toBe(`${JSON.stringify({
       protocolVersion: 1,
       submissionId,

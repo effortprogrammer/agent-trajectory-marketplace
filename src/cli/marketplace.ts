@@ -16,6 +16,8 @@ import {
 import { MarketplaceError } from "../marketplace/error";
 import { readPublishBundle } from "../marketplace/publish-bundle";
 import { createPublishClient } from "../marketplace/publish-client";
+import { affirmCommercialUse, uploadConsentPolicy } from "../marketplace/upload-consent";
+import type { CommercialUseConsent } from "../marketplace/upload-consent";
 import { createStatusClient } from "../marketplace/status-client";
 import {
   allowedCandidateTraces,
@@ -50,6 +52,54 @@ const sellerSessionCredential = (): string => {
     throw new MarketplaceCliError("missing_seller_session");
   }
   return session.accessToken;
+};
+
+const printCommercialUsePolicy = (): void => {
+  process.stderr.write(`${uploadConsentPolicy.text}\n`);
+};
+
+const resolveCommercialUseConsent = async (
+  command: Readonly<{ readonly commercialUse?: "yes" | "no"; readonly consentPolicy?: string }>,
+  bundle: Parameters<typeof affirmCommercialUse>[0],
+  sessionCount: number,
+  signal: AbortSignal,
+): Promise<CommercialUseConsent> => {
+  if (command.commercialUse === "no") {
+    if (command.consentPolicy !== undefined) throw new MarketplaceCliError("invalid_commercial_use_consent");
+    throw new MarketplaceCliError("commercial_use_consent_declined");
+  }
+  if (command.commercialUse === "yes") {
+    if (command.consentPolicy !== uploadConsentPolicy.policyVersion) {
+      throw new MarketplaceCliError("invalid_commercial_use_consent");
+    }
+    printCommercialUsePolicy();
+    return affirmCommercialUse(bundle);
+  }
+  if (command.consentPolicy !== undefined) throw new MarketplaceCliError("invalid_commercial_use_consent");
+  if (process.stdin.isTTY !== true) throw new MarketplaceCliError("commercial_use_consent_required");
+  printCommercialUsePolicy();
+  process.stderr.write(`Bundle SHA-256: ${bundle.candidate.archiveSha256}\nSelected sessions: ${sessionCount}\nConfirm that you have the rights to submit this bundle and authorize commercial model training and evaluation licensing (not public examples). Type yes to continue: `);
+  const lineReader = createInterface({ input: process.stdin, terminal: false });
+  const lines = lineReader[Symbol.asyncIterator]();
+  let resolveCancellation: (() => void) | undefined;
+  const cancellation = new Promise<undefined>((resolve) => {
+    resolveCancellation = (): void => resolve(undefined);
+  });
+  const cancel = (): void => resolveCancellation?.();
+  signal.addEventListener("abort", cancel, { once: true });
+  if (signal.aborted) cancel();
+  try {
+    const result = await Promise.race([
+      lines.next().then((line) => line.done ? undefined : line.value),
+      cancellation,
+    ]);
+    if (signal.aborted) throw new MarketplaceCliError("cancelled");
+    if (result !== "yes") throw new MarketplaceCliError("commercial_use_consent_declined");
+    return affirmCommercialUse(bundle);
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    lineReader.close();
+  }
 };
 
 export const runMarketplaceCli = async (
@@ -154,9 +204,11 @@ export const runMarketplaceCli = async (
       const server = officialRegistryOrigin;
       const bundle = readPublishBundle(command.bundle);
       const membership = approvedMembership(bundle, command.selection);
+      const consent = await resolveCommercialUseConsent(command, bundle, membership.length, signal);
       const credential = resolveMarketplaceCredential(server, command.apiKey, "missing_publish_credential");
       const receipt = await createPublishClient(server).publish({
         bundle,
+        consent,
         credential,
         signal,
       });
