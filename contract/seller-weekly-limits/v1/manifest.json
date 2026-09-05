@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "frames": [
     {
-      "name": "weekly-limits-200",
+      "name": "weekly-limits-300",
       "method": "GET",
       "path": "/v1/marketplace/seller/weekly-limits",
       "status": 200,
-      "sha256": "cf5d71d553f08eabcf9559e10796d032808ea104b868113fca7e9dae63be937c",
-      "body": "{\"ok\":true,\"weeklyLimits\":{\"scope\":\"platform\",\"currency\":\"USD\",\"limitMinor\":20000,\"windowSeconds\":604800,\"sessionValueRemainingMinor\":5000,\"payoutRemainingMinor\":12000}}"
+      "sha256": "c3d25be4bd8583d7ecc69f59cc4c35c160fa8b6865c3f44ccf273dd83c9cd837",
+      "body": "{\"ok\":true,\"weeklyLimits\":{\"scope\":\"platform\",\"currency\":\"USD\",\"limitMinor\":30000,\"windowSeconds\":604800,\"sessionValueRemainingMinor\":7500,\"payoutRemainingMinor\":18000}}"
     },
     {
       "name": "payout-weekly-limit-429",

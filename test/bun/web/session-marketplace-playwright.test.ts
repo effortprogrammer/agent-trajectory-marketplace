@@ -157,7 +157,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(await page.getByTestId("public-token-count").innerText()).toBe("39,048,328")
     expect(await page.getByTestId("public-payout-remaining").count()).toBe(1)
     expect(await page.getByTestId("public-payout-remaining").innerText()).toBe(
-      "$120.00",
+      "$180.00",
     )
     expect(await page.locator("[data-public-token-note]").isVisible()).toBe(true)
     expect(await page.getByTestId("public-token-count").evaluate((element) => {
@@ -224,8 +224,8 @@ describe("authenticated aggregate marketplace browser contract", () => {
       ok: true,
       payoutCapacity: {
         currency: "USD",
-        limitMinor: 20_000,
-        payoutRemainingMinor: 20_001,
+        limitMinor: 30_000,
+        payoutRemainingMinor: 30_001,
         scope: "platform",
         windowSeconds: 604_800,
       },
@@ -341,13 +341,13 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect([desktopObservation, mobileObservation]).toEqual([
       {
         overflowFree: true,
-        payout: "$120.00 remaining",
-        sessionValue: "$50.00 remaining",
+        payout: "$180.00 remaining",
+        sessionValue: "$75.00 remaining",
       },
       {
         overflowFree: true,
-        payout: "$120.00 remaining",
-        sessionValue: "$50.00 remaining",
+        payout: "$180.00 remaining",
+        sessionValue: "$75.00 remaining",
       },
     ])
     expect(harness.registryRequests).toContainEqual({
@@ -779,9 +779,9 @@ describe("authenticated aggregate marketplace browser contract", () => {
               weeklyLimits: {
                 scope: "platform",
                 currency: "USD",
-                limitMinor: 20_000,
-                payoutRemainingMinor: 20_000,
-                sessionValueRemainingMinor: 20_000,
+                limitMinor: 30_000,
+                payoutRemainingMinor: 30_000,
+                sessionValueRemainingMinor: 30_000,
                 windowSeconds: 604_800,
               },
             }

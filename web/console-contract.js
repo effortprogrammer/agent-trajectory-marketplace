@@ -241,7 +241,7 @@ export const parseWeeklyLimitsResponse = (value) => {
   if (
     limits.scope !== "platform"
     || limits.currency !== "USD"
-    || limits.limitMinor !== 20_000
+    || limits.limitMinor !== 30_000
     || limits.windowSeconds !== 604_800
   ) {
     fail("Invalid weekly limits");
