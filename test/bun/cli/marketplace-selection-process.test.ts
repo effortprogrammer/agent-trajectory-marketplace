@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { officialGatewayProcessArguments, officialGatewayProcessEnvironment } from "../fixtures/gateway-process";
-
+import { uploadConsentPolicyJson } from "../../../src/marketplace/upload-consent";
 const roots: string[] = [];
 const decoder = new TextDecoder();
 const residualSecret = `github_pat_${"a".repeat(82)}`;
@@ -773,9 +773,13 @@ describe("marketplace selection process boundary", () => {
     const bundlePath = join(root, "candidate.zip");
     runCli(["marketplace", "seller", "candidate", "bundle", "--root", root, "--out", bundlePath, "--selection", selectionPath]);
     let requests = 0;
-    await using server = Bun.serve({ fetch() {
+    await using server = Bun.serve({ fetch(request) {
+      if (request.method === "GET") return new Response(uploadConsentPolicyJson, { status: 200 });
       requests += 1;
-      return Response.json({ protocolVersion: 1, submissionId: "sub_0123456789abcdefghjkmnpqrs", status: "accepted", statusUrl: "/v1/marketplace/seller/candidates/sub_0123456789abcdefghjkmnpqrs" }, { status: 202 });
+      return Response.json({ protocolVersion: 1, submissionId: "sub_0123456789abcdefghjkmnpqrs", status: "accepted", statusUrl: "/v1/marketplace/seller/candidates/sub_0123456789abcdefghjkmnpqrs" }, {
+        headers: { "x-atm-upload-consent-sha256": createHash("sha256").update(Buffer.from(request.headers.get("x-atm-upload-consent") ?? "", "base64url")).digest("hex") },
+        status: 202,
+      });
     }, hostname: "127.0.0.1", port: 0 });
     const environment = { ...process.env, TRAJECTORY_REGISTRY_API_KEY: "env-sentinel" };
 
@@ -784,6 +788,7 @@ describe("marketplace selection process boundary", () => {
       "marketplace", "seller", "candidate", "publish",
       "--bundle", bundlePath, "--server", `http://127.0.0.1:${server.port}`,
       "--selection", selectionPath,
+      "--commercial-use", "yes", "--consent-policy", "session-commercial-use-v1",
     ], environment);
 
     // Then: one request ships and stdout records the approved membership.

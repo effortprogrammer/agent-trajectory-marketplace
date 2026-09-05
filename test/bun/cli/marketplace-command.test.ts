@@ -206,6 +206,7 @@ describe("trajectory marketplace seller CLI grammar", () => {
     const argumentsList = [
       "trajectory", "marketplace", "seller", "candidate", "publish",
       "--bundle", "/tmp/candidate.zip", "--api-key", "flag-value",
+      "--commercial-use", "yes", "--consent-policy", "session-commercial-use-v1",
       "--selection", "/tmp/selection.json",
     ];
 
@@ -216,6 +217,21 @@ describe("trajectory marketplace seller CLI grammar", () => {
     expect(result).toEqual({
       apiKey: "flag-value",
       bundle: "/tmp/candidate.zip",
+      commercialUse: "yes",
+      command: "candidate-publish",
+      consentPolicy: "session-commercial-use-v1",
+      selection: "/tmp/selection.json",
+    });
+  });
+
+  test("preserves explicit affirmative and declined commercial-use decisions", () => {
+    expect(parseMarketplaceCommand([
+      "marketplace", "seller", "candidate", "publish",
+      "--bundle", "/tmp/candidate.zip", "--selection", "/tmp/selection.json",
+      "--commercial-use", "no",
+    ])).toEqual({
+      bundle: "/tmp/candidate.zip",
+      commercialUse: "no",
       command: "candidate-publish",
       selection: "/tmp/selection.json",
     });
@@ -245,6 +261,10 @@ describe("trajectory marketplace seller CLI grammar", () => {
       ["marketplace", "seller", "candidate", "publish", "--bundle", "relative.zip"],
       ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--server", "https://registry.example.test"],
       ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--unknown", "value"],
+      ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--selection", "/tmp/selection.json", "--commercial-use", "maybe"],
+      ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--selection", "/tmp/selection.json", "--commercial-use", "yes", "--commercial-use", "yes"],
+      ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--selection", "/tmp/selection.json", "--consent-policy", "session-commercial-use-v1", "--consent-policy", "session-commercial-use-v1"],
+      ["marketplace", "seller", "candidate", "publish", "--bundle", "/tmp/a.zip", "--selection", "/tmp/selection.json", "--yes", "yes"],
       ["marketplace", "seller", "sessions", "list", "--root", "/tmp/traces", "--unknown"],
       ["marketplace", "seller", "sessions", "inspect", "s-short", "--root", "/tmp/traces"],
       ["marketplace", "seller", "sessions", "list", "--root", "relative"],

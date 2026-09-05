@@ -175,24 +175,30 @@ describe("public Todo27 marketplace lifecycle", () => {
       expect(previewed).toEqual({
         exitCode: 0,
         stderr: "",
-        stdout: expect.stringContaining('"schemaVersion":1'),
+        stdout: expect.any(String),
       })
+      const preview: unknown = JSON.parse(previewed.stdout)
+      expect(preview).toMatchObject({ schemaVersion: 1 })
       writeFileSync(selection, previewed.stdout)
       const bundled = await run([
         process.execPath, "dist/collector.js", "marketplace", "seller", "candidate", "bundle",
         "--root", traces, "--out", bundle, "--selection", selection,
       ])
-      expect(bundled).toEqual({ exitCode: 0, stderr: "", stdout: expect.stringContaining('"traceCount":2') })
+      expect(bundled).toEqual({ exitCode: 0, stderr: "", stdout: expect.any(String) })
+      const bundleSummary: unknown = JSON.parse(bundled.stdout)
+      expect(bundleSummary).toMatchObject({ traceCount: 2 })
 
       const published = await run([
         process.execPath, "dist/collector.js", "marketplace", "seller", "candidate", "publish",
-        "--bundle", bundle, "--selection", selection, "--api-key", supplied.apiKey,
+        "--bundle", bundle, "--selection", selection, "--commercial-use", "yes",
+        "--consent-policy", "session-commercial-use-v1", "--api-key", supplied.apiKey,
       ], supplied.server)
       expect(published).toEqual({
         exitCode: 0,
-        stderr: "",
+        stderr: expect.any(String),
         stdout: expect.any(String),
       })
+      expect(published.stderr).not.toContain(supplied.apiKey)
       expect(JSON.parse(published.stdout)).toEqual({
         membership: [
           expect.stringMatching(/^s-[0-9a-f]{64}$/),

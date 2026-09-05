@@ -4,7 +4,7 @@ import { validPublishCredential } from "../marketplace/publish-client";
 export class MarketplaceCliError extends Error {
   readonly name = "MarketplaceCliError";
 
-  constructor(readonly code: "invalid_command" | "missing_publish_credential" | "missing_seller_session" | "missing_wallet_credential" | "weekly_payout_limit_reached") {
+  constructor(readonly code: "cancelled" | "commercial_use_consent_declined" | "commercial_use_consent_required" | "invalid_commercial_use_consent" | "invalid_command" | "missing_publish_credential" | "missing_seller_session" | "missing_wallet_credential" | "weekly_payout_limit_reached") {
     super(code);
   }
 }

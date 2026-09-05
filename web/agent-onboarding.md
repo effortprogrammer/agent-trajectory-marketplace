@@ -75,7 +75,15 @@ bun <ABSOLUTE_INSTALL_ROOT>/current/dist/collector.js marketplace seller candida
 
 Show the exact final included and excluded session lists.
 
-### 7. Ask for final upload approval
+### 7. Ask for a separate commercial-use consent decision
+
+Ask the user this separately from selection approval and upload approval:
+
+> Do you confirm that you have the rights and permissions to submit this exact bundle and authorize ATM to license it to customers for commercial model training and evaluation, with no public examples?
+
+Treat anything except an explicit yes as no. Never infer this decision from selecting sessions, approving an upload, or any other yes. Do not authenticate, publish, or pass commercial-use flags autonomously; only use the flags after this actual user decision.
+
+### 8. Ask for final upload approval
 
 Ask:
 
@@ -83,18 +91,20 @@ Ask:
 
 Treat anything except an explicit yes as no. Do not authenticate or make a publish request before this confirmation.
 
-### 8. Authenticate after approval
+### 9. Authenticate after approval
 
-After explicit confirmation, check `auth status`. If needed, guide the user through the official `auth login` or `auth signup` and `auth verify` flow. Do not print the verification code or token. Never put an API key on the command line unless the user explicitly chooses that.
+After both explicit confirmations, check `auth status`. If needed, guide the user through the official `auth login` or `auth signup` and `auth verify` flow. Do not print the verification code or token. Never put an API key on the command line unless the user explicitly chooses that.
 
-### 9. Publish the same approved selection
+### 10. Publish the same approved selection
+
+Only after the user has made the separate commercial-use decision, run:
 
 ```bash
-bun <ABSOLUTE_INSTALL_ROOT>/current/dist/collector.js marketplace seller candidate publish --bundle <ABSOLUTE_BUNDLE_ZIP> --selection <ABSOLUTE_SELECTION_JSON>
+bun <ABSOLUTE_INSTALL_ROOT>/current/dist/collector.js marketplace seller candidate publish --bundle <ABSOLUTE_BUNDLE_ZIP> --selection <ABSOLUTE_SELECTION_JSON> --commercial-use yes --consent-policy session-commercial-use-v1
 ```
 
 If ATM reports selection drift, membership mismatch, a changed session, or `invalid_bundle_request`, stop. Return to the local preview, request fresh approval, create a new selection, and rebuild.
 
-### 10. Report the result
+### 11. Report the result
 
 Report the final submission receipt and status URL.

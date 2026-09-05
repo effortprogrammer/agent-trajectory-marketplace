@@ -1,16 +1,34 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { createPublishClient, PublishClientError } from "../../../src/marketplace/publish-client"
 import { encodeCandidateJson } from "../../../src/marketplace/publish-contract"
+import { affirmCommercialUse, uploadConsentPolicyJson } from "../../../src/marketplace/upload-consent"
 import {
   compensatedPublishBundle,
 } from "../fixtures/compensated-publish-bundle"
 
 const servers: Bun.Server<undefined>[] = []
 
-const validRequest = () => ({ bundle: compensatedPublishBundle() })
+const validRequest = () => {
+  const bundle = compensatedPublishBundle()
+  return { bundle, consent: affirmCommercialUse(bundle) }
+}
 
 const serve = (fetch: (request: Request) => Response | Promise<Response>): Bun.Server<undefined> => {
-  const server = Bun.serve({ fetch, hostname: "127.0.0.1", port: 0 })
+  const server = Bun.serve({
+    fetch: async (request) => {
+      if (new URL(request.url).pathname === "/v1/marketplace/seller/upload-consent-policy") {
+        return new Response(uploadConsentPolicyJson, { status: 200 })
+      }
+      const response = await fetch(request)
+      if (response.status !== 202) return response
+      const consent = request.headers.get("x-atm-upload-consent")
+      if (consent === null) return response
+      const headers = new Headers(response.headers)
+      headers.set("x-atm-upload-consent-sha256", Bun.CryptoHasher.hash("sha256", Buffer.from(consent, "base64url"), "hex"))
+      return new Response(response.body, { headers, status: response.status })
+    },
+    hostname: "127.0.0.1", port: 0,
+  })
   servers.push(server)
   return server
 }
@@ -22,7 +40,7 @@ afterEach(() => {
 describe("candidate publish client", () => {
   test("CLI API key wins without leaking any credential sentinel", async () => {
     // Given: a loopback registry and three intentionally different credentials.
-    const { bundle } = validRequest()
+    const { bundle, consent } = validRequest()
     const expectedLength = 4
       + encodeCandidateJson(bundle.candidate).byteLength
       + bundle.archive.byteLength
@@ -47,6 +65,7 @@ describe("candidate publish client", () => {
     // When: the resolved CLI credential posts the candidate frame.
     const receipt = await createPublishClient(`http://127.0.0.1:${server.port}`).publish({
       bundle,
+      consent,
       credential: sentinels[0] ?? "",
     })
 
@@ -109,12 +128,13 @@ describe("candidate publish client", () => {
 
   test("preserves the HTTP status when a response violates the wire contract", async () => {
     // Given: a canonical request followed by malformed response bytes at HTTP 202.
-    const { bundle } = validRequest()
+    const { bundle, consent } = validRequest()
     const server = serve(() => new Response("{malformed", { status: 202 }))
 
     // When: the bounded response parser rejects those bytes.
     const error = await expectError(() => createPublishClient(`http://127.0.0.1:${server.port}`).publish({
       bundle,
+      consent,
       credential: "flag-sentinel",
     }))
 
@@ -166,12 +186,13 @@ describe("candidate publish client", () => {
     [503, "unavailable"],
   ] as const)("preserves canonical HTTP %i error code %s", async (status, code) => {
     // Given: a registry response accepted by the frozen publish-wire error contract.
-    const { bundle } = validRequest()
+    const { bundle, consent } = validRequest()
     const server = serve(() => Response.json({ protocolVersion: 1, code }, { status }))
 
     // When: the client receives the canonical non-success response.
     const error = await expectError(() => createPublishClient(`http://127.0.0.1:${server.port}`).publish({
       bundle,
+      consent,
       credential: "flag-sentinel",
     }))
 
