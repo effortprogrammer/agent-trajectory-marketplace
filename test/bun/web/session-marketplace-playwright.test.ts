@@ -53,37 +53,6 @@ const authenticate = async (page: Page): Promise<void> => {
   await statsResponse
 }
 
-const payoutRequest = {
-  amountMinor: 15_000,
-  approvedAt: null,
-  externalReference: null,
-  paidAt: null,
-  rejectedReason: null,
-  requestId: "44444444-4444-4444-8444-444444444444",
-  requestedAt: "2026-08-29T00:00:00Z",
-  status: "requested",
-}
-
-const payoutSuccess = (
-  request: unknown,
-  availableMinor = 0,
-  heldMinor = 15_000,
-) => ({
-  ok: true,
-  payoutRequest: {
-    availableMinor,
-    currency: "USD",
-    heldMinor,
-    request,
-    thresholdMinor: 10_000,
-  },
-})
-
-const payoutError = (code: string, message: string) => ({
-  error: { code, message },
-  ok: false,
-})
-
 const pricingSessions = {
   asOf: "2026-08-31T00:00:00Z",
   ok: true,
@@ -124,14 +93,6 @@ const pricingSessions = {
 const openSellerConsole = async (page: Page): Promise<void> => {
   await page.getByTestId("seller-console-link").click()
   await page.locator("[data-console-sessions] li").first().waitFor()
-}
-
-const openPayoutDialog = async (page: Page): Promise<void> => {
-  await page.locator("[data-payout-open]").click()
-  await page.locator("[data-payout-dialog]").waitFor({ state: "visible" })
-  await page.waitForFunction(
-    "document.querySelector('[data-console-payout]')?.dataset.payoutState !== 'loading'",
-  )
 }
 
 afterEach(async () => {
@@ -203,31 +164,92 @@ describe("authenticated aggregate marketplace browser contract", () => {
     ).toBe(true)
   })
 
-  test.each([desktop, mobile])("shows credited wallet balance on the seller page at %j", async (viewport) => {
+  test("shows an authoritative terminal payout balance without payout controls or mutations", async () => {
     harness = await startSessionUiHarness()
-    harness.setPayoutResponses({ body: payoutSuccess(null, 6_029, 0), status: 200 })
+    harness.setPayoutResponses({
+      body: {
+        ok: true,
+        payoutRequest: {
+          availableMinor: 28_702,
+          currency: "USD",
+          heldMinor: 0,
+          request: {
+            amountMinor: 28_702,
+            approvedAt: null,
+            externalReference: null,
+            paidAt: null,
+            rejectedReason: null,
+            requestId: "c485b21a-dedd-4e7c-a048-40ec295adcf1",
+            requestedAt: "2026-09-05T00:00:00Z",
+            status: "cancelled",
+          },
+          thresholdMinor: 10_000,
+        },
+      },
+      status: 200,
+    })
+    const page = await harness.newPage(desktop)
+    await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+    await authenticate(page)
+    const payoutRead = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/registry/v1/marketplace/seller/payout-request",
+    )
+    await page.getByTestId("seller-console-link").click()
+
+    const request = await payoutRead
+    expect(request.method()).toBe("GET")
+    expect(await request.headerValue("authorization")).toBe("Bearer marketplace-browser-session-token")
+    await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+    expect(await page.locator("[data-console-wallet-balance]").innerText()).toBe("$287.02")
+    expect(await page.locator("[data-payout-open], [data-payout-dialog]").count()).toBe(0)
+    expect(harness.registryRequests.filter((entry) =>
+      entry.path.includes("/payout-request"),
+    ).map((entry) => entry.method)).toEqual(["GET"])
+  })
+
+  test.each([desktop, mobile])("shows the available wallet balance at %j without payout controls", async (viewport) => {
+    harness = await startSessionUiHarness()
+    harness.setPayoutResponses({
+      body: {
+        ok: true,
+        payoutRequest: {
+          availableMinor: 6_029,
+          currency: "USD",
+          heldMinor: 0,
+          request: null,
+          thresholdMinor: 10_000,
+        },
+      },
+      status: 200,
+    })
     const page = await harness.newPage(viewport)
     await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
     await authenticate(page)
-    const payoutResponse = page.waitForResponse((response) =>
-      new URL(response.url()).pathname === "/api/registry/v1/marketplace/seller/payout-request",
-    )
     await page.getByTestId("seller-console-link").click()
-    expect((await payoutResponse).status()).toBe(200)
-    expect(await page.locator("[data-console-wallet-balance]").count()).toBe(1)
+
     await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
     expect(await page.locator("[data-console-wallet-balance]").innerText()).toBe("$60.29")
-    expect(await page.locator("[data-payout-dialog]").isVisible()).toBe(false)
+    expect(await page.locator("[data-payout-open], [data-payout-dialog]").count()).toBe(0)
     expect(await page.locator("html").evaluate((node) =>
       node.scrollWidth <= node.clientWidth,
     )).toBe(true)
-    await page.getByTestId("seller-payout-button").click()
-    expect(await page.locator("[data-payout-balance]").innerText()).toBe("$60.29 available")
   })
 
-  test("loads wallet balance even when the sales chart request fails", async () => {
+  test("keeps the wallet balance available when seller earnings fail without payout controls", async () => {
     harness = await startSessionUiHarness()
-    harness.setPayoutResponses({ body: payoutSuccess(null, 6_029, 0), status: 200 })
+    harness.setPayoutResponses({
+      body: {
+        ok: true,
+        payoutRequest: {
+          availableMinor: 6_029,
+          currency: "USD",
+          heldMinor: 0,
+          request: null,
+          thresholdMinor: 10_000,
+        },
+      },
+      status: 200,
+    })
     const page = await harness.newPage(desktop)
     await page.route("**/v1/marketplace/seller/sales/earnings?*", (route) =>
       route.fulfill({ body: "{}", contentType: "application/json", status: 503 }),
@@ -235,23 +257,27 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
     await authenticate(page)
     await page.getByTestId("seller-console-link").click()
+
     await page.locator('[data-console-state][data-state="error"]').waitFor()
     await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
     expect(await page.locator("[data-console-wallet-balance]").innerText()).toBe("$60.29")
+    expect(await page.locator("[data-payout-open], [data-payout-dialog]").count()).toBe(0)
   })
 
-  test("never fabricates a zero wallet balance when the server is unavailable", async () => {
+  test("never fabricates a zero wallet balance when the read is unavailable", async () => {
     harness = await startSessionUiHarness()
     harness.setPayoutResponses({
-      body: payoutError("service_unavailable", "Payout requests are unavailable."),
+      body: { error: { code: "service_unavailable", message: "Payout requests are unavailable." }, ok: false },
       status: 503,
     })
     const page = await harness.newPage(desktop)
     await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
     await authenticate(page)
     await page.getByTestId("seller-console-link").click()
+
     await page.locator('[data-console-wallet][data-wallet-state="unavailable"]').waitFor()
     expect(await page.locator("[data-console-wallet-balance]").innerText()).not.toContain("$0.00")
+    expect(await page.locator("[data-payout-open], [data-payout-dialog]").count()).toBe(0)
   })
 
   test("hides the acceptance note when public token stats are unavailable", async () => {
@@ -644,57 +670,6 @@ describe("authenticated aggregate marketplace browser contract", () => {
     ).toBe(true)
   })
 
-  test("opens payout from the seller header and restores trigger focus", async () => {
-    harness = await startSessionUiHarness()
-    const page = await harness.newPage(desktop)
-
-    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
-    await authenticate(page)
-    await openSellerConsole(page)
-
-    const launcher = page.locator("[data-payout-open]")
-    const dialog = page.locator("[data-payout-dialog]")
-    expect(await launcher.count()).toBe(1)
-    expect(await page.locator(".seller-payout-panel").count()).toBe(0)
-    expect(await launcher.evaluate((element) => {
-      const launcherRect = element.getBoundingClientRect()
-      const shellRect = element.closest(".seller-console-shell")
-        ?.getBoundingClientRect()
-      const chartTop = element.ownerDocument
-        .querySelector(".seller-chart-panel")
-        ?.getBoundingClientRect()
-        .top
-      return shellRect !== undefined
-        && chartTop !== undefined
-        && Math.abs(shellRect.right - launcherRect.right) <= 1
-        && launcherRect.top < chartTop
-    })).toBe(true)
-
-    await launcher.click()
-    await dialog.waitFor({ state: "visible" })
-    expect(await page.locator("[data-payout-request]").isVisible()).toBe(true)
-    expect(await page.locator(".seller-payout-dialog-body").evaluate((element) =>
-      Number.parseFloat(
-        element.ownerDocument.defaultView
-          ?.getComputedStyle(element)
-          .paddingInlineStart ?? "0",
-      ),
-    )).toBeGreaterThan(0)
-    await page.locator("[data-payout-close]").click()
-    await dialog.waitFor({ state: "hidden" })
-    expect(await launcher.evaluate((element) =>
-      element.ownerDocument.activeElement === element
-    )).toBe(true)
-
-    await launcher.click()
-    await dialog.waitFor({ state: "visible" })
-    await page.keyboard.press("Escape")
-    await dialog.waitFor({ state: "hidden" })
-    expect(await launcher.evaluate((element) =>
-      element.ownerDocument.activeElement === element
-    )).toBe(true)
-  })
-
   test("keeps the legacy Seller Console module call shape compatible", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
@@ -836,7 +811,16 @@ describe("authenticated aggregate marketplace browser contract", () => {
                 windowSeconds: 604_800,
               },
             }
-            : payoutSuccess(null, first ? 9_999 : 15_000, 0)
+            : {
+              ok: true,
+              payoutRequest: {
+                availableMinor: first ? 9_999 : 15_000,
+                currency: "USD",
+                heldMinor: 0,
+                request: null,
+                thresholdMinor: 10_000,
+              },
+            }
       await route.fulfill({
         body: JSON.stringify(body),
         contentType: "application/json",
@@ -859,7 +843,6 @@ describe("authenticated aggregate marketplace browser contract", () => {
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
-    expect(await page.locator("[data-console-payout]").count()).toBe(1)
     const firstRequestsStarted = Promise.all([
       page.waitForRequest((request) =>
         request.headers().authorization === `Bearer ${firstToken}`
@@ -883,7 +866,7 @@ describe("authenticated aggregate marketplace browser contract", () => {
     await page.locator("[data-auth-code]").waitFor({ state: "visible" })
     await page.locator("[data-auth-code]").fill("654321")
     const secondConsoleRendered = page
-      .locator('[data-console-payout][data-payout-state="eligible"]')
+      .locator('[data-console-wallet][data-wallet-state="ready"]')
       .waitFor({ state: "attached" })
     await page.locator("[data-auth-verify-submit]").click()
     await secondConsoleRendered
@@ -910,9 +893,8 @@ describe("authenticated aggregate marketplace browser contract", () => {
     )
     expect(await page.locator("[data-console-seller]").count()).toBe(0)
     expect(await page.locator("[data-console-view]:visible").count()).toBe(1)
-    expect(await page.locator("[data-console-payout]").getAttribute("data-payout-state")).toBe(
-      "eligible",
-    )
+    await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+    expect(await page.locator("[data-console-wallet-balance]").innerText()).toBe("$150.00")
   })
 
   test("shows empty seller sales states when the account has no sales activity", async () => {
@@ -928,14 +910,6 @@ describe("authenticated aggregate marketplace browser contract", () => {
         status: 200,
       })
     })
-    await page.route("**/api/registry/v1/marketplace/seller/payout-request", async (route) => {
-      await route.fulfill({
-        body: JSON.stringify(payoutSuccess(null, 0, 0)),
-        contentType: "application/json",
-        status: 200,
-      })
-    })
-
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
     await page.getByTestId("seller-console-link").click()
@@ -943,28 +917,23 @@ describe("authenticated aggregate marketplace browser contract", () => {
 
     expect(await page.getByText("No earnings recorded in this window.").isVisible()).toBe(true)
     expect(await page.locator("[data-console-total]").isHidden()).toBe(true)
-    expect(await page.locator(".seller-payout-panel").count()).toBe(0)
-    await openPayoutDialog(page)
-    expect(await page.locator("[data-payout-balance]").innerText()).toBe(
-      "$0.00 available",
-    )
-    expect(await page.locator("[data-console-payout]").isHidden()).toBe(true)
-    expect(await page.locator("[data-console-view]").innerText()).not.toContain(
-      "Reach $100.00 to request payout.",
-    )
     expect(await page.locator("[data-console-ledger]").count()).toBe(0)
   })
 
   test("returns to the sign-in gate when a seller sales endpoint rejects the session", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
-    await page.route("**/api/registry/v2/marketplace/seller/sales/sessions", async (route) => {
+    await page.route(/\/api\/registry\/v2\/marketplace\/seller\/sales\/sessions$/, async (route) => {
       await route.fulfill({ body: JSON.stringify({ error: { code: "unauthorized" }, ok: false }), contentType: "application/json", status: 401 })
     })
 
     await page.goto(harness.appUrl, { waitUntil: "networkidle" })
     await authenticate(page)
+    const rejectedSessions = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/registry/v2/marketplace/seller/sales/sessions",
+    )
     await page.getByTestId("seller-console-link").click()
+    expect((await rejectedSessions).status()).toBe(401)
     await page.locator("[data-auth-gate]").waitFor({ state: "visible" })
 
     expect(await page.locator("[data-console-view]:visible").count()).toBe(0)
@@ -997,17 +966,6 @@ describe("authenticated aggregate marketplace browser contract", () => {
       element.classList.contains("is-nav-open"),
     )).toBe(false)
     expect(await page.locator("html").evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(false)
-    await openPayoutDialog(page)
-    expect(await page.locator("[data-payout-dialog]").evaluate((dialog) => {
-      const rect = dialog.getBoundingClientRect()
-      return rect.left >= 0
-        && rect.right <= dialog.ownerDocument.documentElement.clientWidth
-        && rect.top >= 0
-        && rect.bottom <= dialog.ownerDocument.defaultView.innerHeight
-    })).toBe(true)
-    expect(await page.locator("html").evaluate(
-      (node) => node.scrollWidth > node.clientWidth,
-    )).toBe(false)
   })
 
   test("copies a short handoff to the downloadable onboarding guide", async () => {
@@ -1833,200 +1791,4 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(harness.registryRequests).toEqual([])
   })
 
-  const payoutStates = [
-    {
-      expected: "below-threshold",
-      response: payoutSuccess(null, 9_999, 0),
-    },
-    {
-      expected: "eligible",
-      response: payoutSuccess(null, 15_000, 0),
-    },
-    {
-      expected: "requested",
-      response: payoutSuccess(payoutRequest),
-    },
-    {
-      expected: "pending",
-      response: payoutSuccess({ ...payoutRequest, status: "pending" }),
-    },
-    {
-      expected: "rejected",
-      response: payoutSuccess({
-        ...payoutRequest,
-        rejectedReason: "Destination needs review.",
-        status: "rejected",
-      }, 15_000, 0),
-    },
-    {
-      expected: "approved",
-      response: payoutSuccess({
-        ...payoutRequest,
-        approvedAt: "2026-08-29T01:00:00Z",
-        status: "approved",
-      }),
-    },
-    {
-      expected: "processing",
-      response: payoutSuccess({
-        ...payoutRequest,
-        approvedAt: "2026-08-29T01:00:00Z",
-        status: "processing",
-      }),
-    },
-    {
-      expected: "cancelled",
-      response: payoutSuccess({ ...payoutRequest, status: "cancelled" }, 15_000, 0),
-    },
-    {
-      expected: "paid",
-      response: payoutSuccess({
-        ...payoutRequest,
-        approvedAt: "2026-08-29T01:00:00Z",
-        externalReference: "manual-ach-42",
-        paidAt: "2026-08-29T02:00:00Z",
-        status: "paid",
-      }, 0, 0),
-    },
-  ] as const
-
-  for (const scenario of payoutStates) {
-    test(`renders the ${scenario.expected} payout state without hiding seller sales`, async () => {
-      harness = await startSessionUiHarness()
-      harness.setPayoutResponses({ body: scenario.response, status: 200 })
-      const page = await harness.newPage(desktop)
-      await page.goto(harness.appUrl, { waitUntil: "networkidle" })
-      await authenticate(page)
-      await openSellerConsole(page)
-      await openPayoutDialog(page)
-
-      const payout = page.locator("[data-console-payout]")
-      expect(await payout.count()).toBe(1)
-      expect(await payout.getAttribute("data-payout-state")).toBe(scenario.expected)
-      expect(await page.locator("[data-console-sessions] li").count()).toBeGreaterThan(0)
-      expect(await page.locator("[data-console-chart] svg").count()).toBe(1)
-      expect(await payout.locator("button").evaluateAll((buttons) =>
-        buttons.every((button) => button.getBoundingClientRect().height >= 44)
-      )).toBe(true)
-    })
-  }
-
-  test("suppresses duplicate payout clicks while retaining one operation UUID", async () => {
-    harness = await startSessionUiHarness()
-    harness.setPayoutResponses(
-      { body: payoutSuccess(null, 15_000, 0), status: 200 },
-      { body: payoutSuccess(payoutRequest), status: 201 },
-    )
-    const page = await harness.newPage(desktop)
-    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
-    await authenticate(page)
-    await openSellerConsole(page)
-    await openPayoutDialog(page)
-
-    expect(await page.locator("[data-payout-request]").count()).toBe(1)
-    const release = harness.holdPayout()
-    const button = page.locator("[data-payout-request]")
-    await button.dblclick()
-    await page.locator("[data-console-payout][data-payout-state=submitting]").waitFor()
-    const posts = harness.registryRequests.filter((request) =>
-      request.method === "POST"
-      && request.path === "/v1/marketplace/seller/payout-request"
-    )
-    expect(posts).toHaveLength(1)
-    expect(posts[0]?.body).toEqual({})
-    expect(posts[0]?.idempotencyKey).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-    )
-    release()
-  })
-
-  test("renders creation-disabled as refresh-only and never repeats POST", async () => {
-    harness = await startSessionUiHarness()
-    harness.setPayoutResponses(
-      { body: payoutSuccess(null, 15_000, 0), status: 200 },
-      {
-        body: payoutError(
-          "payout_request_creation_disabled",
-          "Payout requests are temporarily unavailable.",
-        ),
-        status: 503,
-      },
-      { body: payoutSuccess(null, 15_000, 0), status: 200 },
-    )
-    const page = await harness.newPage(desktop)
-    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
-    await authenticate(page)
-    await openSellerConsole(page)
-    await openPayoutDialog(page)
-
-    expect(await page.locator("[data-console-payout]").count()).toBe(1)
-    await page.locator("[data-payout-request]").click()
-    await page.getByText("Payout requests are temporarily unavailable.", { exact: true }).waitFor()
-    const refreshResponse = page.waitForResponse((response) =>
-      response.request().method() === "GET"
-      && new URL(response.url()).pathname.endsWith("/seller/payout-request")
-    )
-    await page.locator("[data-payout-refresh]").click()
-    await refreshResponse
-    expect(harness.registryRequests.filter((request) =>
-      request.path === "/v1/marketplace/seller/payout-request"
-    ).map((request) => request.method)).toEqual(["GET", "POST", "GET"])
-  })
-
-  test("renders weekly payout cap as a policy-specific refresh state", async () => {
-    harness = await startSessionUiHarness()
-    harness.setPayoutResponses(
-      { body: payoutSuccess(null, 15_000, 0), status: 200 },
-      {
-        body: payoutError(
-          "weekly_payout_limit_reached",
-          "The rolling weekly payout limit has been reached.",
-        ),
-        retryAfter: "3600",
-        status: 429,
-      },
-    )
-    const page = await harness.newPage(desktop)
-    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
-    await authenticate(page)
-    await openSellerConsole(page)
-    await openPayoutDialog(page)
-
-    await page.locator("[data-payout-request]").click()
-    const payout = page.locator(
-      '[data-console-payout][data-payout-state="weekly-limit-reached"]',
-    )
-    await payout.waitFor({ state: "visible" })
-    expect(await payout.locator("[data-payout-refresh]").count()).toBe(1)
-    expect(await payout.locator("[data-payout-request]").count()).toBe(0)
-  })
-
-  test("renders missing payout service as a GET-only refresh state", async () => {
-    harness = await startSessionUiHarness()
-    harness.setPayoutResponses({
-      body: payoutError(
-        "payout_request_service_unavailable",
-        "Payout request service is unavailable.",
-      ),
-      status: 503,
-    })
-    const page = await harness.newPage(desktop)
-    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
-    await authenticate(page)
-    await openSellerConsole(page)
-    await openPayoutDialog(page)
-
-    expect(await page.locator("[data-console-payout]").count()).toBe(1)
-    await page.getByText("Payout request service is unavailable.", { exact: true }).waitFor()
-    const refreshResponse = page.waitForResponse((response) =>
-      response.request().method() === "GET"
-      && new URL(response.url()).pathname.endsWith("/seller/payout-request")
-    )
-    await page.locator("[data-payout-refresh]").click()
-    await refreshResponse
-    expect(harness.registryRequests.filter((request) =>
-      request.path.includes("/payout-request")
-    ).every((request) => request.method === "GET")).toBe(true)
-    expect(await page.locator("[data-payout-request], [data-payout-cancel]").count()).toBe(0)
-  })
 })
