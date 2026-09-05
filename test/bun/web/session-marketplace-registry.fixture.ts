@@ -66,8 +66,8 @@ export const startSessionRegistry = (): SessionRegistry => {
     ok: true,
     payoutCapacity: {
       currency: "USD",
-      limitMinor: 20_000,
-      payoutRemainingMinor: 12_000,
+      limitMinor: 30_000,
+      payoutRemainingMinor: 18_000,
       scope: "platform",
       windowSeconds: 604_800,
     },
@@ -150,9 +150,9 @@ export const startSessionRegistry = (): SessionRegistry => {
             weeklyLimits: {
               scope: "platform",
               currency: "USD",
-              limitMinor: 20_000,
-              payoutRemainingMinor: 12_000,
-              sessionValueRemainingMinor: 5_000,
+              limitMinor: 30_000,
+              payoutRemainingMinor: 18_000,
+              sessionValueRemainingMinor: 7_500,
               windowSeconds: 604_800,
             },
           })

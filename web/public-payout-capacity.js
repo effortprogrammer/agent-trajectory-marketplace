@@ -32,7 +32,7 @@ export const parsePublicPayoutCapacity = (value) => {
   if (
     capacity.scope !== "platform"
     || capacity.currency !== "USD"
-    || capacity.limitMinor !== 20_000
+    || capacity.limitMinor !== 30_000
     || capacity.windowSeconds !== 604_800
     || !Number.isSafeInteger(capacity.payoutRemainingMinor)
     || capacity.payoutRemainingMinor < 0

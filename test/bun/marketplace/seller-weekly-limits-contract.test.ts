@@ -13,7 +13,7 @@ import * as consoleContract from "../../../web/console-contract.js"
 const frameSchema = z.object({
   body: z.string(),
   method: z.enum(["GET", "POST"]),
-  name: z.enum(["weekly-limits-200", "payout-weekly-limit-429"]),
+  name: z.enum(["weekly-limits-300", "payout-weekly-limit-429"]),
   path: z.enum([
     "/v1/marketplace/seller/weekly-limits",
     "/v2/marketplace/seller/payout-request",

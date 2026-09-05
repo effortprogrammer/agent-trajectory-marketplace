@@ -8,6 +8,7 @@ const {
   parseLedgerResponse,
   parseSessionsResponse,
   parseWeeklyLimitsResponse,
+  SellerSalesContractError,
 } = consoleContract
 
 const sessions = {
@@ -114,9 +115,9 @@ test("weekly limit contract keeps both remaining USD windows bounded", () => {
     weeklyLimits: {
       scope: "platform",
       currency: "USD",
-      limitMinor: 20_000,
-      payoutRemainingMinor: 12_000,
-      sessionValueRemainingMinor: 5_000,
+      limitMinor: 30_000,
+      payoutRemainingMinor: 18_000,
+      sessionValueRemainingMinor: 7_500,
       windowSeconds: 604_800,
     },
   }
@@ -125,9 +126,26 @@ test("weekly limit contract keeps both remaining USD windows bounded", () => {
     ...response,
     weeklyLimits: {
       ...response.weeklyLimits,
-      payoutRemainingMinor: 20_001,
+      payoutRemainingMinor: 30_001,
     },
   })).toThrow()
+})
+
+test("weekly limit contract rejects the retired USD 200 platform cap", () => {
+  const retiredCap = {
+    ok: true,
+    weeklyLimits: {
+      scope: "platform",
+      currency: "USD",
+      limitMinor: 20_000,
+      payoutRemainingMinor: 12_000,
+      sessionValueRemainingMinor: 5_000,
+      windowSeconds: 604_800,
+    },
+  }
+  expect(() => parseWeeklyLimitsResponse(retiredCap)).toThrow(
+    SellerSalesContractError,
+  )
 })
 
 test("payout contract rejects unknown fields and invalid state nullability", () => {

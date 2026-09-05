@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "frames": [
     {
-      "name": "public-payout-capacity-200",
+      "name": "public-payout-capacity-300",
       "method": "GET",
       "path": "/v1/marketplace/public-payout-capacity",
       "status": 200,
-      "sha256": "2dee329b5167cf649d8cd759e68c15792834cff31135b6c31feebc8bf2ddfced",
-      "body": "{\"ok\":true,\"payoutCapacity\":{\"scope\":\"platform\",\"currency\":\"USD\",\"limitMinor\":20000,\"windowSeconds\":604800,\"payoutRemainingMinor\":12000}}"
+      "sha256": "d5dd33c8ea04da8841cf31f88647f833cb19916fb4fc2656036519c504cd8ca5",
+      "body": "{\"ok\":true,\"payoutCapacity\":{\"scope\":\"platform\",\"currency\":\"USD\",\"limitMinor\":30000,\"windowSeconds\":604800,\"payoutRemainingMinor\":18000}}"
     }
   ]
 }
