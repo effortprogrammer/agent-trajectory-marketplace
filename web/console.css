@@ -11,6 +11,10 @@
 .seller-panel-heading h2 { font-family: var(--font-display); font-size: 1.25rem; font-weight: 500; }
 .seller-panel-heading span { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--type-mono-sm); }
 .seller-weekly-limits-panel { margin-top: var(--space-8); }
+.seller-wallet-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-8); padding: var(--space-5); }
+.seller-wallet-panel p { color: var(--text-secondary); }
+.seller-wallet-panel strong { color: var(--accent-deep); font-family: var(--font-mono); font-size: var(--type-h3); font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.seller-wallet-panel[data-wallet-state="unavailable"] strong { color: var(--text-muted); font-size: var(--type-body); }
 .seller-weekly-limits-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr)); gap: var(--space-3); padding: var(--space-4); }
 .seller-weekly-limit-card { min-width: 0; display: grid; gap: var(--space-2); border-radius: var(--radius-control); background: var(--surface-soft); padding: var(--space-5); }
 .seller-weekly-limit-card p, .seller-weekly-limit-card span { color: var(--text-secondary); font-size: var(--type-body-sm); }

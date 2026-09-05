@@ -27,6 +27,16 @@ const control = (label, action, className = "signal-button") => {
   return button;
 };
 
+const renderWalletBalance = (root, state, availableMinor) => {
+  const wallet = root.closest("[data-console-view]")?.querySelector("[data-console-wallet]");
+  if (!wallet) return;
+  wallet.dataset.walletState = state;
+  wallet.setAttribute("aria-busy", String(state === "loading"));
+  wallet.querySelector("[data-console-wallet-balance]").textContent = state === "ready"
+    ? formatPayoutAmount(availableMinor)
+    : state === "loading" ? "Loading..." : "Unavailable";
+};
+
 const render = (root, summary, actions) => {
   const { availableMinor, request, thresholdMinor } = summary;
   const state = request === null
@@ -37,6 +47,7 @@ const render = (root, summary, actions) => {
   root.replaceChildren();
   const balance = root.closest("[data-payout-dialog]")?.querySelector("[data-payout-balance]");
   if (balance) balance.textContent = `${formatPayoutAmount(availableMinor)} available`;
+  renderWalletBalance(root, "ready", availableMinor);
   const copy = request === null
     ? state === "eligible"
       ? "Your available balance is eligible for a payout request."
@@ -68,6 +79,7 @@ const render = (root, summary, actions) => {
 };
 
 const renderFailure = (root, state, message, refresh) => {
+  renderWalletBalance(root, "unavailable");
   root.dataset.payoutState = state;
   root.hidden = false;
   root.replaceChildren(element("p", "seller-payout-status", message));
@@ -77,6 +89,7 @@ const renderFailure = (root, state, message, refresh) => {
 };
 
 const renderSubmitting = (root) => {
+  renderWalletBalance(root, "loading");
   root.dataset.payoutState = "submitting";
   root.hidden = false;
   root.replaceChildren(element("p", "seller-payout-status", "Submitting payout request..."));
@@ -94,6 +107,7 @@ export const mountPayoutConsole = async ({
   session,
   showLogin,
 }) => {
+  renderWalletBalance(root, "loading");
   let busy = false;
   let retainedOperation;
   const headers = { authorization: `Bearer ${session.accessToken}` };
