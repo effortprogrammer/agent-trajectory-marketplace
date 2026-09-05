@@ -15,7 +15,7 @@ const {
 const frameSchema = z.object({
   body: z.string(),
   method: z.literal("GET"),
-  name: z.literal("public-payout-capacity-200"),
+  name: z.literal("public-payout-capacity-300"),
   path: z.literal("/v1/marketplace/public-payout-capacity"),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
   status: z.literal(200),
@@ -37,8 +37,8 @@ test("public payout manifest freezes the anonymous aggregate bytes", async () =>
   )
   expect(parsePublicPayoutCapacity(JSON.parse(frame.body))).toEqual({
     currency: "USD",
-    limitMinor: 20_000,
-    payoutRemainingMinor: 12_000,
+    limitMinor: 30_000,
+    payoutRemainingMinor: 18_000,
     scope: "platform",
     windowSeconds: 604_800,
   })
@@ -47,8 +47,8 @@ test("public payout manifest freezes the anonymous aggregate bytes", async () =>
 test("public payout parser rejects over-limit or expanded projections", () => {
   const capacity = {
     currency: "USD",
-    limitMinor: 20_000,
-    payoutRemainingMinor: 20_001,
+    limitMinor: 30_000,
+    payoutRemainingMinor: 30_001,
     scope: "platform",
     windowSeconds: 604_800,
   }
@@ -59,7 +59,20 @@ test("public payout parser rejects over-limit or expanded projections", () => {
   })).toThrow(PublicPayoutCapacityContractError)
   expect(() => parsePublicPayoutCapacity({
     ok: true,
-    payoutCapacity: { ...capacity, payoutRemainingMinor: 12_000 },
-    sessionValueRemainingMinor: 5_000,
+    payoutCapacity: { ...capacity, payoutRemainingMinor: 18_000 },
+    sessionValueRemainingMinor: 7_500,
+  })).toThrow(PublicPayoutCapacityContractError)
+})
+
+test("public payout parser rejects the retired USD 200 platform cap", () => {
+  expect(() => parsePublicPayoutCapacity({
+    ok: true,
+    payoutCapacity: {
+      currency: "USD",
+      limitMinor: 20_000,
+      payoutRemainingMinor: 12_000,
+      scope: "platform",
+      windowSeconds: 604_800,
+    },
   })).toThrow(PublicPayoutCapacityContractError)
 })
