@@ -9,7 +9,7 @@
   <link rel="canonical" href="https://getatm.io/" />
   <link rel="preconnect" href="https://gateway.getatm.io" />
   <link rel="stylesheet" href="marketplace.4cc5207d335b94c5a08ab8f6e5dfde5fb51e60e7688f7e8643ad18234ab51bf8.css" />
-  <link rel="stylesheet" href="console.4ee7d8c6c97e58f3a5d852b8e16f9aa282cc1638330c8ca960ad275eab59eaf5.css" />
+  <link rel="stylesheet" href="console.821d6174fb2067ae6080816c07aba463f596773e2593a715a8f5a6faa3804102.css" />
 </head>
 <body class="marketplace-page no-js">
   <a class="skip-link" href="#main-content" data-testid="session-skip-link">Skip to live corpus</a>
@@ -103,17 +103,7 @@
     <section data-console-view class="seller-console" aria-labelledby="seller-console-title" hidden>
       <div class="seller-console-shell">
         <header class="seller-console-heading">
-          <div class="seller-console-heading-bar">
-            <p class="kicker">Earnings</p>
-            <button
-              class="signal-button seller-payout-launcher"
-              type="button"
-              aria-controls="seller-payout-dialog"
-              aria-haspopup="dialog"
-              data-payout-open
-              data-testid="seller-payout-button"
-            >Payout</button>
-          </div>
+          <p class="kicker">Earnings</p>
           <div class="seller-console-heading-copy">
             <h1 id="seller-console-title">Your sales, over time.</h1>
             <p>See cumulative earnings and what each session earned.</p>
@@ -151,41 +141,6 @@
             </article>
           </div>
         </section>
-        <dialog
-          class="auth-gate seller-payout-dialog"
-          id="seller-payout-dialog"
-          aria-describedby="seller-payout-description"
-          aria-labelledby="seller-payout-title"
-          data-payout-dialog
-        >
-          <div class="auth-gate-panel seller-payout-dialog-panel">
-            <header class="auth-console-bar seller-payout-dialog-bar">
-              <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span class="auth-console-path seller-payout-dialog-path">ATM / payout</span>
-              <button
-                class="auth-close-button"
-                type="button"
-                aria-label="Close payout dialog"
-                data-payout-close
-                data-testid="seller-payout-close"
-              >
-                <span aria-hidden="true">×</span>
-              </button>
-            </header>
-            <div class="auth-panel-body seller-payout-dialog-body">
-              <p class="kicker">Seller payout</p>
-              <h2 id="seller-payout-title">Request payout</h2>
-              <p class="seller-payout-dialog-intro" id="seller-payout-description">Review your available balance and payout status.</p>
-              <div class="seller-payout-balance">
-                <span>Available balance</span>
-                <strong data-payout-balance>—</strong>
-              </div>
-              <div class="seller-payout" data-console-payout data-payout-state="loading">
-                <p class="seller-console-state">Loading payout eligibility...</p>
-              </div>
-            </div>
-          </div>
-        </dialog>
         <p class="sr-only" aria-live="polite" data-console-announcement></p>
         <p class="seller-console-state" role="status" aria-live="polite" data-console-state>Loading seller sales...</p>
         <section class="seller-panel seller-chart-panel" aria-label="Cumulative earnings">
@@ -370,6 +325,6 @@
     </div>
   </footer>
 
-  <script type="module" src="marketplace.97016235177bd6a4b3bfa95720a6ba5052675d8369f5308b18f346b8ab1193b8.js"></script>
+  <script type="module" src="marketplace.b0aa0fc71112f2b26f4d4cedac893bf6991f63cf433db663eebdaea073ab505d.js"></script>
 </body>
 </html>
