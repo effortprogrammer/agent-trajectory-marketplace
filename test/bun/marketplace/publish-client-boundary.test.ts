@@ -7,6 +7,7 @@ import {
   PublishClientError,
 } from "../../../src/marketplace/publish-client"
 import { createPublishFrameBody } from "../../../src/marketplace/publish-frame"
+import { affirmCommercialUse, uploadConsentPolicyJson } from "../../../src/marketplace/upload-consent"
 import {
   compensatedPublishBundle,
 } from "../fixtures/compensated-publish-bundle"
@@ -18,7 +19,21 @@ const tcpSockets = new Set<Socket>()
 const validBundle = compensatedPublishBundle
 
 const serve = (fetch: (request: Request) => Response | Promise<Response>): Bun.Server<undefined> => {
-  const server = Bun.serve({ fetch, hostname: "127.0.0.1", port: 0 })
+  const server = Bun.serve({
+    fetch: async (request) => {
+      if (new URL(request.url).pathname === "/v1/marketplace/seller/upload-consent-policy") {
+        return new Response(uploadConsentPolicyJson, { status: 200 })
+      }
+      const response = await fetch(request)
+      if (response.status !== 202) return response
+      const consent = request.headers.get("x-atm-upload-consent")
+      if (consent === null) return response
+      const headers = new Headers(response.headers)
+      headers.set("x-atm-upload-consent-sha256", Bun.CryptoHasher.hash("sha256", Buffer.from(consent, "base64url"), "hex"))
+      return new Response(response.body, { headers, status: response.status })
+    },
+    hostname: "127.0.0.1", port: 0,
+  })
   servers.push(server)
   return server
 }
@@ -61,6 +76,7 @@ describe("candidate publish client boundaries", () => {
   test("rejects direct invalid credentials before consuming the bundle or requesting", async () => {
     // Given: an admitted bundle, malformed direct credential, and a request counter.
     const bundle = validBundle()
+    const consent = affirmCommercialUse(bundle)
     let hits = 0
     const server = serve(() => {
       hits += 1
@@ -71,6 +87,7 @@ describe("candidate publish client boundaries", () => {
     const error = await expectClientError(() =>
       createPublishClient(`http://127.0.0.1:${server.port}`).publish({
         bundle,
+        consent,
         credential: " invalid-direct ",
       }),
     )
@@ -110,8 +127,10 @@ describe("candidate publish client boundaries", () => {
       }), { status: 202 })
     })
     const controller = new AbortController()
+    const bundle = validBundle()
     const action = createPublishClient(`http://127.0.0.1:${server.port}`).publish({
-      bundle: validBundle(),
+      bundle,
+      consent: affirmCommercialUse(bundle),
       credential: "flag-sentinel",
       signal: controller.signal,
     })
@@ -134,9 +153,22 @@ describe("candidate publish client boundaries", () => {
   test("rejects oversized declared response length before awaiting body bytes", async () => {
     // Given: raw local HTTP headers declaring a body beyond policy while the body remains open.
     const responseStarted = Promise.withResolvers<void>()
+    let requests = 0
     const server = createServer((socket) => {
       tcpSockets.add(socket)
-      socket.once("data", () => {
+      socket.on("data", () => {
+        requests += 1
+        if (requests === 1) {
+          socket.write([
+            "HTTP/1.1 200 OK",
+            `Content-Length: ${uploadConsentPolicyJson.byteLength}`,
+            "Content-Type: application/json",
+            "Connection: keep-alive",
+            "",
+            uploadConsentPolicyJson.toString("utf8"),
+          ].join("\r\n"))
+          return
+        }
         socket.write([
           "HTTP/1.1 202 Accepted",
           `Content-Length: ${64 * 1024 + 1}`,
@@ -157,8 +189,10 @@ describe("candidate publish client boundaries", () => {
       })
     })
     const address = server.address() as AddressInfo
+    const bundle = validBundle()
     const action = createPublishClient(`http://127.0.0.1:${address.port}`).publish({
-      bundle: validBundle(),
+      bundle,
+      consent: affirmCommercialUse(bundle),
       credential: "flag-sentinel",
     })
     await responseStarted.promise

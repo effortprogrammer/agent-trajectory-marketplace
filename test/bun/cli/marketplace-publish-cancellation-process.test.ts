@@ -12,6 +12,7 @@ import {
 } from "../../../src/marketplace/dataset-archive"
 import { encodeSelectionDocument } from "../../../src/marketplace/selection-contract"
 import { writeDatasetZip } from "../../../src/marketplace/stored-zip"
+import { uploadConsentPolicy, uploadConsentPolicyJson } from "../../../src/marketplace/upload-consent"
 import { officialGatewayProcessArguments, officialGatewayProcessEnvironment } from "../fixtures/gateway-process"
 
 const roots: string[] = []
@@ -102,6 +103,8 @@ const publishArguments = (
   "marketplace", "seller", "candidate", "publish",
   "--bundle", fixture.archivePath,
   "--selection", fixture.selectionPath,
+  "--commercial-use", "yes",
+  "--consent-policy", "session-commercial-use-v1",
   "--server", server,
 ]
 
@@ -129,6 +132,7 @@ describe("marketplace candidate publish cancellation", () => {
       hostname: "127.0.0.1",
       port: 0,
       async fetch(request) {
+        if (request.method === "GET") return new Response(uploadConsentPolicyJson, { status: 200 })
         hits += 1
         await request.arrayBuffer()
         return Response.json({
@@ -176,7 +180,7 @@ describe("marketplace candidate publish cancellation", () => {
     expect({ exitCode, hits, stderr, stdout }).toEqual({
       exitCode: 1,
       hits: 0,
-      stderr: '{"error":"missing_publish_credential"}\n',
+      stderr: `${uploadConsentPolicy.text}\n{"error":"missing_publish_credential"}\n`,
       stdout: "",
     })
   })
@@ -192,6 +196,7 @@ describe("marketplace candidate publish cancellation", () => {
         hostname: "127.0.0.1",
         port: 0,
         async fetch(request) {
+          if (request.method === "GET") return new Response(uploadConsentPolicyJson, { status: 200 })
           const received = (await request.arrayBuffer()).byteLength
           requestArrived.resolve({
             declared: Number(request.headers.get("content-length")),
@@ -257,7 +262,7 @@ describe("marketplace candidate publish cancellation", () => {
         lengthsMatch: true,
         positiveLength: true,
         outcome: { exitCode: 1 },
-        stderr: '{"error":"cancelled"}\n',
+        stderr: `${uploadConsentPolicy.text}\n{"error":"cancelled"}\n`,
         stdout: "",
       })
     },
