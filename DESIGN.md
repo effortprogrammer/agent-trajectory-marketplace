@@ -99,6 +99,16 @@ with `--space-4` gaps and reflow without horizontal scrolling at 375px.
   events and same-console navigation may refresh it; hidden or anonymous views
   never start protected reads. Stale account responses never repaint the value.
 
+### Client Update Notice
+- **Structure:** a polite status region using the existing content shell, quiet
+  border, raised surface, and secondary Reload button.
+- **States:** hidden while current or unverified; visible after a different valid
+  asset signature is observed. Network/check failure is not a version change.
+- **Layout:** floats above document content and below navigation; reserve bottom
+  space while visible so it does not trap footer content.
+- **Accessibility:** no automatic focus movement or reload. The copy explains
+  that an explicit reload requires signing in again.
+
 ## 6. Motion & Interaction
 
 | Type | Token | Usage |

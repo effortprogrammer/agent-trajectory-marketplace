@@ -336,6 +336,150 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(harness.registryRequests.filter((request) => request.path.includes("/payout-request"))).toHaveLength(before)
   })
 
+  test.each(["entry", "extra-style"] as const)(
+    "client update notice: detects %s drift and reloads only on user action",
+    async (change) => {
+      harness = await startSessionUiHarness()
+      const page = await harness.newPage(desktop)
+      const originalHtml = await (await page.request.get(`${harness.appUrl}/index.html`)).text()
+      const entry = originalHtml.match(/src="(marketplace\.[a-f0-9]{64}\.js)"/)?.[1]
+      if (entry === undefined) throw new Error("Fixture HTML has no fingerprinted entry")
+      let updatedHtml: string
+      switch (change) {
+        case "entry": {
+          const script = `${await (await page.request.get(`${harness.appUrl}/${entry}`)).text()}\n// next-client-fixture\n`
+          const digest = new Bun.CryptoHasher("sha256").update(script).digest("hex")
+          const nextEntry = `marketplace.${digest}.js`
+          updatedHtml = originalHtml.replace(entry, nextEntry)
+          await page.route(`**/${nextEntry}`, (route) => route.fulfill({ body: script, contentType: "text/javascript" }))
+          break
+        }
+        case "extra-style": {
+          const css = "/* next-client-style */"
+          const digest = new Bun.CryptoHasher("sha256").update(css).digest("hex")
+          const extra = `client-extra.${digest}.css`
+          updatedHtml = originalHtml.replace("</head>", `<link rel="stylesheet" href="${extra}" />\n</head>`)
+          await page.route(`**/${extra}`, (route) => route.fulfill({ body: css, contentType: "text/css" }))
+          break
+        }
+        default: {
+          const unreachable: never = change
+          throw new Error(`Unexpected version fixture: ${unreachable}`)
+        }
+      }
+      let latestHtml = originalHtml
+      await page.route("**/index.html", (route) => route.fulfill({
+        body: latestHtml, contentType: "text/html", headers: { "cache-control": "no-store" },
+      }))
+      let navigations = 0
+      page.on("framenavigated", (frame) => { if (frame === page.mainFrame()) navigations += 1 })
+      await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+      const notice = page.locator("[data-client-update]")
+      expect(await notice.count()).toBe(1)
+      await page.locator('[data-client-update][data-update-state="current"]').waitFor({ state: "attached" })
+      await authenticate(page)
+      await page.getByTestId("seller-console-link").click()
+      await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+      await page.locator('[data-client-update][data-update-state="current"]').waitFor({ state: "attached" })
+      const before = navigations
+      latestHtml = updatedHtml
+      const checked = page.waitForRequest((request) => new URL(request.url()).pathname === "/index.html")
+      await dispatchFreshnessEvents(page, ["focus"])
+      const request = await checked
+      expect(await request.headerValue("authorization")).toBeNull()
+      await notice.waitFor({ state: "visible" })
+      expect(navigations).toBe(before)
+      expect(await page.locator("[data-console-view]").isVisible()).toBe(true)
+      await page.route(`${harness.appUrl}/`, (route) => route.fulfill({ body: updatedHtml, contentType: "text/html" }))
+      const reloaded = page.waitForNavigation({ waitUntil: "domcontentloaded" })
+      await page.locator("[data-client-reload]").click()
+      await reloaded
+      await page.locator('[data-client-update][data-update-state="current"]').waitFor({ state: "attached" })
+      expect(await notice.isVisible()).toBe(false)
+      expect(await page.locator("body").getAttribute("data-auth-state")).toBe("waitlist")
+    },
+  )
+
+  test.each(["equal", "missing-entry", "duplicate-style", "foreign-entry", "unavailable", "rejected"] as const)(
+    "client update notice: %s evidence never forces a false update",
+    async (scenario) => {
+      harness = await startSessionUiHarness()
+      const page = await harness.newPage(desktop)
+      const html = await (await page.request.get(`${harness.appUrl}/index.html`)).text()
+      let body = html
+      let status = 200
+      switch (scenario) {
+        case "equal": break
+        case "missing-entry":
+          body = html.replace(/<script type="module"[^>]+><\/script>/, "")
+          break
+        case "duplicate-style": {
+          const link = html.match(/<link rel="stylesheet" href="console\.[^"]+" \/>/)?.[0]
+          if (link === undefined) throw new Error("Fixture console stylesheet missing")
+          body = html.replace("</head>", `${link}</head>`)
+          break
+        }
+        case "foreign-entry":
+          body = html.replace('src="marketplace.', 'src="https://example.invalid/marketplace.')
+          break
+        case "unavailable": status = 503; break
+        case "rejected": break
+        default: {
+          const unreachable: never = scenario
+          throw new Error(`Unexpected version scenario: ${unreachable}`)
+        }
+      }
+      await page.route("**/index.html", (route) => scenario === "rejected"
+        ? route.abort()
+        : route.fulfill({ body, contentType: "text/html", status }))
+      const errors: string[] = []
+      page.on("pageerror", (error) => errors.push(error.message))
+      let navigations = 0
+      page.on("framenavigated", (frame) => { if (frame === page.mainFrame()) navigations += 1 })
+      await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+      expect(await page.locator("[data-client-update]").count()).toBe(1)
+      const state = scenario === "equal" ? "current" : "unavailable"
+      await page.locator(`[data-client-update][data-update-state="${state}"]`).waitFor({ state: "attached" })
+      expect(await page.locator("[data-client-update]").isVisible()).toBe(false)
+      expect(navigations).toBe(1)
+      expect(errors).toEqual([])
+    },
+  )
+
+  test("client update notice: a held check cannot block wallet refresh", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPayoutResponses({ body: freshnessWalletBody(0), status: 200 })
+    const page = await harness.newPage(desktop)
+    // This tests independence, not timeout policy. Only the explicit gate can
+    // release the version response; an accidental serial dependency must fail.
+    await page.addInitScript(() => { AbortSignal.timeout = () => new AbortController().signal })
+    const html = await (await page.request.get(`${harness.appUrl}/index.html`)).text()
+    const gate = Promise.withResolvers<void>()
+    const started = Promise.withResolvers<void>()
+    await page.route("**/index.html", async (route) => {
+      started.resolve()
+      await gate.promise
+      await route.fulfill({ body: html, contentType: "text/html" })
+    })
+    try {
+      await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+      expect(await page.locator("[data-client-update]").count()).toBe(1)
+      await started.promise
+      await authenticate(page)
+      await page.getByTestId("seller-console-link").click()
+      await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+      harness.setPayoutResponses({ body: freshnessWalletBody(6_029), status: 200 })
+      const refresh = page.waitForRequest((request) => request.url().endsWith("/seller/payout-request"))
+      await page.locator("[data-wallet-refresh]").click()
+      await refresh
+      await page.locator("[data-console-wallet-balance]").filter({ hasText: "$60.29" }).waitFor()
+      expect(await page.locator("[data-client-update]").getAttribute("data-update-state")).toBe("checking")
+    } finally {
+      gate.resolve()
+      await page.unrouteAll({ behavior: "wait" })
+    }
+  })
+
   test("shows an authoritative terminal payout balance without payout controls or mutations", async () => {
     harness = await startSessionUiHarness()
     harness.setPayoutResponses({

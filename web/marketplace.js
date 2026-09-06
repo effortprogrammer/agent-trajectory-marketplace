@@ -195,6 +195,77 @@ const publicTokenNote = document.querySelector("[data-public-token-note]");
 const consoleLink = document.querySelector("[data-console-link]");
 const consoleView = document.querySelector("[data-console-view]");
 const walletRefreshButton = document.querySelector("[data-wallet-refresh]");
+const clientUpdateNotice = document.querySelector("[data-client-update]");
+const clientReloadButton = document.querySelector("[data-client-reload]");
+
+const clientAssetSignature = (source) => {
+  const required = new Set(["script:marketplace", "style:marketplace", "style:console"]);
+  const seen = new Set();
+  const paths = [];
+  for (const node of source.querySelectorAll('script[type="module"][src], link[rel="stylesheet"][href]')) {
+    const kind = node.tagName === "SCRIPT" ? "script" : "style";
+    const reference = node.getAttribute(kind === "script" ? "src" : "href");
+    if (!reference) return undefined;
+    let url;
+    try {
+      url = new URL(reference, window.location.href);
+    } catch (error) {
+      if (error instanceof TypeError) return undefined;
+      throw error;
+    }
+    if (url.origin !== window.location.origin || url.search || url.hash) return undefined;
+    const match = /^\/([A-Za-z0-9][A-Za-z0-9._-]*)\.([a-f0-9]{64})\.(js|css)$/.exec(url.pathname);
+    if (!match || match[3] !== (kind === "script" ? "js" : "css")) return undefined;
+    const identity = `${kind}:${match[1]}`;
+    if (seen.has(identity)) return undefined;
+    seen.add(identity);
+    required.delete(identity);
+    paths.push(`${kind}:${url.pathname}`);
+  }
+  return required.size === 0 ? paths.join("\n") : undefined;
+};
+
+const loadedClientAssets = clientAssetSignature(document);
+let clientCheckInFlight;
+const requestClientVersionCheck = () => {
+  if (!clientUpdateNotice || loadedClientAssets === undefined || document.visibilityState !== "visible") {
+    return Promise.resolve();
+  }
+  if (clientCheckInFlight !== undefined) return clientCheckInFlight;
+  clientUpdateNotice.dataset.updateState = "checking";
+  clientCheckInFlight = (async () => {
+    try {
+      const response = await fetch("/index.html", {
+        cache: "no-store",
+        credentials: "omit",
+        headers: { accept: "text/html" },
+        redirect: "error",
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok || response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "text/html") {
+        clientUpdateNotice.dataset.updateState = "unavailable";
+        return;
+      }
+      const latestDocument = new DOMParser().parseFromString(await response.text(), "text/html");
+      const latestAssets = clientAssetSignature(latestDocument);
+      if (latestAssets === undefined) {
+        clientUpdateNotice.dataset.updateState = "unavailable";
+        return;
+      }
+      const changed = latestAssets !== loadedClientAssets;
+      clientUpdateNotice.hidden = !changed;
+      clientUpdateNotice.dataset.updateState = changed ? "available" : "current";
+      document.body.classList.toggle("has-client-update", changed);
+    } catch (error) {
+      if (error instanceof TypeError || error instanceof DOMException) {
+        clientUpdateNotice.dataset.updateState = "unavailable";
+        return;
+      }
+      throw error;
+    }
+  })().finally(() => { clientCheckInFlight = undefined; });
+  return clientCheckInFlight;
+};
 
 let authMode = "waitlist";
 let challenge;
@@ -491,6 +562,7 @@ const requestJson = async (endpoint, options = {}) => {
 
 const showConsole = async (session = activeSession) => {
   if (session === undefined) return;
+  void requestClientVersionCheck();
   walletRefresh = undefined;
   const requestVersion = ++sellerConsoleRequestVersion;
   const isCurrent = () => (
@@ -531,9 +603,10 @@ const closeConsole = () => {
 };
 
 const refreshCurrentView = () => {
+  if (document.visibilityState !== "visible") return;
+  void requestClientVersionCheck();
   if (
-    document.visibilityState !== "visible"
-    || activeSession === undefined
+    activeSession === undefined
     || window.location.hash !== "#console"
     || consoleView.hidden
   ) return;
@@ -868,6 +941,7 @@ authGate.addEventListener("close", () => {
   restoreAuthTrigger = false;
 });
 authLogoutButton.addEventListener("click", () => void logout());
+clientReloadButton?.addEventListener("click", () => window.location.reload());
 consoleLink.addEventListener("click", (event) => {
   if (window.location.hash !== "#console") return;
   event.preventDefault();
@@ -899,3 +973,4 @@ setAuthMode("waitlist");
 showPublicAccess();
 void loadPublicTokenTotal();
 void mountPublicPayoutCapacity(publicPayoutCapacityEndpoint);
+void requestClientVersionCheck();
