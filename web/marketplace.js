@@ -233,6 +233,8 @@ const requestClientVersionCheck = () => {
   }
   if (clientCheckInFlight !== undefined) return clientCheckInFlight;
   clientUpdateNotice.dataset.updateState = "checking";
+  clientUpdateNotice.hidden = true;
+  document.body.classList.remove("has-client-update");
   clientCheckInFlight = (async () => {
     try {
       const signal = AbortSignal.timeout(5_000);

@@ -170,4 +170,53 @@ describe("client update asset integrity", () => {
       await page.unrouteAll({ behavior: "wait" })
     }
   }, 15_000)
+
+  test("hides a previously verified Reload while a later candidate is unverified", async () => {
+    // Given an already visible notice backed by a valid candidate.
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage({ width: 1280, height: 900 })
+    const html = await (await page.request.get(`${harness.appUrl}/index.html`)).text()
+    const css = "/* first verified candidate */"
+    const digest = new Bun.CryptoHasher("sha256").update(css).digest("hex")
+    const validAsset = `client-first.${digest}.css`
+    const missingAsset = `client-next.${"0".repeat(64)}.css`
+    let latest = html.replace("</head>", `<link rel="stylesheet" href="${validAsset}"></head>`)
+    await page.route("**/index.html", (route) => route.fulfill({
+      body: latest,
+      contentType: "text/html",
+    }))
+    await page.route(`**/${validAsset}`, (route) => route.fulfill({
+      body: css,
+      contentType: "text/css",
+    }))
+    const release = Promise.withResolvers<void>()
+    await page.route(`**/${missingAsset}`, async (route) => {
+      await release.promise
+      await route.fulfill({ status: 404, body: "Not found", contentType: "text/plain" })
+    })
+    try {
+      await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+      await page.locator('[data-client-update][data-update-state="available"]').waitFor()
+
+      // When a different, invalid candidate is checked with its response held.
+      latest = html.replace("</head>", `<link rel="stylesheet" href="${missingAsset}"></head>`)
+      const pending = page.waitForRequest((request) => request.url().endsWith(missingAsset))
+      await page.locator("body").evaluate((node) => {
+        node.ownerDocument.defaultView?.dispatchEvent(new Event("focus"))
+      })
+      await pending
+
+      // Then no previously verified Reload remains actionable during the check.
+      expect(await page.locator("[data-client-update]").getAttribute("data-update-state")).toBe("checking")
+      expect(await page.locator("[data-client-update]").isVisible()).toBe(false)
+      expect(await page.locator("[data-client-reload]:visible").count()).toBe(0)
+      expect(await page.locator("body").evaluate((node) => node.classList.contains("has-client-update"))).toBe(false)
+      release.resolve()
+      await page.locator('[data-client-update][data-update-state="unavailable"]').waitFor({ state: "attached" })
+      expect(await page.locator("[data-client-update]").isVisible()).toBe(false)
+    } finally {
+      release.resolve()
+      await page.unrouteAll({ behavior: "wait" })
+    }
+  }, 15_000)
 })
