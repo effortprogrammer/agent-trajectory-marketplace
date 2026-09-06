@@ -146,6 +146,23 @@ button {
   margin-inline: auto;
 }
 
+.client-update-notice {
+  position: fixed;
+  inset: auto 0 var(--space-4);
+  z-index: calc(var(--layer-nav) - 1);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  border: 1px solid var(--border-quiet);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  padding: var(--space-4) var(--space-5);
+}
+.client-update-notice[hidden] { display: none; }
+.client-update-notice p { flex: 1; min-width: 0; font-size: var(--type-body-sm); }
+.client-update-notice button { flex: 0 0 auto; min-height: var(--space-12); padding-inline: var(--space-2); color: var(--accent-deep); }
+.has-client-update { padding-bottom: var(--space-32); }
+
 .marketplace-nav {
   position: fixed;
   inset: var(--space-4) 0 auto;

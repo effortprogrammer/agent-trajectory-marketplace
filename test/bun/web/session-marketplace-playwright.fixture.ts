@@ -199,7 +199,6 @@ export const startSessionUiHarness = async (): Promise<SessionUiHarness> => {
       close: async () => {
         try {
           for (const context of contexts) {
-            await context.unrouteAll({ behavior: "wait" })
             await awaitResource("browser context close", context.close())
           }
         } finally {
