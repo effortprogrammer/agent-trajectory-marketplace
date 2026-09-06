@@ -1,4 +1,4 @@
-import { mountSellerConsole } from "./console.60d1508e8ca79bc007e6b07aec59d2c623ac0a1bbde0f614a86e0f5d27e3f721.js";
+import { mountSellerConsole } from "./console.310ef65141fb042f20605928f68bf1dc4ae19e1453640bac98d6a36a3f45befb.js";
 import { mountPublicPayoutCapacity } from "./public-payout-capacity.116ac52e91e83dbdb27f8bf3ec9bab30dea614989f48e9bcbe9a3d9efe504d9a.js";
 
 const localPreview = location.hostname === "127.0.0.1" || location.hostname === "localhost" ||
@@ -235,30 +235,56 @@ const requestClientVersionCheck = () => {
   clientUpdateNotice.dataset.updateState = "checking";
   clientCheckInFlight = (async () => {
     try {
+      const signal = AbortSignal.timeout(5_000);
       const response = await fetch("/index.html", {
         cache: "no-store",
         credentials: "omit",
         headers: { accept: "text/html" },
         redirect: "error",
-        signal: AbortSignal.timeout(5_000),
+        signal,
       });
       if (!response.ok || response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "text/html") {
-        clientUpdateNotice.dataset.updateState = "unavailable";
-        return;
+        await response.body?.cancel();
+        throw new TypeError("Invalid update document");
       }
       const latestDocument = new DOMParser().parseFromString(await response.text(), "text/html");
       const latestAssets = clientAssetSignature(latestDocument);
       if (latestAssets === undefined) {
-        clientUpdateNotice.dataset.updateState = "unavailable";
-        return;
+        throw new TypeError("Invalid update asset signature");
       }
       const changed = latestAssets !== loadedClientAssets;
+      if (changed) {
+        const loaded = new Set(loadedClientAssets.split("\n"));
+        for (const asset of latestAssets.split("\n")) {
+          if (loaded.has(asset)) continue;
+          const path = asset.slice(asset.indexOf(":") + 1);
+          const [, expected, extension] = /\.([a-f0-9]{64})\.(js|css)$/.exec(path);
+          const types = extension === "js" ? ["text/javascript", "application/javascript"] : ["text/css"];
+          const candidate = await fetch(path, {
+            cache: "no-store",
+            credentials: "omit",
+            headers: { accept: types.join(", ") },
+            redirect: "error",
+            signal,
+          });
+          if (!candidate.ok || !types.includes(candidate.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase())) {
+            await candidate.body?.cancel();
+            throw new TypeError("Invalid update asset response");
+          }
+          const digest = await crypto.subtle.digest("SHA-256", await candidate.arrayBuffer());
+          const actual = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+          if (actual !== expected) throw new TypeError("Invalid update asset digest");
+        }
+      }
+      signal.throwIfAborted();
       clientUpdateNotice.hidden = !changed;
       clientUpdateNotice.dataset.updateState = changed ? "available" : "current";
       document.body.classList.toggle("has-client-update", changed);
     } catch (error) {
       if (error instanceof TypeError || error instanceof DOMException) {
         clientUpdateNotice.dataset.updateState = "unavailable";
+        clientUpdateNotice.hidden = true;
+        document.body.classList.remove("has-client-update");
         return;
       }
       throw error;
@@ -275,6 +301,7 @@ let dataRequestVersion = 0;
 let authRequestVersion = 0;
 let sellerConsoleRequestVersion = 0;
 let activeSession;
+let walletCancel;
 let walletRefresh;
 let authTrigger;
 let restoreAuthTrigger = false;
@@ -313,6 +340,12 @@ const stopDataRequest = () => {
   dataRequestVersion += 1;
   dataRequest?.abort();
   dataRequest = undefined;
+};
+
+const cancelWalletRefresh = () => {
+  walletCancel?.();
+  walletCancel = undefined;
+  walletRefresh = undefined;
 };
 
 const resetSupply = () => {
@@ -383,7 +416,7 @@ const showPublicAccess = (message = "", revealGate = false) => {
   if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
   expiryTimer = undefined;
   activeSession = undefined;
-  walletRefresh = undefined;
+  cancelWalletRefresh();
   challenge = undefined;
   document.body.dataset.authState = "waitlist";
   for (const section of authenticatedContent) section.hidden = true;
@@ -536,7 +569,9 @@ const requestJson = async (endpoint, options = {}) => {
     cache: "no-store",
     headers: { accept: "application/json", ...(options.headers ?? {}) },
     redirect: "error",
-    signal: AbortSignal.timeout(10_000),
+    signal: options.signal === undefined
+      ? AbortSignal.timeout(10_000)
+      : AbortSignal.any([options.signal, AbortSignal.timeout(10_000)]),
   });
   let body;
   try {
@@ -563,7 +598,7 @@ const requestJson = async (endpoint, options = {}) => {
 const showConsole = async (session = activeSession) => {
   if (session === undefined) return;
   void requestClientVersionCheck();
-  walletRefresh = undefined;
+  cancelWalletRefresh();
   const requestVersion = ++sellerConsoleRequestVersion;
   const isCurrent = () => (
     sellerConsoleRequestVersion === requestVersion
@@ -577,8 +612,11 @@ const showConsole = async (session = activeSession) => {
     await mountSellerConsole({
       canRefreshWallet: () => document.visibilityState === "visible" && !consoleView.hidden,
       isCurrent,
-      onWalletRefresh: (refresh) => {
-        if (isCurrent()) walletRefresh = refresh;
+      onWalletRefresh: (refresh, cancel) => {
+        if (isCurrent()) {
+          walletCancel = cancel;
+          walletRefresh = refresh;
+        }
       },
       requestJson,
       session,
@@ -597,7 +635,7 @@ const showConsole = async (session = activeSession) => {
 
 const closeConsole = () => {
   sellerConsoleRequestVersion += 1;
-  walletRefresh = undefined;
+  cancelWalletRefresh();
   document.body.classList.remove("is-console-view");
   consoleView.hidden = true;
 };

@@ -22,6 +22,7 @@ export const createWalletBalanceController = ({
   session,
   showLogin,
 }) => {
+  const abort = new AbortController();
   let inFlight;
   let refreshQueued = false;
   const button = root.querySelector("[data-wallet-refresh]");
@@ -33,6 +34,7 @@ export const createWalletBalanceController = ({
       try {
         const body = await requestJson("/v1/marketplace/seller/payout-request", {
           headers: { authorization: `Bearer ${session.accessToken}` },
+          signal: abort.signal,
         });
         if (!isCurrent()) return;
         if (!refreshQueued) {
@@ -63,5 +65,5 @@ export const createWalletBalanceController = ({
     });
     return inFlight;
   };
-  return { refresh };
+  return { cancel: () => abort.abort(), refresh };
 };

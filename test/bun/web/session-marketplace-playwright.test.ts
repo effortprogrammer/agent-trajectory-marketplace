@@ -54,6 +54,14 @@ const dispatchFreshnessEvents = async (
   }, { events, visibility })
 }
 
+const setBrowserHash = async (page: Page, hash: string): Promise<void> => {
+  await page.locator("body").evaluate((node, value) => {
+    const view = node.ownerDocument.defaultView
+    if (view === null) throw new Error("Browser document has no window")
+    view.location.hash = value
+  }, hash)
+}
+
 const openMemberSignIn = async (page: Page): Promise<void> => {
   const gate = page.locator("[data-auth-gate]")
   if (await gate.isVisible()) {
@@ -309,6 +317,88 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(harness.registryRequests.filter((request) =>
       request.path.includes("/payout-request"),
     ).map((request) => request.method)).toEqual(["GET", "GET"])
+  })
+
+  test("wallet freshness: cancels each departed console transport before reentry", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPayoutResponses(
+      { body: freshnessWalletBody(0), status: 200 },
+      { body: freshnessWalletBody(0), status: 200 },
+      { body: freshnessWalletBody(6_029), status: 200 },
+    )
+    const page = await harness.newPage(desktop)
+    const release = harness.holdPayout()
+    try {
+      await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+      await authenticate(page)
+
+      const firstRead = page.waitForRequest((request) =>
+        new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+      )
+      await page.getByTestId("seller-console-link").click()
+      await firstRead
+      const firstCanceled = page.waitForEvent("requestfailed", (request) =>
+        new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+      )
+      await setBrowserHash(page, "#top")
+      expect((await firstCanceled).failure()?.errorText).toContain("ERR_ABORTED")
+
+      const secondRead = page.waitForRequest((request) =>
+        new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+      )
+      await setBrowserHash(page, "#console")
+      await secondRead
+      const secondCanceled = page.waitForEvent("requestfailed", (request) =>
+        new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+      )
+      await setBrowserHash(page, "#top")
+      expect((await secondCanceled).failure()?.errorText).toContain("ERR_ABORTED")
+
+      const currentRead = page.waitForRequest((request) =>
+        new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+      )
+      await setBrowserHash(page, "#console")
+      await currentRead
+      release()
+      await page.locator("[data-console-wallet-balance]").filter({ hasText: "$60.29" }).waitFor()
+      expect(harness.registryRequests.filter((request) =>
+        request.path.includes("/payout-request"),
+      ).every((request) => request.method === "GET")).toBe(true)
+    } finally {
+      release()
+    }
+  })
+
+  test("wallet freshness: logout cancels a held transport before the next session renders", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPayoutResponses(
+      { body: freshnessWalletBody(0), status: 200 },
+      { body: freshnessWalletBody(6_029), status: 200 },
+    )
+    const page = await harness.newPage(desktop)
+    const release = harness.holdPayout()
+    try {
+      await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+      await authenticate(page)
+      const firstRead = page.waitForRequest((request) =>
+        new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+      )
+      await page.getByTestId("seller-console-link").click()
+      await firstRead
+      const canceled = page.waitForEvent("requestfailed", (request) =>
+        new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+      )
+      await page.getByTestId("auth-logout-button").click()
+      expect((await canceled).failure()?.errorText).toContain("ERR_ABORTED")
+      release()
+      await page.locator("[data-auth-gate]").waitFor({ state: "visible" })
+      await authenticate(page)
+      await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+      expect(await page.locator("[data-console-wallet-balance]").innerText()).toBe("$60.29")
+      expect(await page.locator("[data-console-view]:visible").count()).toBe(1)
+    } finally {
+      release()
+    }
   })
 
   test("wallet freshness: ignores anonymous hidden and closed console triggers", async () => {

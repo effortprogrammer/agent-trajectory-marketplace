@@ -5,7 +5,7 @@ import {
   parseSessionsResponse,
   parseWeeklyLimitsResponse,
 } from "./console-contract.799162ebbe8dcf5683e138ca389be898fda29d96c6d45915fabd393c28d38df9.js";
-import { createWalletBalanceController } from "./payout-console.b62af9822c7276a531cea1bc7c0a77abefa3a5a877aa123fa0d15a5de9606102.js";
+import { createWalletBalanceController } from "./payout-console.ea59e8e3c9785cb843a4fcf4f9ceecbba0e34f60905cec57fa8e71c48d135470.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {
@@ -201,7 +201,7 @@ export const mountSellerConsole = async ({
       session,
       showLogin,
     });
-  if (walletController) onWalletRefresh?.(walletController.refresh);
+  if (walletController) onWalletRefresh?.(walletController.refresh, walletController.cancel);
   const walletReady = walletController?.refresh() ?? Promise.resolve();
   try {
     const [me, sessionsBody, earningsBody, weeklyLimitsBody] = await Promise.all([
