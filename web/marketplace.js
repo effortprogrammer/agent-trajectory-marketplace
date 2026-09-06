@@ -1,4 +1,4 @@
-import { mountSellerConsole } from "./console.4c190adb03913b344ddf7e21d643c3ad3d8623076d57125bde7f3dd0c8d54653.js";
+import { mountSellerConsole } from "./console.60d1508e8ca79bc007e6b07aec59d2c623ac0a1bbde0f614a86e0f5d27e3f721.js";
 import { mountPublicPayoutCapacity } from "./public-payout-capacity.116ac52e91e83dbdb27f8bf3ec9bab30dea614989f48e9bcbe9a3d9efe504d9a.js";
 
 const localPreview = location.hostname === "127.0.0.1" || location.hostname === "localhost" ||
@@ -194,6 +194,7 @@ const publicTokenSkeleton = document.querySelector("[data-public-token-skeleton]
 const publicTokenNote = document.querySelector("[data-public-token-note]");
 const consoleLink = document.querySelector("[data-console-link]");
 const consoleView = document.querySelector("[data-console-view]");
+const walletRefreshButton = document.querySelector("[data-wallet-refresh]");
 
 let authMode = "waitlist";
 let challenge;
@@ -203,6 +204,7 @@ let dataRequestVersion = 0;
 let authRequestVersion = 0;
 let sellerConsoleRequestVersion = 0;
 let activeSession;
+let walletRefresh;
 let authTrigger;
 let restoreAuthTrigger = false;
 
@@ -310,6 +312,7 @@ const showPublicAccess = (message = "", revealGate = false) => {
   if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
   expiryTimer = undefined;
   activeSession = undefined;
+  walletRefresh = undefined;
   challenge = undefined;
   document.body.dataset.authState = "waitlist";
   for (const section of authenticatedContent) section.hidden = true;
@@ -488,6 +491,7 @@ const requestJson = async (endpoint, options = {}) => {
 
 const showConsole = async (session = activeSession) => {
   if (session === undefined) return;
+  walletRefresh = undefined;
   const requestVersion = ++sellerConsoleRequestVersion;
   const isCurrent = () => (
     sellerConsoleRequestVersion === requestVersion
@@ -499,7 +503,11 @@ const showConsole = async (session = activeSession) => {
   try {
     if (!isCurrent()) return;
     await mountSellerConsole({
+      canRefreshWallet: () => document.visibilityState === "visible" && !consoleView.hidden,
       isCurrent,
+      onWalletRefresh: (refresh) => {
+        if (isCurrent()) walletRefresh = refresh;
+      },
       requestJson,
       session,
       showLogin: () => showSignIn("Your session is no longer valid. Sign in to continue."),
@@ -517,8 +525,19 @@ const showConsole = async (session = activeSession) => {
 
 const closeConsole = () => {
   sellerConsoleRequestVersion += 1;
+  walletRefresh = undefined;
   document.body.classList.remove("is-console-view");
   consoleView.hidden = true;
+};
+
+const refreshCurrentView = () => {
+  if (
+    document.visibilityState !== "visible"
+    || activeSession === undefined
+    || window.location.hash !== "#console"
+    || consoleView.hidden
+  ) return;
+  void walletRefresh?.();
 };
 
 const validEmail = (email) => /^\S+@\S+\.\S+$/.test(email);
@@ -849,6 +868,18 @@ authGate.addEventListener("close", () => {
   restoreAuthTrigger = false;
 });
 authLogoutButton.addEventListener("click", () => void logout());
+consoleLink.addEventListener("click", (event) => {
+  if (window.location.hash !== "#console") return;
+  event.preventDefault();
+  closeNavigation();
+  refreshCurrentView();
+});
+walletRefreshButton?.addEventListener("click", () => {
+  if (walletRefreshButton.getAttribute("aria-disabled") !== "true") refreshCurrentView();
+});
+window.addEventListener("focus", refreshCurrentView);
+window.addEventListener("pageshow", refreshCurrentView);
+document.addEventListener("visibilitychange", refreshCurrentView);
 window.addEventListener("hashchange", () => {
   if (window.location.hash === "#console" && activeSession !== undefined) {
     closeNavigation();

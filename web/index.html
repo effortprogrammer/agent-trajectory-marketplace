@@ -9,7 +9,7 @@
   <link rel="canonical" href="https://getatm.io/" />
   <link rel="preconnect" href="https://gateway.getatm.io" />
   <link rel="stylesheet" href="marketplace.4cc5207d335b94c5a08ab8f6e5dfde5fb51e60e7688f7e8643ad18234ab51bf8.css" />
-  <link rel="stylesheet" href="console.821d6174fb2067ae6080816c07aba463f596773e2593a715a8f5a6faa3804102.css" />
+  <link rel="stylesheet" href="console.d4df90308f5a2501792f5338dcadff8b2ccbefd03cd29fc9785ec98d46f91f87.css" />
 </head>
 <body class="marketplace-page no-js">
   <a class="skip-link" href="#main-content" data-testid="session-skip-link">Skip to live corpus</a>
@@ -111,7 +111,10 @@
         </header>
         <section class="seller-panel seller-wallet-panel" data-console-wallet data-wallet-state="loading" aria-label="Available wallet balance" aria-live="polite" aria-busy="true">
           <p>Available wallet balance</p>
-          <strong data-console-wallet-balance>Loading...</strong>
+          <div class="seller-wallet-value">
+            <strong data-console-wallet-balance>Loading...</strong>
+            <button class="text-button seller-wallet-refresh" type="button" data-wallet-refresh aria-label="Refresh available wallet balance">Refresh</button>
+          </div>
         </section>
         <section
           class="seller-panel seller-weekly-limits-panel"
@@ -325,6 +328,6 @@
     </div>
   </footer>
 
-  <script type="module" src="marketplace.b0aa0fc71112f2b26f4d4cedac893bf6991f63cf433db663eebdaea073ab505d.js"></script>
+  <script type="module" src="marketplace.84a71239da927102e9b7e0c70ad667d29b28ededb235a5b25bce587b439024cf.js"></script>
 </body>
 </html>

@@ -13,6 +13,47 @@ const desktop = { height: 900, width: 1_280 } as const
 const mobile = { height: 844, width: 390 } as const
 let harness: SessionUiHarness | undefined
 
+const freshnessWalletBody = (availableMinor: number) => ({
+  ok: true,
+  payoutRequest: {
+    availableMinor,
+    currency: "USD",
+    heldMinor: 0,
+    request: null,
+    thresholdMinor: 10_000,
+  },
+})
+
+const dispatchFreshnessEvents = async (
+  page: Page,
+  events: readonly ("focus" | "pageshow" | "visibilitychange")[],
+  visibility: "hidden" | "visible" | null = null,
+): Promise<void> => {
+  await page.locator("body").evaluate((node, input) => {
+    const doc = node.ownerDocument
+    const view = doc.defaultView
+    if (view === null) throw new Error("Browser document has no window")
+    if (input.visibility !== null) {
+      Object.defineProperty(doc, "visibilityState", { configurable: true, value: input.visibility })
+    }
+    for (const name of input.events) {
+      switch (name) {
+        case "focus":
+        case "pageshow":
+          view.dispatchEvent(new Event(name))
+          break
+        case "visibilitychange":
+          doc.dispatchEvent(new Event(name))
+          break
+        default: {
+          const unreachable: never = name
+          throw new Error(`Unexpected browser event: ${unreachable}`)
+        }
+      }
+    }
+  }, { events, visibility })
+}
+
 const openMemberSignIn = async (page: Page): Promise<void> => {
   const gate = page.locator("[data-auth-gate]")
   if (await gate.isVisible()) {
@@ -162,6 +203,137 @@ describe("authenticated aggregate marketplace browser contract", () => {
         element.scrollWidth <= element.clientWidth
       ),
     ).toBe(true)
+  })
+
+  test.each(["same-console", "manual", "focus", "visibilitychange", "pageshow"] as const)(
+    "wallet freshness: %s refreshes only the wallet",
+    async (trigger) => {
+      harness = await startSessionUiHarness()
+      harness.setPayoutResponses({ body: freshnessWalletBody(0), status: 200 })
+      const page = await harness.newPage(desktop)
+      await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+      await authenticate(page)
+      await page.getByTestId("seller-console-link").click()
+      await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+      await page.locator("[data-console-state]").waitFor({ state: "hidden" })
+      expect(await page.locator("[data-console-wallet-balance]").innerText()).toBe("$0.00")
+      const unrelatedReads = harness.registryRequests.filter((request) =>
+        request.path.includes("/sales/") || request.path.includes("/weekly-limits"),
+      ).length
+      harness.setPayoutResponses({ body: freshnessWalletBody(6_029), status: 200 })
+      if (trigger === "manual") {
+        expect(await page.locator("[data-wallet-refresh]").count()).toBe(1)
+      }
+      const refreshed = page.waitForRequest((request) =>
+        new URL(request.url()).pathname === "/api/registry/v1/marketplace/seller/payout-request",
+        { timeout: 5_000 },
+      )
+      switch (trigger) {
+        case "same-console":
+          await page.getByTestId("seller-console-link").click()
+          break
+        case "manual":
+          await page.locator("[data-wallet-refresh]").click()
+          break
+        case "focus":
+        case "pageshow":
+        case "visibilitychange":
+          await dispatchFreshnessEvents(page, [trigger])
+          break
+        default: {
+          const unreachable: never = trigger
+          throw new Error(`Unexpected wallet trigger: ${unreachable}`)
+        }
+      }
+      expect((await refreshed).method()).toBe("GET")
+      await page.locator("[data-console-wallet-balance]").filter({ hasText: "$60.29" }).waitFor()
+      expect(harness.registryRequests.filter((request) =>
+        request.path.includes("/sales/") || request.path.includes("/weekly-limits"),
+      )).toHaveLength(unrelatedReads)
+      expect(harness.registryRequests.filter((request) =>
+        request.path.includes("/payout-request"),
+      ).every((request) => request.method === "GET")).toBe(true)
+      expect(await page.locator("[data-payout-open], [data-payout-dialog]").count()).toBe(0)
+    },
+  )
+
+  test("wallet freshness: same-console click closes the mobile menu", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPayoutResponses({ body: freshnessWalletBody(0), status: 200 })
+    const page = await harness.newPage(mobile)
+    await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+    await authenticate(page)
+    const link = page.getByTestId("seller-console-link")
+    if (!await link.isVisible()) await page.locator("[data-nav-menu-toggle]").click()
+    await link.click()
+    await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+    harness.setPayoutResponses({ body: freshnessWalletBody(6_029), status: 200 })
+    await page.locator("[data-nav-menu-toggle]").click()
+    const refreshed = page.waitForRequest((request) => request.url().endsWith("/seller/payout-request"))
+    await link.click()
+    await refreshed
+    await page.locator("[data-console-wallet-balance]").filter({ hasText: "$60.29" }).waitFor()
+    expect(await page.locator("[data-nav-menu-toggle]").getAttribute("aria-expanded")).toBe("false")
+  })
+
+  test("wallet freshness: queues one fresh read behind an older in-flight response", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPayoutResponses(
+      { body: freshnessWalletBody(0), status: 200 },
+      { body: freshnessWalletBody(6_029), status: 200 },
+    )
+    const page = await harness.newPage(desktop)
+    await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+    await authenticate(page)
+    const release = harness.holdPayout()
+    const firstRead = page.waitForRequest((request) =>
+      new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+    )
+    await page.getByTestId("seller-console-link").click()
+    await firstRead
+    const followUp = page.waitForRequest((request) =>
+      new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+      { timeout: 5_000 },
+    )
+    await dispatchFreshnessEvents(page, [
+      "focus", "pageshow", "visibilitychange", "focus", "pageshow",
+      "visibilitychange", "focus", "pageshow", "visibilitychange",
+    ])
+    await page.getByTestId("seller-console-link").click()
+    expect(harness.registryRequests.filter((request) =>
+      request.path.includes("/payout-request"),
+    )).toHaveLength(1)
+    release()
+    await followUp
+    await page.locator("[data-console-wallet-balance]").filter({ hasText: "$60.29" }).waitFor()
+    expect(harness.registryRequests.filter((request) =>
+      request.path.includes("/payout-request"),
+    ).map((request) => request.method)).toEqual(["GET", "GET"])
+  })
+
+  test("wallet freshness: ignores anonymous hidden and closed console triggers", async () => {
+    harness = await startSessionUiHarness()
+    const page = await harness.newPage(desktop)
+    await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+    await dispatchFreshnessEvents(page, ["focus", "pageshow", "visibilitychange"])
+    expect(harness.registryRequests.some((request) => request.path.includes("/payout-request"))).toBe(false)
+    await authenticate(page)
+    await page.getByTestId("seller-console-link").click()
+    await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+    const before = harness.registryRequests.filter((request) => request.path.includes("/payout-request")).length
+    await dispatchFreshnessEvents(page, ["focus", "pageshow", "visibilitychange"], "hidden")
+    await page.getByTestId("seller-console-link").click()
+    expect(harness.registryRequests.filter((request) => request.path.includes("/payout-request"))).toHaveLength(before)
+    await page.locator("body").evaluate((node) => {
+      const doc = node.ownerDocument
+      const view = doc.defaultView
+      if (view === null) throw new Error("Browser document has no window")
+      Object.defineProperty(doc, "visibilityState", { configurable: true, value: "visible" })
+      view.location.hash = "#top"
+    })
+    await page.locator("[data-console-view]").waitFor({ state: "hidden" })
+    await dispatchFreshnessEvents(page, ["focus", "visibilitychange"])
+    expect(harness.registryRequests.filter((request) => request.path.includes("/payout-request"))).toHaveLength(before)
   })
 
   test("shows an authoritative terminal payout balance without payout controls or mutations", async () => {

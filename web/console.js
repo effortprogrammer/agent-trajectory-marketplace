@@ -5,7 +5,7 @@ import {
   parseSessionsResponse,
   parseWeeklyLimitsResponse,
 } from "./console-contract.799162ebbe8dcf5683e138ca389be898fda29d96c6d45915fabd393c28d38df9.js";
-import { mountWalletBalance } from "./payout-console.4aa2e1fbee30037c677b0a9eab2c648424ff6a065d99b345d8ba2e5dca572287.js";
+import { createWalletBalanceController } from "./payout-console.b62af9822c7276a531cea1bc7c0a77abefa3a5a877aa123fa0d15a5de9606102.js";
 
 const formatCredits = (value) => `${value.toLocaleString("en-US")} credits`;
 const formatAcceptedTokens = (value) => `${new Intl.NumberFormat("en-US", {
@@ -154,7 +154,9 @@ const renderWeeklyLimits = (root, response) => {
 };
 
 export const mountSellerConsole = async ({
+  canRefreshWallet,
   isCurrent = () => true,
+  onWalletRefresh,
   requestJson,
   session,
   showLogin,
@@ -189,15 +191,18 @@ export const mountSellerConsole = async ({
   const headers = { authorization: `Bearer ${session.accessToken}` };
   state.hidden = false; state.dataset.state = "loading"; state.textContent = "Loading seller sales...";
   chart.replaceChildren(element("div", "seller-console-skeleton")); sessions.replaceChildren();
-  const walletReady = wallet === null
-    ? Promise.resolve()
-    : mountWalletBalance({
+  const walletController = wallet === null
+    ? undefined
+    : createWalletBalanceController({
+      canRefresh: () => canRefreshWallet === undefined || canRefreshWallet(),
       isCurrent,
       requestJson,
       root: wallet,
       session,
       showLogin,
     });
+  if (walletController) onWalletRefresh?.(walletController.refresh);
+  const walletReady = walletController?.refresh() ?? Promise.resolve();
   try {
     const [me, sessionsBody, earningsBody, weeklyLimitsBody] = await Promise.all([
       requestJson("/v1/auth/me", { headers }),
