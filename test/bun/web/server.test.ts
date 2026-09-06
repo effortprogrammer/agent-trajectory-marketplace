@@ -30,6 +30,7 @@ test("binds every public asset URL to fingerprinted paths so releases cannot reu
   const marketplaceScriptPath = await fingerprintedAssetPath("marketplace.js")
   const consoleScriptPath = await fingerprintedAssetPath("console.js")
   const consoleContractPath = await fingerprintedAssetPath("console-contract.js")
+  const walletControllerPath = await fingerprintedAssetPath("payout-console.js")
   const publicPayoutCapacityPath = await fingerprintedAssetPath(
     "public-payout-capacity.js",
   )
@@ -45,6 +46,7 @@ test("binds every public asset URL to fingerprinted paths so releases cannot reu
   )
   expect(marketplaceScript).not.toContain(`import("./${consoleScriptPath}")`)
   expect(consoleScript).toContain(`from "./${consoleContractPath}"`)
+  expect(consoleScript).toContain(`from "./${walletControllerPath}"`)
 })
 
 test("serves the downloadable agent onboarding Markdown as exact no-store bytes", async () => {

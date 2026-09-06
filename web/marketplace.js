@@ -1,4 +1,4 @@
-import { mountSellerConsole } from "./console.4c190adb03913b344ddf7e21d643c3ad3d8623076d57125bde7f3dd0c8d54653.js";
+import { mountSellerConsole } from "./console.310ef65141fb042f20605928f68bf1dc4ae19e1453640bac98d6a36a3f45befb.js";
 import { mountPublicPayoutCapacity } from "./public-payout-capacity.116ac52e91e83dbdb27f8bf3ec9bab30dea614989f48e9bcbe9a3d9efe504d9a.js";
 
 const localPreview = location.hostname === "127.0.0.1" || location.hostname === "localhost" ||
@@ -194,6 +194,106 @@ const publicTokenSkeleton = document.querySelector("[data-public-token-skeleton]
 const publicTokenNote = document.querySelector("[data-public-token-note]");
 const consoleLink = document.querySelector("[data-console-link]");
 const consoleView = document.querySelector("[data-console-view]");
+const walletRefreshButton = document.querySelector("[data-wallet-refresh]");
+const clientUpdateNotice = document.querySelector("[data-client-update]");
+const clientReloadButton = document.querySelector("[data-client-reload]");
+
+const clientAssetSignature = (source) => {
+  const required = new Set(["script:marketplace", "style:marketplace", "style:console"]);
+  const seen = new Set();
+  const paths = [];
+  for (const node of source.querySelectorAll('script[type="module"][src], link[rel="stylesheet"][href]')) {
+    const kind = node.tagName === "SCRIPT" ? "script" : "style";
+    const reference = node.getAttribute(kind === "script" ? "src" : "href");
+    if (!reference) return undefined;
+    let url;
+    try {
+      url = new URL(reference, window.location.href);
+    } catch (error) {
+      if (error instanceof TypeError) return undefined;
+      throw error;
+    }
+    if (url.origin !== window.location.origin || url.search || url.hash) return undefined;
+    const match = /^\/([A-Za-z0-9][A-Za-z0-9._-]*)\.([a-f0-9]{64})\.(js|css)$/.exec(url.pathname);
+    if (!match || match[3] !== (kind === "script" ? "js" : "css")) return undefined;
+    const identity = `${kind}:${match[1]}`;
+    if (seen.has(identity)) return undefined;
+    seen.add(identity);
+    required.delete(identity);
+    paths.push(`${kind}:${url.pathname}`);
+  }
+  return required.size === 0 ? paths.join("\n") : undefined;
+};
+
+const loadedClientAssets = clientAssetSignature(document);
+let clientCheckInFlight;
+const requestClientVersionCheck = () => {
+  if (!clientUpdateNotice || loadedClientAssets === undefined || document.visibilityState !== "visible") {
+    return Promise.resolve();
+  }
+  if (clientCheckInFlight !== undefined) return clientCheckInFlight;
+  clientUpdateNotice.dataset.updateState = "checking";
+  clientUpdateNotice.hidden = true;
+  document.body.classList.remove("has-client-update");
+  clientCheckInFlight = (async () => {
+    try {
+      const signal = AbortSignal.timeout(5_000);
+      const response = await fetch("/index.html", {
+        cache: "no-store",
+        credentials: "omit",
+        headers: { accept: "text/html" },
+        redirect: "error",
+        signal,
+      });
+      if (!response.ok || response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "text/html") {
+        await response.body?.cancel();
+        throw new TypeError("Invalid update document");
+      }
+      const latestDocument = new DOMParser().parseFromString(await response.text(), "text/html");
+      const latestAssets = clientAssetSignature(latestDocument);
+      if (latestAssets === undefined) {
+        throw new TypeError("Invalid update asset signature");
+      }
+      const changed = latestAssets !== loadedClientAssets;
+      if (changed) {
+        const loaded = new Set(loadedClientAssets.split("\n"));
+        for (const asset of latestAssets.split("\n")) {
+          if (loaded.has(asset)) continue;
+          const path = asset.slice(asset.indexOf(":") + 1);
+          const [, expected, extension] = /\.([a-f0-9]{64})\.(js|css)$/.exec(path);
+          const types = extension === "js" ? ["text/javascript", "application/javascript"] : ["text/css"];
+          const candidate = await fetch(path, {
+            cache: "no-store",
+            credentials: "omit",
+            headers: { accept: types.join(", ") },
+            redirect: "error",
+            signal,
+          });
+          if (!candidate.ok || !types.includes(candidate.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase())) {
+            await candidate.body?.cancel();
+            throw new TypeError("Invalid update asset response");
+          }
+          const digest = await crypto.subtle.digest("SHA-256", await candidate.arrayBuffer());
+          const actual = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+          if (actual !== expected) throw new TypeError("Invalid update asset digest");
+        }
+      }
+      signal.throwIfAborted();
+      clientUpdateNotice.hidden = !changed;
+      clientUpdateNotice.dataset.updateState = changed ? "available" : "current";
+      document.body.classList.toggle("has-client-update", changed);
+    } catch (error) {
+      if (error instanceof TypeError || error instanceof DOMException) {
+        clientUpdateNotice.dataset.updateState = "unavailable";
+        clientUpdateNotice.hidden = true;
+        document.body.classList.remove("has-client-update");
+        return;
+      }
+      throw error;
+    }
+  })().finally(() => { clientCheckInFlight = undefined; });
+  return clientCheckInFlight;
+};
 
 let authMode = "waitlist";
 let challenge;
@@ -203,6 +303,8 @@ let dataRequestVersion = 0;
 let authRequestVersion = 0;
 let sellerConsoleRequestVersion = 0;
 let activeSession;
+let walletCancel;
+let walletRefresh;
 let authTrigger;
 let restoreAuthTrigger = false;
 
@@ -240,6 +342,12 @@ const stopDataRequest = () => {
   dataRequestVersion += 1;
   dataRequest?.abort();
   dataRequest = undefined;
+};
+
+const cancelWalletRefresh = () => {
+  walletCancel?.();
+  walletCancel = undefined;
+  walletRefresh = undefined;
 };
 
 const resetSupply = () => {
@@ -310,6 +418,7 @@ const showPublicAccess = (message = "", revealGate = false) => {
   if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
   expiryTimer = undefined;
   activeSession = undefined;
+  cancelWalletRefresh();
   challenge = undefined;
   document.body.dataset.authState = "waitlist";
   for (const section of authenticatedContent) section.hidden = true;
@@ -462,7 +571,9 @@ const requestJson = async (endpoint, options = {}) => {
     cache: "no-store",
     headers: { accept: "application/json", ...(options.headers ?? {}) },
     redirect: "error",
-    signal: AbortSignal.timeout(10_000),
+    signal: options.signal === undefined
+      ? AbortSignal.timeout(10_000)
+      : AbortSignal.any([options.signal, AbortSignal.timeout(10_000)]),
   });
   let body;
   try {
@@ -488,6 +599,8 @@ const requestJson = async (endpoint, options = {}) => {
 
 const showConsole = async (session = activeSession) => {
   if (session === undefined) return;
+  void requestClientVersionCheck();
+  cancelWalletRefresh();
   const requestVersion = ++sellerConsoleRequestVersion;
   const isCurrent = () => (
     sellerConsoleRequestVersion === requestVersion
@@ -499,7 +612,14 @@ const showConsole = async (session = activeSession) => {
   try {
     if (!isCurrent()) return;
     await mountSellerConsole({
+      canRefreshWallet: () => document.visibilityState === "visible" && !consoleView.hidden,
       isCurrent,
+      onWalletRefresh: (refresh, cancel) => {
+        if (isCurrent()) {
+          walletCancel = cancel;
+          walletRefresh = refresh;
+        }
+      },
       requestJson,
       session,
       showLogin: () => showSignIn("Your session is no longer valid. Sign in to continue."),
@@ -517,8 +637,20 @@ const showConsole = async (session = activeSession) => {
 
 const closeConsole = () => {
   sellerConsoleRequestVersion += 1;
+  cancelWalletRefresh();
   document.body.classList.remove("is-console-view");
   consoleView.hidden = true;
+};
+
+const refreshCurrentView = () => {
+  if (document.visibilityState !== "visible") return;
+  void requestClientVersionCheck();
+  if (
+    activeSession === undefined
+    || window.location.hash !== "#console"
+    || consoleView.hidden
+  ) return;
+  void walletRefresh?.();
 };
 
 const validEmail = (email) => /^\S+@\S+\.\S+$/.test(email);
@@ -849,6 +981,19 @@ authGate.addEventListener("close", () => {
   restoreAuthTrigger = false;
 });
 authLogoutButton.addEventListener("click", () => void logout());
+clientReloadButton?.addEventListener("click", () => window.location.reload());
+consoleLink.addEventListener("click", (event) => {
+  if (window.location.hash !== "#console") return;
+  event.preventDefault();
+  closeNavigation();
+  refreshCurrentView();
+});
+walletRefreshButton?.addEventListener("click", () => {
+  if (walletRefreshButton.getAttribute("aria-disabled") !== "true") refreshCurrentView();
+});
+window.addEventListener("focus", refreshCurrentView);
+window.addEventListener("pageshow", refreshCurrentView);
+document.addEventListener("visibilitychange", refreshCurrentView);
 window.addEventListener("hashchange", () => {
   if (window.location.hash === "#console" && activeSession !== undefined) {
     closeNavigation();
@@ -868,3 +1013,4 @@ setAuthMode("waitlist");
 showPublicAccess();
 void loadPublicTokenTotal();
 void mountPublicPayoutCapacity(publicPayoutCapacityEndpoint);
+void requestClientVersionCheck();

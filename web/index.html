@@ -8,8 +8,8 @@
   <meta name="theme-color" content="#fefcf5" />
   <link rel="canonical" href="https://getatm.io/" />
   <link rel="preconnect" href="https://gateway.getatm.io" />
-  <link rel="stylesheet" href="marketplace.4cc5207d335b94c5a08ab8f6e5dfde5fb51e60e7688f7e8643ad18234ab51bf8.css" />
-  <link rel="stylesheet" href="console.821d6174fb2067ae6080816c07aba463f596773e2593a715a8f5a6faa3804102.css" />
+  <link rel="stylesheet" href="marketplace.c7de520bb3f8a655afc62a470c0cb8b5e26cc7566f83301e789216586ff7c293.css" />
+  <link rel="stylesheet" href="console.eb3307d6e73a64392882921310d6dea568d8454cc856a779314c5931088fe1be.css" />
 </head>
 <body class="marketplace-page no-js">
   <a class="skip-link" href="#main-content" data-testid="session-skip-link">Skip to live corpus</a>
@@ -52,6 +52,10 @@
   </header>
 
   <main id="main-content" tabindex="-1" data-live-source>
+    <aside class="client-update-notice content-shell" data-client-update data-update-state="idle" role="status" aria-live="polite" hidden>
+      <p>A new version is available. Reload to update and sign in again.</p>
+      <button class="text-button" type="button" data-client-reload>Reload</button>
+    </aside>
     <dialog class="auth-gate" data-auth-gate aria-labelledby="auth-title" aria-describedby="auth-description">
       <div class="auth-gate-panel">
         <header class="auth-console-bar">
@@ -111,7 +115,10 @@
         </header>
         <section class="seller-panel seller-wallet-panel" data-console-wallet data-wallet-state="loading" aria-label="Available wallet balance" aria-live="polite" aria-busy="true">
           <p>Available wallet balance</p>
-          <strong data-console-wallet-balance>Loading...</strong>
+          <div class="seller-wallet-value">
+            <strong data-console-wallet-balance>Loading...</strong>
+            <button class="text-button seller-wallet-refresh" type="button" data-wallet-refresh aria-label="Refresh available wallet balance">Refresh</button>
+          </div>
         </section>
         <section
           class="seller-panel seller-weekly-limits-panel"
@@ -325,6 +332,6 @@
     </div>
   </footer>
 
-  <script type="module" src="marketplace.b0aa0fc71112f2b26f4d4cedac893bf6991f63cf433db663eebdaea073ab505d.js"></script>
+  <script type="module" src="marketplace.d0837b21c90270298dc152874529d3215b6c971861e2671a2e103e2f9705f1e0.js"></script>
 </body>
 </html>

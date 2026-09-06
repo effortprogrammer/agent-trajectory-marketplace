@@ -90,6 +90,25 @@ with `--space-4` gaps and reflow without horizontal scrolling at 375px.
 - **States:** waitlist, signup, login, OTP verification, success, error.
 - **Accessibility:** trapped focus, Escape/backdrop dismissal, focus restore.
 
+### Available Wallet Balance
+- **Structure:** existing `.seller-wallet-panel` with a label, mono amount, and
+  secondary Refresh button using the existing text-button primitive.
+- **States:** loading/refreshing (`aria-busy`), ready, unavailable; Refresh is
+  `aria-disabled` while busy so keyboard focus remains stable.
+- **Behavior:** read-only refresh is independent of sales loading. Visible return
+  events and same-console navigation may refresh it; hidden or anonymous views
+  never start protected reads. Stale account responses never repaint the value.
+
+### Client Update Notice
+- **Structure:** a polite status region using the existing content shell, quiet
+  border, raised surface, and secondary Reload button.
+- **States:** hidden while current or unverified; visible after a different valid
+  asset signature is observed. Network/check failure is not a version change.
+- **Layout:** floats above document content and below navigation; reserve bottom
+  space while visible so it does not trap footer content.
+- **Accessibility:** no automatic focus movement or reload. The copy explains
+  that an explicit reload requires signing in again.
+
 ## 6. Motion & Interaction
 
 | Type | Token | Usage |
