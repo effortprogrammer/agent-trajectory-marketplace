@@ -50,8 +50,8 @@ const customerCodeFor = (code: string): CandidateRemoteErrorCode | undefined => 
 }
 
 export const presentCandidateRemoteError = (error: unknown): CandidateRemoteCliError | undefined => {
-  if (error instanceof PublishClientError && error.status === 0) return undefined
   if (!(error instanceof PublishClientError) && !(error instanceof StatusClientError)) return undefined
+  if (error.status === 0) return undefined
   const code = customerCodeFor(error.code)
   return code === undefined ? undefined : new CandidateRemoteCliError(
     code,

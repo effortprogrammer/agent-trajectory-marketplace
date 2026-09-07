@@ -79,10 +79,10 @@ describe("candidate status client", () => {
     } as const;
 
     await expect(createStatusClient(unauthorizedOrigin).read(request)).rejects.toEqual(
-      new StatusClientError("unauthorized"),
+      new StatusClientError("unauthorized", 401),
     );
     await expect(createStatusClient(notFoundOrigin).read(request)).rejects.toEqual(
-      new StatusClientError("not_found"),
+      new StatusClientError("not_found", 404),
     );
     await expect(createStatusClient(redirectOrigin).read(request)).rejects.toEqual(
       new StatusClientError("unavailable"),
@@ -100,7 +100,7 @@ describe("candidate status client", () => {
   ] as const)("preserves frozen HTTP %i candidate error code %s", async (status, code) => {
     const origin = serverUrl(() => Response.json({ protocolVersion: 1, code }, { status }));
     await expect(createStatusClient(origin).read({ credential, submissionId })).rejects.toEqual(
-      new StatusClientError(code),
+      new StatusClientError(code, status),
     );
   });
 

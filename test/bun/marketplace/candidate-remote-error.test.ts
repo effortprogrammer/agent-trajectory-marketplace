@@ -16,7 +16,7 @@ describe("candidate remote error presentation", () => {
     [new PublishClientError("payload_too_large", 413), "payload_too_large"],
     [new PublishClientError("unavailable", 503), "service_unavailable"],
     [new PublishClientError("idempotency_conflict", 409), "invalid_candidate"],
-    [new StatusClientError("unavailable"), "service_unavailable"],
+    [new StatusClientError("unavailable", 503), "service_unavailable"],
   ] as const)("presents remote %s as customer code %s", (remote, code) => {
     const presented = presentCandidateRemoteError(remote)
     expect(presented).toMatchObject({ code })
@@ -26,4 +26,11 @@ describe("candidate remote error presentation", () => {
   test("leaves local publish failures on their existing error contract", () => {
     expect(presentCandidateRemoteError(new PublishClientError("invalid_candidate", 0))).toBeUndefined()
   })
+
+  test.each(["unauthorized", "unavailable", "cancelled", "timeout"] as const)(
+    "leaves local status %s on its existing error contract",
+    (code) => {
+      expect(presentCandidateRemoteError(new StatusClientError(code))).toBeUndefined()
+    },
+  )
 })
