@@ -199,6 +199,42 @@ describe("candidate publish client", () => {
     // Then: callers retain both the machine-readable contract code and HTTP status.
     expect(error).toMatchObject({ code, status })
   })
+
+  test.each([
+    [undefined, "rate_limited"],
+    ["", "rate_limited"],
+    ["weekly-upload-limit", "rate_limited"],
+    ["weekly_upload_limit;", "rate_limited"],
+    ["weekly_upload_limit, weekly_upload_limit", "rate_limited"],
+    ["weekly_upload_limit, other", "rate_limited"],
+    ["weekly_upload_limit", "weekly_upload_limit"],
+  ] as const)("refines only exact weekly upload limit metadata %p", async (metadata, code) => {
+    const { bundle, consent } = validRequest()
+    const server = serve(() => Response.json(
+      { protocolVersion: 1, code: "rate_limited" },
+      { headers: metadata === undefined ? undefined : { "x-atm-error-code": metadata }, status: 429 },
+    ))
+    const error = await expectError(() => createPublishClient(`http://127.0.0.1:${server.port}`).publish({
+      bundle,
+      consent,
+      credential: "flag-sentinel",
+    }))
+    expect(error).toMatchObject({ code, status: 429 })
+  })
+
+  test("does not trust weekly metadata when the canonical response body is invalid", async () => {
+    const { bundle, consent } = validRequest()
+    const server = serve(() => new Response("{malformed", {
+      headers: { "x-atm-error-code": "weekly_upload_limit" },
+      status: 429,
+    }))
+    const error = await expectError(() => createPublishClient(`http://127.0.0.1:${server.port}`).publish({
+      bundle,
+      consent,
+      credential: "flag-sentinel",
+    }))
+    expect(error).toMatchObject({ code: "invalid_response", status: 429 })
+  })
 })
 
 const expectError = async (action: () => Promise<unknown>): Promise<PublishClientError> => {

@@ -24,6 +24,7 @@ type PublishClientErrorCode =
   | "request_failed"
   | "timeout"
   | "unexpected_response"
+  | "weekly_upload_limit"
 
 export class PublishClientError extends Error {
   readonly name = "PublishClientError"
@@ -135,7 +136,12 @@ export const createPublishClient = (serverInput: unknown): PublishClient => {
         }
         await assertDeclaredResponseLength(response)
         const parsed = parsePublishResponse(response.status, await boundedBody(response))
-        if ("code" in parsed) throw new PublishClientError(parsed.code, response.status)
+        if ("code" in parsed) {
+          const code = parsed.code === "rate_limited" && response.headers.get("x-atm-error-code") === "weekly_upload_limit"
+            ? "weekly_upload_limit"
+            : parsed.code
+          throw new PublishClientError(code, response.status)
+        }
         if (!("statusUrl" in parsed) || parsed.status !== "accepted") {
           throw new PublishClientError("unexpected_response", response.status)
         }

@@ -501,4 +501,66 @@ describe("marketplace candidate publish process boundary", () => {
     })}\n`)
     expect(`${result.stdout}${result.stderr}`).not.toContain("sentinel")
   })
+
+  test("renders every remote candidate upload rejection as a concise structured error", async () => {
+    const root = fixtureRoot()
+    const candidate = bundle(root)
+    const cases = [
+      { bodyCode: "rate_limited", code: "weekly_upload_limit", headers: { "x-atm-error-code": "weekly_upload_limit" }, status: 429 },
+      { bodyCode: "rate_limited", code: "rate_limited", headers: {}, status: 429 },
+      { bodyCode: "invalid_candidate", code: "invalid_candidate", headers: {}, status: 400 },
+      { bodyCode: "unauthorized", code: "unauthorized", headers: {}, status: 401 },
+      { bodyCode: "not_found", code: "not_found", headers: {}, status: 404 },
+      { bodyCode: "payload_too_large", code: "payload_too_large", headers: {}, status: 413 },
+      { bodyCode: "unavailable", code: "service_unavailable", headers: {}, status: 503 },
+    ] as const
+
+    for (const scenario of cases) {
+      let policyRequests = 0
+      let uploadRequests = 0
+      const server = Bun.serve({
+        fetch: async (request) => {
+          if (request.method === "GET") {
+            policyRequests += 1
+            return new Response(uploadConsentPolicyJson, { status: 200 })
+          }
+          uploadRequests += 1
+          await request.arrayBuffer()
+          return Response.json({ protocolVersion: 1, code: scenario.bodyCode }, {
+            headers: scenario.headers,
+            status: scenario.status,
+          })
+        },
+        hostname: "127.0.0.1",
+        port: 0,
+      })
+
+      const result = await runCli([
+        "marketplace", "seller", "candidate", "publish",
+        "--bundle", candidate.archivePath,
+        "--selection", candidate.selectionPath,
+        "--commercial-use", "yes",
+        "--consent-policy", "session-commercial-use-v1",
+        "--server", `http://127.0.0.1:${server.port}`,
+        "--api-key", "fixture-credential",
+      ], { ...process.env, TRAJECTORY_MARKETPLACE_CONFIG_HOME: root })
+      server.stop(true)
+
+      const errorLine = result.stderr.trimEnd().split("\n").at(-1)
+      expect({
+        error: errorLine === undefined ? undefined : JSON.parse(errorLine),
+        exitCode: result.exitCode,
+        policyRequests,
+        stdout: result.stdout,
+        uploadRequests,
+      }).toMatchObject({
+        error: { error: scenario.code, message: expect.any(String) },
+        exitCode: 1,
+        policyRequests: 1,
+        stdout: "",
+        uploadRequests: 1,
+      })
+      expect(result.stderr).not.toContain("fixture-credential")
+    }
+  })
 })
