@@ -14,6 +14,7 @@ import {
   writeCandidateBundleWithPrivateReview,
 } from "../marketplace/bundle-service";
 import { MarketplaceError } from "../marketplace/error";
+import { presentCandidateRemoteError } from "../marketplace/candidate-remote-error";
 import { readPublishBundle } from "../marketplace/publish-bundle";
 import { createPublishClient } from "../marketplace/publish-client";
 import { affirmCommercialUse, uploadConsentPolicy } from "../marketplace/upload-consent";
@@ -211,6 +212,8 @@ export const runMarketplaceCli = async (
         consent,
         credential,
         signal,
+      }).catch((error: unknown) => {
+        throw presentCandidateRemoteError(error) ?? error;
       });
       console.log(JSON.stringify({ ...receipt, membership }));
       return;
@@ -225,6 +228,8 @@ export const runMarketplaceCli = async (
         credential,
         signal,
         submissionId: command.submissionId,
+      }).catch((error: unknown) => {
+        throw presentCandidateRemoteError(error) ?? error;
       });
       console.log(JSON.stringify(status));
       return;
