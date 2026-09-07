@@ -40,6 +40,70 @@ const run = async (
 };
 
 describe("candidate status real CLI process boundary", () => {
+  test("preserves local transport failures without remote error presentation", async () => {
+    let connections = 0;
+    const listener = Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socket: {
+        open(socket) {
+          connections += 1;
+          socket.terminate();
+        },
+        data() {},
+      },
+    });
+    try {
+      const result = await run(
+        [
+          "marketplace", "seller", "candidate", "status",
+          "--submission", submissionId,
+          "--api-key", "trk_0123456789abcdef_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        ],
+        `http://127.0.0.1:${listener.port}`,
+      );
+      expect(result).toEqual({
+        exitCode: 1,
+        stderr: '{"error":"unavailable"}\n',
+        stdout: "",
+      });
+      expect(connections).toBe(1);
+    } finally {
+      listener.stop(true);
+    }
+  });
+
+  test("presents a canonical server 503 separately from transport failure", async () => {
+    let requests = 0;
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch() {
+        requests += 1;
+        return Response.json(
+          { protocolVersion: 1, code: "unavailable" },
+          { status: 503 },
+        );
+      },
+    });
+    servers.push(server);
+    const result = await run(
+      [
+        "marketplace", "seller", "candidate", "status",
+        "--submission", submissionId,
+        "--api-key", "trk_0123456789abcdef_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      ],
+      `http://127.0.0.1:${server.port}`,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(JSON.parse(result.stderr)).toEqual({
+      error: "service_unavailable",
+      message: expect.any(String),
+    });
+    expect(requests).toBe(1);
+  });
+
   test("reads status from the fixed gateway without a server argument", async () => {
     let observedHost = "";
     const server = Bun.serve({
