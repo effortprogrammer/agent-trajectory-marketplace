@@ -3,7 +3,6 @@ import {
   parseEarningsResponse,
   parseLegacySessionsResponse,
   parseSessionsResponse,
-  parseWeeklyLimitsResponse,
 } from "./console-contract.799162ebbe8dcf5683e138ca389be898fda29d96c6d45915fabd393c28d38df9.js";
 import { createWalletBalanceController } from "./payout-console.ea59e8e3c9785cb843a4fcf4f9ceecbba0e34f60905cec57fa8e71c48d135470.js";
 
@@ -110,49 +109,6 @@ const requestSessions = async (requestJson, headers) => {
   }
 };
 
-const requestWeeklyLimits = async (requestJson, headers) => {
-  try {
-    return parseWeeklyLimitsResponse(
-      await requestJson("/v1/marketplace/seller/weekly-limits", { headers }),
-    );
-  } catch (error) {
-    if (error?.status === 401) throw error;
-    return undefined;
-  }
-};
-
-const renderWeeklyLimits = (root, response) => {
-  if (!root) return;
-  root.hidden = false;
-  root.setAttribute("aria-busy", "false");
-  for (const skeleton of root.querySelectorAll(
-    ".seller-weekly-limit-skeleton",
-  )) {
-    skeleton.hidden = true;
-  }
-  const payout = root.querySelector("[data-weekly-payout-remaining]");
-  const sessionValue = root.querySelector(
-    "[data-weekly-session-value-remaining]",
-  );
-  if (payout) payout.hidden = false;
-  if (sessionValue) sessionValue.hidden = false;
-  if (response === undefined) {
-    root.dataset.state = "unavailable";
-    if (payout) payout.textContent = "Unavailable";
-    if (sessionValue) sessionValue.textContent = "Unavailable";
-    return;
-  }
-  root.dataset.state = "ready";
-  if (payout) {
-    payout.textContent =
-      `${formatPayoutAmount(response.weeklyLimits.payoutRemainingMinor)} remaining`;
-  }
-  if (sessionValue) {
-    sessionValue.textContent =
-      `${formatPayoutAmount(response.weeklyLimits.sessionValueRemainingMinor)} remaining`;
-  }
-};
-
 export const mountSellerConsole = async ({
   canRefreshWallet,
   isCurrent = () => true,
@@ -169,23 +125,6 @@ export const mountSellerConsole = async ({
   const sessions = view.querySelector("[data-console-sessions]");
   const total = view.querySelector("[data-console-total]");
   const wallet = view.querySelector("[data-console-wallet]");
-  const weeklyLimits = view.querySelector("[data-weekly-limits]");
-  if (weeklyLimits) {
-    weeklyLimits.hidden = false;
-    weeklyLimits.dataset.state = "loading";
-    weeklyLimits.setAttribute("aria-busy", "true");
-    for (const skeleton of weeklyLimits.querySelectorAll(
-      ".seller-weekly-limit-skeleton",
-    )) {
-      skeleton.hidden = false;
-    }
-    for (const value of weeklyLimits.querySelectorAll(
-      "[data-weekly-payout-remaining], "
-      + "[data-weekly-session-value-remaining]",
-    )) {
-      value.hidden = true;
-    }
-  }
   const today = new Date(); const from = new Date(today); from.setUTCDate(from.getUTCDate() - 30);
   const day = (value) => value.toISOString().slice(0, 10);
   const headers = { authorization: `Bearer ${session.accessToken}` };
@@ -204,11 +143,10 @@ export const mountSellerConsole = async ({
   if (walletController) onWalletRefresh?.(walletController.refresh, walletController.cancel);
   const walletReady = walletController?.refresh() ?? Promise.resolve();
   try {
-    const [me, sessionsBody, earningsBody, weeklyLimitsBody] = await Promise.all([
+    const [me, sessionsBody, earningsBody] = await Promise.all([
       requestJson("/v1/auth/me", { headers }),
       requestSessions(requestJson, headers),
       requestJson(`/v1/marketplace/seller/sales/earnings?from=${day(from)}&to=${day(today)}&interval=day`, { headers }),
-      requestWeeklyLimits(requestJson, headers),
     ]);
     if (!isCurrent()) return;
     if (me?.ok !== true || typeof me.account?.accountId !== "string") throw new TypeError("Invalid Registry account response");
@@ -219,7 +157,6 @@ export const mountSellerConsole = async ({
     total.textContent = cumulativeCredits === 0
       ? ""
       : `${formatCredits(cumulativeCredits)} cumulative`;
-    renderWeeklyLimits(weeklyLimits, weeklyLimitsBody);
     renderChart(chart, earnings); renderSessions(sessions, validatedSessions.sessions);
     state.hidden = true; announcement.textContent = `Seller console loaded: ${validatedSessions.sessions.length} sessions.`;
   } catch (error) {
