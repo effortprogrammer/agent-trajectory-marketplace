@@ -769,181 +769,113 @@ describe("authenticated aggregate marketplace browser contract", () => {
     expect(harness.registryRequests.filter((request) => request.path.endsWith("/sales/ledger"))).toEqual([])
   })
 
-  test("shows both rolling limits without desktop or mobile overflow", async () => {
+  test("personal console omits shared limits and keeps wallet refresh", async () => {
     harness = await startSessionUiHarness()
+    harness.setPayoutResponses(
+      { body: freshnessWalletBody(6_029), status: 200 },
+      { body: freshnessWalletBody(6_100), status: 200 },
+    )
     const page = await harness.newPage(desktop)
 
-    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
     await authenticate(page)
-    await openSellerConsole(page)
-    await page.locator('[data-weekly-limits][data-state="ready"]').waitFor()
-
-    const observe = async (): Promise<{
-      readonly overflowFree: boolean
-      readonly payout: string
-      readonly sessionValue: string
-    }> => ({
-      overflowFree: await page.locator("html").evaluate(
-        (element) => element.scrollWidth <= element.clientWidth,
+    const consoleLoaded = Promise.all([
+      page.waitForResponse((response) =>
+        new URL(response.url()).pathname.endsWith("/sales/sessions"),
       ),
-      payout: await page.locator("[data-weekly-payout-remaining]").innerText(),
-      sessionValue: await page.locator(
-        "[data-weekly-session-value-remaining]",
-      ).innerText(),
-    })
-
-    const desktopObservation = await observe()
-    await page.setViewportSize({ height: 844, width: 375 })
-    const mobileObservation = await observe()
-    const mobileHeading = await page
-      .locator("[data-weekly-limits] .seller-panel-heading")
-      .evaluate((heading) => {
-        const title = heading.children.item(0)
-        const context = heading.children.item(1)
-        const view = heading.ownerDocument.defaultView
-        if (title === null || context === null || view === null) {
-          throw new TypeError("weekly limit heading is incomplete")
-        }
-        const titleLineHeight = Number.parseFloat(
-          view.getComputedStyle(title).lineHeight,
-        )
-        const contextLineHeight = Number.parseFloat(
-          view.getComputedStyle(context).lineHeight,
-        )
-        return {
-          contextLines: Math.round(
-            context.getBoundingClientRect().height / contextLineHeight,
-          ),
-          direction: view.getComputedStyle(heading).flexDirection,
-          titleLines: Math.round(
-            title.getBoundingClientRect().height / titleLineHeight,
-          ),
-        }
-      })
-
-    expect([desktopObservation, mobileObservation]).toEqual([
-      {
-        overflowFree: true,
-        payout: "$180.00 remaining",
-        sessionValue: "$75.00 remaining",
-      },
-      {
-        overflowFree: true,
-        payout: "$180.00 remaining",
-        sessionValue: "$75.00 remaining",
-      },
+      page.waitForResponse((response) =>
+        new URL(response.url()).pathname.endsWith("/sales/earnings"),
+      ),
+      page.waitForRequest((request) =>
+        new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+      ),
     ])
-    expect(harness.registryRequests).toContainEqual({
-      authorization: "Bearer marketplace-browser-session-token",
-      body: undefined,
-      method: "GET",
-      path: "/v1/marketplace/seller/weekly-limits",
-    })
-    expect(mobileHeading).toEqual({
-      contextLines: 1,
-      direction: "column",
-      titleLines: 1,
-    })
-    expect(
-      await page.locator(".seller-weekly-limit-context:visible").count(),
-    ).toBe(2)
-  })
-
-  test("shows a bounded weekly-limit loading state before exact values arrive", async () => {
-    harness = await startSessionUiHarness()
-    const page = await harness.newPage(desktop)
-    const arrived = Promise.withResolvers<void>()
-    const release = Promise.withResolvers<void>()
-    await page.route(
-      "**/api/registry/v1/marketplace/seller/weekly-limits",
-      async (route) => {
-        arrived.resolve()
-        await release.promise
-        await route.continue()
-      },
-    )
-
-    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
-    await authenticate(page)
     await page.getByTestId("seller-console-link").click()
-    await arrived.promise
+    await consoleLoaded
+    await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+    await page.locator("[data-console-chart] svg").waitFor({ state: "visible" })
+    await page.locator("[data-console-sessions] li").first().waitFor()
 
-    const panel = page.locator("[data-weekly-limits]")
-    expect({
-      ariaBusy: await panel.getAttribute("aria-busy"),
-      skeletons: await panel.locator(
-        ".seller-weekly-limit-skeleton:visible",
-      ).count(),
-      state: await panel.getAttribute("data-state"),
-      values: await panel.locator(
-        "[data-weekly-payout-remaining]:visible, "
-        + "[data-weekly-session-value-remaining]:visible",
-      ).count(),
-      visible: await panel.isVisible(),
-    }).toEqual({
-      ariaBusy: "true",
-      skeletons: 2,
-      state: "loading",
-      values: 0,
-      visible: true,
-    })
-
-    release.resolve()
-    await page.locator('[data-weekly-limits][data-state="ready"]').waitFor()
-    expect({
-      ariaBusy: await panel.getAttribute("aria-busy"),
-      skeletons: await panel.locator(
-        ".seller-weekly-limit-skeleton:visible",
-      ).count(),
-      values: await panel.locator(
-        "[data-weekly-payout-remaining]:visible, "
-        + "[data-weekly-session-value-remaining]:visible",
-      ).count(),
-    }).toEqual({
-      ariaBusy: "false",
-      skeletons: 0,
-      values: 2,
-    })
+    expect(await page.locator("[data-weekly-limits]").count()).toBe(0)
+    expect(await page.locator("[data-console-wallet-balance]").innerText()).toBe("$60.29")
+    const refreshed = page.waitForRequest((request) =>
+      new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+    )
+    await page.locator("[data-wallet-refresh]").click()
+    await refreshed
+    await page.locator("[data-console-wallet-balance]").filter({ hasText: "$61.00" }).waitFor()
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/marketplace/seller/weekly-limits",
+    )).toEqual([])
   })
 
-  test("keeps seller sales visible when weekly limits are unavailable", async () => {
+  test("personal console keeps an unavailable mobile wallet refreshable without shared limits", async () => {
+    harness = await startSessionUiHarness()
+    harness.setPayoutResponses(
+      {
+        body: { error: { code: "service_unavailable", message: "Payout requests are unavailable." }, ok: false },
+        status: 503,
+      },
+      { body: freshnessWalletBody(6_029), status: 200 },
+    )
+    const page = await harness.newPage({ height: 900, width: 375 })
+
+    await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+    await authenticate(page)
+    const initialWalletRead = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith("/seller/payout-request"),
+    )
+    await page.getByTestId("seller-console-link").click()
+    expect((await initialWalletRead).status()).toBe(503)
+    await page.locator('[data-console-wallet][data-wallet-state="unavailable"]').waitFor()
+
+    expect(await page.locator("[data-weekly-limits]").count()).toBe(0)
+    expect(await page.locator("[data-console-wallet-balance]").innerText()).toBe("Unavailable")
+    const refreshed = page.waitForRequest((request) =>
+      new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+    )
+    await page.locator("[data-wallet-refresh]").click()
+    await refreshed
+    await page.locator("[data-console-wallet-balance]").filter({ hasText: "$60.29" }).waitFor()
+    expect(await page.locator("html").evaluate((node) =>
+      node.scrollWidth <= node.clientWidth,
+    )).toBe(true)
+  })
+
+  test("personal console preserves public capacity and never requests shared limits", async () => {
     harness = await startSessionUiHarness()
     const page = await harness.newPage(desktop)
-    await page.route(
-      "**/api/registry/v1/marketplace/seller/weekly-limits",
-      async (route) => {
-        await route.fulfill({
-          body: JSON.stringify({ error: { code: "unavailable" }, ok: false }),
-          contentType: "application/json",
-          status: 503,
-        })
-      },
+    const publicCapacityRead = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith("/public-payout-capacity"),
     )
 
-    await page.goto(harness.appUrl, { waitUntil: "networkidle" })
+    await page.goto(harness.appUrl, { waitUntil: "domcontentloaded" })
+    expect((await publicCapacityRead).status()).toBe(200)
+    await page.getByTestId("public-payout-remaining").waitFor({ state: "visible" })
+    expect(await page.getByTestId("public-payout-remaining").innerText()).toBe("$180.00")
     await authenticate(page)
-    await openSellerConsole(page)
+    const consoleLoaded = Promise.all([
+      page.waitForResponse((response) =>
+        new URL(response.url()).pathname.endsWith("/sales/sessions"),
+      ),
+      page.waitForResponse((response) =>
+        new URL(response.url()).pathname.endsWith("/sales/earnings"),
+      ),
+      page.waitForRequest((request) =>
+        new URL(request.url()).pathname.endsWith("/seller/payout-request"),
+      ),
+    ])
+    await page.getByTestId("seller-console-link").click()
+    await consoleLoaded
+    await page.locator('[data-console-wallet][data-wallet-state="ready"]').waitFor()
+    await page.locator("[data-console-chart] svg").waitFor({ state: "visible" })
 
-    const panel = page.locator(
-      '[data-weekly-limits][data-state="unavailable"]',
-    )
-    await panel.waitFor({ state: "visible" })
-    expect({
-      ariaBusy: await panel.getAttribute("aria-busy"),
-      chart: await page.locator("[data-console-chart] svg").count(),
-      skeletons: await panel.locator(
-        ".seller-weekly-limit-skeleton:visible",
-      ).count(),
-      values: await panel.locator(
-        "[data-weekly-payout-remaining]:visible, "
-        + "[data-weekly-session-value-remaining]:visible",
-      ).count(),
-    }).toEqual({
-      ariaBusy: "false",
-      chart: 1,
-      skeletons: 0,
-      values: 2,
-    })
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/marketplace/public-payout-capacity",
+    )).toHaveLength(1)
+    expect(harness.registryRequests.filter((request) =>
+      request.path === "/v1/marketplace/seller/weekly-limits",
+    )).toEqual([])
   })
 
   test("renders every accepted model-token pricing fact at desktop and mobile widths", async () => {
@@ -1206,17 +1138,6 @@ describe("authenticated aggregate marketplace browser contract", () => {
         ? { account: { accountId, email: `${accountId}@example.test` }, ok: true }
         : pathname.endsWith("/sessions") ? emptySessions
           : pathname.endsWith("/earnings") ? emptyEarnings
-            : pathname.endsWith("/weekly-limits") ? {
-              ok: true,
-              weeklyLimits: {
-                scope: "platform",
-                currency: "USD",
-                limitMinor: 30_000,
-                payoutRemainingMinor: 30_000,
-                sessionValueRemainingMinor: 30_000,
-                windowSeconds: 604_800,
-              },
-            }
             : {
               ok: true,
               payoutRequest: {
@@ -1240,10 +1161,6 @@ describe("authenticated aggregate marketplace browser contract", () => {
     )
     await page.route(
       "**/api/registry/v1/marketplace/seller/payout-request",
-      fulfillConsoleRequest,
-    )
-    await page.route(
-      "**/api/registry/v1/marketplace/seller/weekly-limits",
       fulfillConsoleRequest,
     )
 
