@@ -24,6 +24,7 @@ export class StatusClientError extends Error {
       | PublishWireContractErrorCode
       | "cancelled"
       | "timeout",
+    public readonly status = 0,
   ) {
     super(code);
     this.name = "StatusClientError";
@@ -103,7 +104,7 @@ export const createStatusClient = (
         response.status,
         await boundedResponseBytes(response),
       );
-      if ("code" in parsed) throw new StatusClientError(parsed.code);
+      if ("code" in parsed) throw new StatusClientError(parsed.code, response.status);
       if ("statusUrl" in parsed) throw new StatusClientError("invalid_response");
       if (parsed.submissionId !== request.submissionId) {
         throw new StatusClientError("invalid_response");

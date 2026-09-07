@@ -79,13 +79,28 @@ describe("candidate status client", () => {
     } as const;
 
     await expect(createStatusClient(unauthorizedOrigin).read(request)).rejects.toEqual(
-      new StatusClientError("unauthorized"),
+      new StatusClientError("unauthorized", 401),
     );
     await expect(createStatusClient(notFoundOrigin).read(request)).rejects.toEqual(
-      new StatusClientError("not_found"),
+      new StatusClientError("not_found", 404),
     );
     await expect(createStatusClient(redirectOrigin).read(request)).rejects.toEqual(
       new StatusClientError("unavailable"),
+    );
+  });
+
+  test.each([
+    [400, "invalid_candidate"],
+    [401, "unauthorized"],
+    [404, "not_found"],
+    [409, "idempotency_conflict"],
+    [413, "payload_too_large"],
+    [429, "rate_limited"],
+    [503, "unavailable"],
+  ] as const)("preserves frozen HTTP %i candidate error code %s", async (status, code) => {
+    const origin = serverUrl(() => Response.json({ protocolVersion: 1, code }, { status }));
+    await expect(createStatusClient(origin).read({ credential, submissionId })).rejects.toEqual(
+      new StatusClientError(code, status),
     );
   });
 

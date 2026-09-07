@@ -16,6 +16,7 @@ import { parseCollectorCommand, runCollectorCli, runCollectorResidentCli, type C
 import { runDefaultDoctorCli } from "./doctor";
 import { isAuthInvocation, runAuthCli } from "./auth";
 import { isMarketplaceInvocation, runMarketplaceCli } from "./marketplace";
+import { CandidateRemoteCliError } from "../marketplace/candidate-remote-error";
 import { maybePrintCliUpdateNotice } from "./update-notice";
 import { isWorldInvocation, runWorldCli } from "./world";
 
@@ -227,7 +228,11 @@ const main = async (): Promise<void> => {
   } catch (error: unknown) { // no-excuse-ok: catch — CLI boundary serializes all failures.
     const errorCode = collectorErrorCode(error);
     await captureTelemetryError(command, errorCode);
-    console.error(JSON.stringify({ error: errorCode }));
+    console.error(JSON.stringify(
+      error instanceof CandidateRemoteCliError
+        ? { error: error.code, message: error.message }
+        : { error: errorCode },
+    ));
     process.exitCode = 1;
   } finally {
     await maybePrintCliUpdateNotice(
