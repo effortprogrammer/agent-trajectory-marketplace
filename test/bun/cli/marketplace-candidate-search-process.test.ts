@@ -17,8 +17,11 @@ const selectorFor = (relativePath: string): string =>
   `s-${createHash("sha256").update(relativePath).digest("hex")}`;
 
 const traceBytes = (events: readonly unknown[]): Uint8Array => new TextEncoder().encode(JSON.stringify({
-  eventCount: events.length,
-  events,
+  eventCount: events.length + 1,
+  events: [
+    { kind: "function_enter", name: "user", payload: { role: "user", content: "USER_SENTINEL" } },
+    ...events,
+  ],
   formatVersion: 2,
   runtime: "codex",
   status: "collected",

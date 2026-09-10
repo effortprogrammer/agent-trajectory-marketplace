@@ -12,6 +12,7 @@ import {
   hasSupportedPositiveUsage,
   type CompensatedUsageAssessment,
 } from "./compensated-model-policy";
+import { hasCodexPromptIntegrity } from "./codex-prompt-integrity";
 import { MarketplaceError } from "./error";
 import { ResidualSecretScanError, assertNoResidualSecrets } from "./residual-secret-scan";
 import type { FrozenTrace } from "./session-contract";
@@ -38,7 +39,9 @@ export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
     throw error;
   }
   const parsed = harnessTraceDocumentSchema.safeParse(value);
-  if (!parsed.success) throw new MarketplaceError("invalid_bundle_request");
+  if (!parsed.success || !hasCodexPromptIntegrity(parsed.data)) {
+    throw new MarketplaceError("invalid_bundle_request");
+  }
   const events = parsed.data.events.map((event) => {
     const payload = event.payload === undefined ? undefined : sanitizeHarnessPayload(event.payload);
     if (event.payload !== undefined && payload === undefined) {

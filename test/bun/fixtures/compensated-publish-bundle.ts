@@ -22,11 +22,13 @@ const supportedTrace = (): FrozenTrace => {
     formatVersion: 2,
     eventCount: 1,
     events: [{
-      kind: "message",
-      name: "assistant",
+      kind: "function_enter",
+      name: "turn",
       timestamp: "2026-09-01T00:00:00.000Z",
       sourceEventId: "usage-0",
       payload: {
+        role: "user",
+        content: "Preserve this prompt.",
         usage: {
           model: "claude-fable-5",
           inputTokens: 10,

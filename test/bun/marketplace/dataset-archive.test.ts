@@ -42,8 +42,8 @@ const atfWithUsage = (
   formatVersion: 2,
   eventCount: usages.length,
   events: usages.map((usage, index) => ({
-    kind: "message",
-    name: "assistant",
+    kind: "function_enter",
+    name: "turn",
     ...(usage.attested === false
       ? {}
       : {
@@ -51,6 +51,8 @@ const atfWithUsage = (
         sourceEventId: `usage-${index}`,
       }),
     payload: {
+      role: "user",
+      content: "Preserve this prompt.",
       usage: {
         ...(usage.model === undefined ? {} : { model: usage.model }),
         ...(usage.inputTokens === undefined
@@ -72,7 +74,17 @@ const validAtf = (runtime: string): Uint8Array => atfWithUsage(runtime, [{
 }]);
 
 const usageFreeAtf = (runtime: string): Uint8Array => new TextEncoder().encode(
-  JSON.stringify({ runtime, status: "collected", eventCount: 0, events: [] }),
+  JSON.stringify({
+    runtime,
+    status: "collected",
+    formatVersion: 2,
+    eventCount: 1,
+    events: [{
+      kind: "function_enter",
+      name: "turn",
+      payload: { role: "user", content: "Preserve this prompt." },
+    }],
+  }),
 );
 
 afterEach(() => {
@@ -313,11 +325,13 @@ describe("selected trace dataset archive", () => {
       formatVersion: 2,
       eventCount: 1,
       events: [{
-        kind: "tool_call",
-        name: "terminal",
+        kind: "function_enter",
+        name: "turn",
         timestamp: "2026-09-01T00:00:00.000Z",
         sourceEventId: "usage-0",
         payload: {
+          role: "user",
+          content: "Preserve this prompt.",
           input: {
             apiKey: numericApiKey,
             authorization: bearer,
@@ -399,11 +413,12 @@ describe("selected trace dataset archive", () => {
       formatVersion: 2,
       eventCount: 1,
       events: [{
-        kind: "message",
-        name: "assistant",
+        kind: "function_enter",
+        name: "turn",
         timestamp: "2026-09-01T00:00:00.000Z",
         sourceEventId: "usage-0",
         payload: {
+          role: "user",
           content: residual,
           usage: {
             model: "claude-fable-5",
@@ -419,11 +434,12 @@ describe("selected trace dataset archive", () => {
       formatVersion: 2,
       eventCount: 1,
       events: [{
-        kind: "message",
-        name: "assistant",
+        kind: "function_enter",
+        name: "turn",
         timestamp: "2026-09-01T00:00:00.000Z",
         sourceEventId: "usage-0",
         payload: {
+          role: "user",
           content: "Set GITHUB_TOKEN in your environment; never paste a token value.",
           usage: {
             model: "claude-fable-5",

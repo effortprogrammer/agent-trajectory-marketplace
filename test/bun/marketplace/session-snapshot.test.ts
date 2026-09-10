@@ -28,8 +28,13 @@ function fixtureRoot(): string {
 }
 
 function validAtf(runtime = "codex"): Uint8Array {
+  const events = runtime === "codex" ? [{
+    kind: "function_enter",
+    name: "turn",
+    payload: { role: "user", content: "Preserve this prompt." },
+  }] : [];
   return new TextEncoder().encode(
-    JSON.stringify({ runtime, status: "collected", eventCount: 0, events: [] }),
+    JSON.stringify({ runtime, status: "collected", formatVersion: 2, eventCount: events.length, events }),
   );
 }
 
@@ -40,7 +45,13 @@ function timestampedAtf(): Uint8Array {
     formatVersion: 2,
     eventCount: 3,
     events: [
-      { kind: "llm_call", name: "late", timestamp: "2026-07-24T09:00:00.000Z", sourceEventId: "late" },
+      {
+        kind: "function_enter",
+        name: "late",
+        timestamp: "2026-07-24T09:00:00.000Z",
+        sourceEventId: "late",
+        payload: { role: "user", content: "Preserve this prompt." },
+      },
       { kind: "llm_call", name: "undated" },
       { kind: "llm_call", name: "early", timestamp: "2026-07-23T08:00:00.000Z", sourceEventId: "early" },
     ],

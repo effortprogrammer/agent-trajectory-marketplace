@@ -80,8 +80,12 @@ test("candidate bundle CLI redacts credentials from archived ATF bytes", () => {
     runtime: "codex",
     status: "collected",
     formatVersion: 2,
-    eventCount: 1,
+    eventCount: 2,
     events: [{
+      kind: "function_enter",
+      name: "user",
+      payload: { role: "user", content: "USER_SENTINEL" },
+    }, {
       kind: "tool_call",
       name: "terminal",
       timestamp: "2026-09-01T00:00:00.000Z",

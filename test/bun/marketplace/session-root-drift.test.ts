@@ -18,7 +18,17 @@ test("Given the approved root is replaced after review, When rechecked, Then roo
   const root = join(container, "approved");
   const replacement = join(container, "replacement");
   const bytes = new TextEncoder().encode(
-    JSON.stringify({ runtime: "codex", status: "collected", eventCount: 0, events: [] }),
+    JSON.stringify({
+      runtime: "codex",
+      status: "collected",
+      formatVersion: 2,
+      eventCount: 1,
+      events: [{
+        kind: "function_enter",
+        name: "turn",
+        payload: { role: "user", content: "Preserve this prompt." },
+      }],
+    }),
   );
   mkdirSync(root);
   mkdirSync(replacement);

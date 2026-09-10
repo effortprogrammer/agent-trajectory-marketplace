@@ -20,11 +20,13 @@ const archiveForRuntime = (runtime: string): Buffer => {
     formatVersion: 2,
     eventCount: 1,
     events: [{
-      kind: "message",
-      name: "assistant",
+      kind: runtime === "codex" ? "function_enter" : "message",
+      name: runtime === "codex" ? "turn" : "assistant",
       timestamp: "2026-09-01T00:00:00.000Z",
       sourceEventId: "usage-0",
       payload: {
+        role: "user",
+        content: "Preserve this prompt.",
         usage: {
           model: "claude-fable-5",
           inputTokens: 1,
@@ -77,7 +79,7 @@ describe("publish bundle stable reads", () => {
     roots.push(root)
     const path = join(root, "candidate.zip")
     const before = archiveForRuntime("codex")
-    const after = archiveForRuntime("agent")
+    const after = archiveForRuntime("agentxx")
     expect(after.length).toBe(before.length)
     writeFileSync(path, before)
     let hookCalls = 0

@@ -25,11 +25,15 @@ const source = Buffer.from(JSON.stringify({
   formatVersion: 2,
   eventCount: 1,
   events: [{
-    kind: "message",
-    name: "assistant",
+    kind: "function_enter",
+    name: "turn",
     timestamp: "2026-09-01T00:00:00.000Z",
     sourceEventId: "consent-qa-usage",
-    payload: { usage: { inputTokens: 1, model: "claude-fable-5", outputTokens: 1 } },
+    payload: {
+      role: "user",
+      content: "Preserve this prompt.",
+      usage: { inputTokens: 1, model: "claude-fable-5", outputTokens: 1 },
+    },
   }],
 }));
 const artifact = sanitizedArtifactDigest(source);
