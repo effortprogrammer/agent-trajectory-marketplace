@@ -1,16 +1,26 @@
-import { createHash, randomUUID } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { z } from "zod";
 
 import { TrajectoryAdapterError } from "./adapters/contract";
 import { getHarnessAdapter, listHarnessAdapters } from "./adapters/registry";
+import {
+  assertSafeOutputPath,
+  collectWatchSessionFileName,
+  rejectExistingSymlinkPathBelow,
+  removeManagedOutputAfterConversionFailure,
+} from "./collect-output-safety";
+
+export { collectWatchSessionFileName } from "./collect-output-safety";
 
 export const collectWatchStateFileName = "collect-watch-state.json";
 
 const outputNameVersion = 1;
+const codexConversionVersion = 2;
 const watchEntrySchema = z.object({
+  conversionVersion: z.number().int().positive().optional(),
   errorCode: z.string().optional(),
   eventCount: z.number().int().nonnegative().optional(),
   exportPath: z.string().optional(),
@@ -105,35 +115,12 @@ const writeState = (statePath: string, state: WatchState): void => {
   }
 };
 
-const rejectExistingSymlink = (path: string): void => {
-  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) {
-    throw new TrajectoryAdapterError("invalid_export_path", `invalid_export_path: ${path}`);
-  }
-};
-
 export const resolveCollectWatchRuntimes = (runtimes: readonly string[] | undefined): readonly string[] => {
   const requested = runtimes === undefined || runtimes.length === 0
     ? listHarnessAdapters().map(({ runtime }) => runtime)
     : [...new Set(runtimes)];
   for (const runtime of requested) getHarnessAdapter(runtime);
   return requested;
-};
-
-export const collectWatchSessionFileName = (
-  runtime: string,
-  sessionPath: string,
-  sessionId: string,
-): string => {
-  const readable = encodeURIComponent(sessionId).replaceAll("%", "_").slice(0, 80) || "session";
-  const digest = createHash("sha256")
-    .update(runtime)
-    .update("\0")
-    .update(sessionPath)
-    .update("\0")
-    .update(sessionId)
-    .digest("hex")
-    .slice(0, 16);
-  return `${readable}--${digest}`;
 };
 
 export const runCollectSweep = (
@@ -143,8 +130,9 @@ export const runCollectSweep = (
 ): CollectSweepSummary => {
   const runtimes = resolveCollectWatchRuntimes(config.runtimes);
   const parsed = collectSweepConfigSchema.parse({ ...config, runtimes });
-  const outDir = resolve(parsed.outDir);
-  mkdirSync(outDir, { recursive: true });
+  const configuredOutDir = resolve(parsed.outDir);
+  mkdirSync(configuredOutDir, { recursive: true });
+  const outDir = realpathSync(configuredOutDir);
   const statePath = join(outDir, collectWatchStateFileName);
   const sessions: Record<string, WatchEntry> = { ...readState(statePath).sessions };
   const exportedSessions: CollectSweepExportedSession[] = [];
@@ -174,6 +162,7 @@ export const runCollectSweep = (
         previous?.outcome === "exported" && previous.modifiedAt === ref.modifiedAt
         && previous.sizeBytes === ref.sizeBytes
         && previous.outputNameVersion === outputNameVersion
+        && (runtime !== "codex" || previous.conversionVersion === codexConversionVersion)
       ) {
         unchanged += 1;
         continue;
@@ -182,6 +171,12 @@ export const runCollectSweep = (
         pendingSettle += 1;
         continue;
       }
+      const runtimeDir = join(outDir, runtime);
+      const exportPath = join(
+        runtimeDir,
+        `${collectWatchSessionFileName(runtime, ref.sessionPath, ref.sessionId)}.atf.json`,
+      );
+      let converted = false;
       try {
         const trace = adapter.convertSession({
           sessionId: ref.sessionId,
@@ -190,16 +185,13 @@ export const runCollectSweep = (
             ? { runtimeAttribution: "operator_declared" as const }
             : {}),
         });
-        const runtimeDir = join(outDir, runtime);
-        const exportPath = join(
-          runtimeDir,
-          `${collectWatchSessionFileName(runtime, ref.sessionPath, ref.sessionId)}.atf.json`,
-        );
-        rejectExistingSymlink(runtimeDir);
-        rejectExistingSymlink(exportPath);
+        converted = true;
+        rejectExistingSymlinkPathBelow(outDir, exportPath);
+        assertSafeOutputPath(ref.sessionPath, exportPath);
         mkdirSync(runtimeDir, { recursive: true });
         writeFileSync(exportPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8");
         sessions[stateKey] = {
+          ...(runtime === "codex" ? { conversionVersion: codexConversionVersion } : {}),
           eventCount: trace.eventCount,
           exportPath,
           modifiedAt: ref.modifiedAt,
@@ -216,8 +208,10 @@ export const runCollectSweep = (
           sessionPath: ref.sessionPath,
         });
       } catch (error: unknown) {
+        if (!converted) removeManagedOutputAfterConversionFailure(ref.sessionPath, outDir, exportPath);
         const code = error instanceof TrajectoryAdapterError ? error.code : "conversion_failed";
         sessions[stateKey] = {
+          ...(runtime === "codex" ? { conversionVersion: codexConversionVersion } : {}),
           errorCode: code,
           modifiedAt: ref.modifiedAt,
           outcome: "failed",
