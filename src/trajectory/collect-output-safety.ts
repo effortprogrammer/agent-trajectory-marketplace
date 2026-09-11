@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
-import { lstatSync, statSync, unlinkSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { closeSync, lstatSync, openSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
-import { TrajectoryAdapterError } from "./adapters/contract";
+import { TrajectoryAdapterError, type HarnessTraceDocument } from "./adapters/contract";
 
 const invalidExportPath = (path: string): never => {
   throw new TrajectoryAdapterError("invalid_export_path", `invalid_export_path: ${path}`);
@@ -30,6 +30,22 @@ export const assertSafeOutputPath = (sourcePath: string, exportPath: string): vo
   if (lstatSync(exportPath, { throwIfNoEntry: false })?.isSymbolicLink()) invalidExportPath(exportPath);
   const output = statSync(exportPath, { throwIfNoEntry: false });
   if (output !== undefined && sameInode(statSync(sourcePath), output)) invalidExportPath(exportPath);
+};
+
+/** Publish a complete trace by replacing the entry, never writing through it. */
+export const writeCollectedTrace = (exportPath: string, trace: HarnessTraceDocument): void => {
+  const temporaryPath = `${exportPath}.trajectory-export-${randomUUID()}`;
+  const descriptor = openSync(temporaryPath, "wx", 0o600);
+  try {
+    try {
+      writeFileSync(descriptor, `${JSON.stringify(trace, null, 2)}\n`, "utf8");
+    } finally {
+      closeSync(descriptor);
+    }
+    renameSync(temporaryPath, exportPath);
+  } finally {
+    rmSync(temporaryPath, { force: true });
+  }
 };
 
 /**

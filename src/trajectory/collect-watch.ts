@@ -11,6 +11,7 @@ import {
   collectWatchSessionFileName,
   rejectExistingSymlinkPathBelow,
   removeManagedOutputAfterConversionFailure,
+  writeCollectedTrace,
 } from "./collect-output-safety";
 
 export { collectWatchSessionFileName } from "./collect-output-safety";
@@ -189,7 +190,7 @@ export const runCollectSweep = (
         rejectExistingSymlinkPathBelow(outDir, exportPath);
         assertSafeOutputPath(ref.sessionPath, exportPath);
         mkdirSync(runtimeDir, { recursive: true });
-        writeFileSync(exportPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8");
+        writeCollectedTrace(exportPath, trace);
         sessions[stateKey] = {
           ...(runtime === "codex" ? { conversionVersion: codexConversionVersion } : {}),
           eventCount: trace.eventCount,

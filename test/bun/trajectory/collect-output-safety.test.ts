@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { exportCollectedSession } from "../../../src/trajectory/collect";
 import { collectWatchSessionFileName, collectWatchStateFileName, runCollectSweep } from "../../../src/trajectory/collect-watch";
 
@@ -91,7 +91,7 @@ describe("collector output safety", () => {
   });
 
   test("preserves the prior artifact when a valid conversion cannot write its replacement", () => {
-    // Given: a successfully collected session whose output is made read-only.
+    // Given: a successfully collected session whose output directory is made read-only.
     const sourceDir = temporaryRoot();
     const outDir = temporaryRoot();
     const sessionPath = writeClaudeSession(sourceDir, "write-failure", "first prompt");
@@ -102,10 +102,16 @@ describe("collector output safety", () => {
     const priorArtifact = readFileSync(exportPath, "utf8");
     writeClaudeSession(sourceDir, "write-failure", "updated prompt");
     utimesSync(sessionPath, new Date("2026-07-01T01:00:00.000Z"), new Date("2026-07-01T01:00:00.000Z"));
-    chmodSync(exportPath, 0o444);
+    const publicationDirectory = dirname(exportPath);
+    chmodSync(publicationDirectory, 0o555);
 
     // When: conversion succeeds but replacing the output fails.
-    const failed = runCollectSweep(config, new Date("2026-07-02T00:00:01.000Z"));
+    let failed: ReturnType<typeof runCollectSweep>;
+    try {
+      failed = runCollectSweep(config, new Date("2026-07-02T00:00:01.000Z"));
+    } finally {
+      chmodSync(publicationDirectory, 0o755);
+    }
 
     // Then: the old valid artifact is retained rather than conversion cleanup deleting it.
     expect(failed).toMatchObject({ exported: 0, failed: 1 });

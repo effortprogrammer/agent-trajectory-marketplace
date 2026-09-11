@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { z } from "zod";
@@ -10,7 +10,7 @@ import {
   TrajectoryAdapterError,
 } from "./adapters/contract";
 import { getHarnessAdapter, listHarnessAdapters } from "./adapters/registry";
-import { assertSafeOutputPath } from "./collect-output-safety";
+import { assertSafeOutputPath, writeCollectedTrace } from "./collect-output-safety";
 
 const listSessionsInputSchema = z.object({
   runtime: z.string().min(1),
@@ -189,7 +189,7 @@ export const exportCollectedSession = (input: Readonly<{
       : { runtimeAttribution: parsed.runtimeAttribution }),
   });
   mkdirSync(dirname(exportPath), { recursive: true });
-  writeFileSync(exportPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8");
+  writeCollectedTrace(exportPath, trace);
   return {
     eventCount: trace.eventCount,
     eventKinds: [...new Set(trace.events.map((event) => event.kind))].sort(),
