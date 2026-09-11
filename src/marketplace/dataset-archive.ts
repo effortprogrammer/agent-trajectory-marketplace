@@ -12,7 +12,7 @@ import {
   hasSupportedPositiveUsage,
   type CompensatedUsageAssessment,
 } from "./compensated-model-policy";
-import { hasCodexPromptIntegrity } from "./codex-prompt-integrity";
+import { hasCodexPromptIntegrity, hasCodexPromptStructure } from "./codex-prompt-integrity";
 import { MarketplaceError } from "./error";
 import { ResidualSecretScanError, assertNoResidualSecrets } from "./residual-secret-scan";
 import type { FrozenTrace } from "./session-contract";
@@ -76,7 +76,7 @@ export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
     eventCount: parsed.data.eventCount,
     events,
   });
-  if (!sanitized.success || !hasCodexPromptIntegrity(sanitized.data)) {
+  if (!sanitized.success || !hasCodexPromptStructure(sanitized.data)) {
     throw new MarketplaceError("invalid_bundle_request");
   }
   return Buffer.from(JSON.stringify(sanitized.data), "utf8");
