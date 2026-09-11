@@ -39,7 +39,7 @@ export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
     throw error;
   }
   const parsed = harnessTraceDocumentSchema.safeParse(value);
-  if (!parsed.success || !hasCodexPromptIntegrity(parsed.data)) {
+  if (!parsed.success) {
     throw new MarketplaceError("invalid_bundle_request");
   }
   const events = parsed.data.events.map((event) => {
