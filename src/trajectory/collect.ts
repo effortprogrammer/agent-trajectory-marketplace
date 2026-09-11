@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { z } from "zod";
@@ -10,6 +10,7 @@ import {
   TrajectoryAdapterError,
 } from "./adapters/contract";
 import { getHarnessAdapter, listHarnessAdapters } from "./adapters/registry";
+import { assertSafeOutputPath, writeCollectedTrace } from "./collect-output-safety";
 
 const listSessionsInputSchema = z.object({
   runtime: z.string().min(1),
@@ -80,10 +81,6 @@ const resolveExportPath = (exportPath: string, outputRoot: string | undefined): 
   const canonicalAncestor = realpathSync(nearestExistingAncestor(candidate));
   if (!isInside(canonicalRoot, canonicalAncestor)) return invalidExportPath(exportPath);
   return candidate;
-};
-
-const rejectExistingSymlink = (path: string): void => {
-  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) invalidExportPath(path);
 };
 
 const resolveSourceDir = (runtime: string, sourceDir: string | undefined): Readonly<{
@@ -183,16 +180,16 @@ export const exportCollectedSession = (input: Readonly<{
     session: parsed.session,
     ...(parsed.sourceDir === undefined ? {} : { sourceDir: parsed.sourceDir }),
   });
+  const exportPath = resolveExportPath(parsed.exportPath, parsed.outputRoot);
+  assertSafeOutputPath(session.sessionPath, exportPath);
   const trace = adapter.convertSession({
     ...session,
     ...(parsed.runtimeAttribution === undefined
       ? {}
       : { runtimeAttribution: parsed.runtimeAttribution }),
   });
-  const exportPath = resolveExportPath(parsed.exportPath, parsed.outputRoot);
-  rejectExistingSymlink(exportPath);
   mkdirSync(dirname(exportPath), { recursive: true });
-  writeFileSync(exportPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8");
+  writeCollectedTrace(exportPath, trace);
   return {
     eventCount: trace.eventCount,
     eventKinds: [...new Set(trace.events.map((event) => event.kind))].sort(),

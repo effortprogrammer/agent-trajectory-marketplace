@@ -29,6 +29,7 @@ import {
   harnessTraceDocumentSchema,
   sanitizeHarnessPayload,
 } from "../trajectory/adapters/contract"
+import { hasCodexPromptIntegrity } from "./codex-prompt-integrity"
 
 export { PublishBundleError } from "./publish-bundle-file"
 export type { PublishBundleReadOptions } from "./publish-bundle-file"
@@ -69,7 +70,11 @@ const assertTraceAdmission = (
   const input = parseAdmissionJson(data)
   if (input === undefined) return invalid()
   const parsed = harnessTraceDocumentSchema.safeParse(input)
-  if (!parsed.success || parsed.data.events.length > datasetArchivePolicy.maxTraceEvents) return invalid()
+  if (
+    !parsed.success
+    || parsed.data.events.length > datasetArchivePolicy.maxTraceEvents
+    || (enforceCompensatedModelPolicy && !hasCodexPromptIntegrity(parsed.data))
+  ) return invalid()
   const usageAssessment = assessCompensatedUsage(parsed.data)
   if (
     enforceCompensatedModelPolicy

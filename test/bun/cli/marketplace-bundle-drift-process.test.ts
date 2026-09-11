@@ -71,8 +71,12 @@ const traceBytes = (runtime: string): Uint8Array => new TextEncoder().encode(JSO
   runtime,
   status: "collected",
   formatVersion: 2,
-  eventCount: 1,
+  eventCount: 2,
   events: [{
+    kind: "function_enter",
+    name: "user",
+    payload: { role: "user", content: "USER_SENTINEL" },
+  }, {
     kind: "message",
     name: "assistant",
     timestamp: "2026-09-01T00:00:00.000Z",

@@ -102,9 +102,9 @@ describe("marketplace sessions process boundary", () => {
     // Then: both commands fail closed without output or a raw JavaScript exception.
     expect(results.map((result) => result.exitCode)).toEqual([1, 1]);
     expect(results.map((result) => decoder.decode(result.stdout))).toEqual(["", ""]);
-    expect(results.map((result) => decoder.decode(result.stderr))).toEqual([
-      '{"error":"invalid_trace"}\n',
-      '{"error":"invalid_trace"}\n',
+    expect(results.map((result) => JSON.parse(decoder.decode(result.stderr)))).toEqual([
+      { error: "invalid_trace", guidance: expect.any(String) },
+      { error: "invalid_trace", guidance: expect.any(String) },
     ]);
   });
 
@@ -206,8 +206,10 @@ describe("marketplace sessions process boundary", () => {
     // Then
     expect(results.map((result) => result.exitCode)).toEqual([1, 1, 1, 1, 1]);
     expect(results.map((result) => decoder.decode(result.stdout))).toEqual(["", "", "", "", ""]);
-    expect(results.map((result) => decoder.decode(result.stderr))).toEqual(
-      cases.map(({ code }) => `${JSON.stringify({ error: code })}\n`),
+    expect(results.map((result) => JSON.parse(decoder.decode(result.stderr)))).toEqual(
+      cases.map(({ code }) => code === "invalid_trace"
+        ? { error: code, guidance: expect.any(String) }
+        : { error: code }),
     );
   });
 });

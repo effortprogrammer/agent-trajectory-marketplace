@@ -101,7 +101,7 @@ describe("publish frame", () => {
   })
 
   it("refuses to frame a wire-contract bundle on the publish-client capability path", () => {
-    // Given: frozen wire bytes whose archive fails compensated-model business admission.
+    // Given: frozen wire bytes whose archive fails current prompt-integrity business admission.
     const archive = Buffer.from(wireArchive)
     const strict = (): void => {
       parsePublishBundle(archive)
@@ -111,7 +111,7 @@ describe("publish frame", () => {
       strict()
     } catch (error) {
       expect(error).toBeInstanceOf(PublishBundleError)
-      if (error instanceof PublishBundleError) expect(error.code).toBe("unsupported_model")
+      if (error instanceof PublishBundleError) expect(error.code).toBe("invalid_bundle_request")
     }
     const bundle = parsePublishBundleForWireContract(archive)
 
@@ -121,7 +121,7 @@ describe("publish frame", () => {
       Reflect.apply(createPublishFrameBody, undefined, [bundle])
     }
 
-    // Then: framing must not consume bundles admitted without the compensated-model
+    // Then: framing must not consume bundles admitted without full business
     // policy; only full business admission may hold publish capability.
     expect(frame).toThrow(PublishWireContractError)
   })

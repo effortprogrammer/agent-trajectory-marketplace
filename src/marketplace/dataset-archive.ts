@@ -12,6 +12,7 @@ import {
   hasSupportedPositiveUsage,
   type CompensatedUsageAssessment,
 } from "./compensated-model-policy";
+import { hasCodexPromptIntegrity, hasCodexPromptStructure } from "./codex-prompt-integrity";
 import { MarketplaceError } from "./error";
 import { ResidualSecretScanError, assertNoResidualSecrets } from "./residual-secret-scan";
 import type { FrozenTrace } from "./session-contract";
@@ -38,12 +39,20 @@ export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
     throw error;
   }
   const parsed = harnessTraceDocumentSchema.safeParse(value);
-  if (!parsed.success) throw new MarketplaceError("invalid_bundle_request");
+  if (!parsed.success) {
+    throw new MarketplaceError("invalid_bundle_request");
+  }
   const events = parsed.data.events.map((event) => {
     const payload = event.payload === undefined ? undefined : sanitizeHarnessPayload(event.payload);
     if (event.payload !== undefined && payload === undefined) {
       throw new MarketplaceError("invalid_bundle_request");
     }
+    if (parsed.data.runtime === "codex" && event.payload?.role === "user" && (
+      typeof event.payload.content !== "string"
+      || payload?.role !== "user"
+      || payload.content !== boundedRedactedString(event.payload.content).text
+      || payload.truncated === true
+    )) throw new MarketplaceError("invalid_bundle_request");
     return {
       kind: boundedRedactedString(event.kind).text,
       name: boundedRedactedString(event.name).text,
@@ -67,7 +76,9 @@ export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
     eventCount: parsed.data.eventCount,
     events,
   });
-  if (!sanitized.success) throw new MarketplaceError("invalid_bundle_request");
+  if (!sanitized.success || !hasCodexPromptStructure(sanitized.data)) {
+    throw new MarketplaceError("invalid_bundle_request");
+  }
   return Buffer.from(JSON.stringify(sanitized.data), "utf8");
 };
 
