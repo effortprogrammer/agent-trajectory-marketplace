@@ -31,6 +31,15 @@ const payloadSchema = z.object({
 const recordSchema = z.object({
   type: z.string(), timestamp: z.string().optional(), payload: payloadSchema.optional(),
 }).passthrough();
+// Native user-message modalities are not representable by this text-only adapter.
+const eventUserModalitiesSchema = z.object({
+  images: z.array(z.unknown()).nullish(),
+  local_images: z.array(z.unknown()).nullish(),
+  audio: z.array(z.unknown()).nullish(),
+  local_audio: z.array(z.unknown()).nullish(),
+  text_elements: z.array(z.unknown()).nullish(),
+  attachments: z.array(z.unknown()).nullish(),
+}).passthrough();
 
 export type CodexRecord = z.infer<typeof recordSchema> & Readonly<{ sourceLine: number }>;
 export type CodexTokenUsage = z.infer<typeof usageSchema>;
@@ -56,15 +65,35 @@ const fail = (reason: SourceFailure, line?: number): never => {
   throw new CodexSourceError(reason, line);
 };
 
-const recordTypes = new Set(["session_meta", "turn_context", "response_item", "event_msg", "compacted"]);
+const recordTypes = new Set([
+  "session_meta", "response_item", "inter_agent_communication", "inter_agent_communication_metadata",
+  "compacted", "turn_context", "world_state", "event_msg",
+]);
 const responseTypes = new Set([
-  "message", "reasoning", "function_call", "function_call_output", "custom_tool_call", "custom_tool_call_output",
+  "additional_tools", "message", "agent_message", "reasoning", "local_shell_call", "function_call",
+  "tool_search_call", "function_call_output", "custom_tool_call", "custom_tool_call_output",
+  "tool_search_output", "web_search_call", "image_generation_call", "compaction", "compaction_trigger",
+  "context_compaction", "other",
 ]);
 // These are non-user metadata or mirrors of response items, not alternative user input.
 const eventTypes = new Set([
-  "user_message", "token_count", "agent_message", "agent_reasoning",
-  "task_started", "task_complete", "turn_aborted", "context_compacted",
-  "item_started", "item_completed", "warning", "error", "thread_rolled_back",
+  "error", "warning", "guardian_warning", "realtime_conversation_started", "realtime_conversation_realtime",
+  "realtime_conversation_closed", "realtime_conversation_sdp", "model_reroute", "model_verification",
+  "turn_moderation_metadata", "safety_buffering", "context_compacted", "thread_rolled_back", "task_started",
+  "thread_settings_applied", "task_complete", "token_count", "agent_message", "user_message", "agent_reasoning",
+  "agent_reasoning_raw_content", "agent_reasoning_section_break", "session_configured", "environment_connected",
+  "environment_disconnected", "thread_goal_updated", "mcp_startup_update", "mcp_startup_complete",
+  "mcp_tool_call_begin", "mcp_tool_call_end", "web_search_begin", "web_search_end", "image_generation_begin",
+  "image_generation_end", "exec_command_begin", "exec_command_output_delta", "terminal_interaction",
+  "exec_command_end", "view_image_tool_call", "exec_approval_request", "request_user_input",
+  "dynamic_tool_call_request", "dynamic_tool_call_response", "elicitation_request", "apply_patch_approval_request",
+  "guardian_assessment", "deprecation_notice", "stream_error", "patch_apply_begin", "patch_apply_updated",
+  "patch_apply_end", "turn_diff", "realtime_conversation_list_voices_response", "plan_update", "turn_aborted",
+  "shutdown_complete", "entered_review_mode", "exited_review_mode", "raw_response_item", "raw_response_completed",
+  "item_started", "item_completed", "hook_started", "hook_completed", "agent_message_content_delta", "plan_delta",
+  "reasoning_content_delta", "reasoning_raw_content_delta", "collab_agent_spawn_begin", "collab_agent_spawn_end",
+  "collab_agent_interaction_begin", "collab_agent_interaction_end", "collab_waiting_begin", "collab_waiting_end",
+  "collab_close_begin", "collab_close_end", "collab_resume_begin", "collab_resume_end", "sub_agent_activity",
 ]);
 
 export const readCodexRecords = (path: string): readonly CodexRecord[] => {
@@ -94,6 +123,10 @@ export const readCodexRecords = (path: string): readonly CodexRecord[] => {
     }
     if (record.type === "event_msg" && !eventTypes.has(record.payload?.type ?? "")) {
       return fail("unsupported_record", index + 1);
+    }
+    if (record.type === "event_msg" && record.payload?.type === "user_message"
+      && !eventUserModalitiesSchema.safeParse(record.payload).success) {
+      return fail("invalid_record", index + 1);
     }
     records.push({ ...record, sourceLine: index + 1 });
   }
@@ -129,6 +162,15 @@ export const collectCodexUserMessages = (
     }
     let rawText: string;
     if (eventUser) {
+      const modalities = eventUserModalitiesSchema.safeParse(payload);
+      if (!modalities.success) return fail("invalid_record", record.sourceLine);
+      const modalityValues = [
+        modalities.data.images, modalities.data.local_images, modalities.data.audio, modalities.data.local_audio,
+        modalities.data.text_elements, modalities.data.attachments,
+      ];
+      if (modalityValues.some((value) => Array.isArray(value) && value.length > 0)) {
+        return fail("unsupported_user_content", record.sourceLine);
+      }
       if (typeof payload?.message !== "string") return fail("missing_user_text", record.sourceLine);
       rawText = payload.message;
     } else {

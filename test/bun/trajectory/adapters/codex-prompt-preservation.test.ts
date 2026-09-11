@@ -61,6 +61,16 @@ describe("Codex user-message preservation", () => {
     }]);
   });
 
+  test("keeps event users with empty optional native modalities", () => {
+    const path = source([{
+      type: "event_msg", timestamp, payload: {
+        type: "user_message", message: "USER_SENTINEL", images: [], local_images: [], audio: [],
+        local_audio: [], text_elements: [], attachments: [],
+      },
+    }, assistant]);
+    expect(users(path).map((event) => event.payload?.content)).toEqual(["USER_SENTINEL"]);
+  });
+
   for (const responseFirst of [false, true]) {
     test(`deduplicates one mirror pair while preserving first attestation (${responseFirst})`, () => {
       const first = responseFirst ? responseUser("USER_SENTINEL") : eventUser("USER_SENTINEL");
@@ -137,6 +147,27 @@ describe("Codex user-message preservation", () => {
     }, assistant]);
     expect(users(path).map((event) => event.payload?.content)).toEqual(["USER_SENTINEL"]);
   });
+
+  test("skips known current native non-user rollout records", () => {
+    const path = source([eventUser("USER_SENTINEL"),
+      { type: "world_state", payload: { version: 1, sections: [] } },
+      { type: "inter_agent_communication", payload: { sender: "agent-1", recipient: "agent-2" } },
+      { type: "inter_agent_communication_metadata", payload: { sender: "agent-1", recipient: "agent-2" } },
+      { type: "response_item", payload: { type: "web_search_call", id: "web-1", status: "completed", action: { type: "search", query: "native schema" } } },
+      { type: "response_item", payload: { type: "tool_search_call", call_id: "search-1", status: "completed", execution: "local" } },
+      { type: "response_item", payload: { type: "tool_search_output", call_id: "search-1", output: "result" } },
+      { type: "response_item", payload: { type: "image_generation_call", id: "image-1", status: "completed", revised_prompt: "diagram" } },
+      { type: "response_item", payload: { type: "agent_message", id: "agent-1", content: [] } },
+      { type: "response_item", payload: { type: "local_shell_call", call_id: "shell-1", status: "completed", action: { type: "exec", command: "true" } } },
+      { type: "response_item", payload: { type: "additional_tools", tools: [] } },
+      { type: "response_item", payload: { type: "compaction" } },
+      { type: "response_item", payload: { type: "compaction_trigger" } },
+      { type: "response_item", payload: { type: "context_compaction" } },
+      { type: "response_item", payload: { type: "other" } },
+      assistant,
+    ]);
+    expect(users(path).map((event) => event.payload?.content)).toEqual(["USER_SENTINEL"]);
+  });
 });
 
 describe("Codex fails closed rather than exporting lost user input", () => {
@@ -149,6 +180,21 @@ describe("Codex fails closed rather than exporting lost user input", () => {
     { label: "missing event text", record: { type: "event_msg", payload: { type: "user_message" } } },
     { label: "empty event text", record: eventUser("") },
     { label: "blank event text", record: eventUser(" \n\t ") },
+    { label: "event user images", record: { type: "event_msg", payload: {
+      type: "user_message", message: "USER_SENTINEL", images: [{ image_url: "synthetic" }],
+    } } },
+    { label: "event user local images", record: { type: "event_msg", payload: {
+      type: "user_message", message: "USER_SENTINEL", local_images: ["/tmp/synthetic.png"],
+    } } },
+    { label: "event user audio", record: { type: "event_msg", payload: {
+      type: "user_message", message: "USER_SENTINEL", audio: [{ audio_url: "synthetic" }],
+    } } },
+    { label: "event user text elements", record: { type: "event_msg", payload: {
+      type: "user_message", message: "USER_SENTINEL", text_elements: [{ text: "synthetic" }],
+    } } },
+    { label: "event user attachments", record: { type: "event_msg", payload: {
+      type: "user_message", message: "USER_SENTINEL", attachments: ["/tmp/synthetic.txt"],
+    } } },
     { label: "missing block text", record: { type: "response_item", payload: {
       type: "message", role: "user", content: [{ type: "input_text" }],
     } } },
