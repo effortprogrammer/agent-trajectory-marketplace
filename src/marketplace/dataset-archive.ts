@@ -47,6 +47,12 @@ export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
     if (event.payload !== undefined && payload === undefined) {
       throw new MarketplaceError("invalid_bundle_request");
     }
+    if (parsed.data.runtime === "codex" && event.payload?.role === "user" && (
+      typeof event.payload.content !== "string"
+      || payload?.role !== "user"
+      || payload.content !== boundedRedactedString(event.payload.content).text
+      || payload.truncated === true
+    )) throw new MarketplaceError("invalid_bundle_request");
     return {
       kind: boundedRedactedString(event.kind).text,
       name: boundedRedactedString(event.name).text,
@@ -70,7 +76,9 @@ export const sanitizedTraceBytes = (bytes: Uint8Array): Buffer => {
     eventCount: parsed.data.eventCount,
     events,
   });
-  if (!sanitized.success) throw new MarketplaceError("invalid_bundle_request");
+  if (!sanitized.success || !hasCodexPromptIntegrity(sanitized.data)) {
+    throw new MarketplaceError("invalid_bundle_request");
+  }
   return Buffer.from(JSON.stringify(sanitized.data), "utf8");
 };
 

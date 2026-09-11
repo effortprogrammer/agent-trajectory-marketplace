@@ -1,4 +1,4 @@
-import { boundedRedactedString } from "../trajectory/adapters/contract";
+import { boundedRedactedString, sanitizeHarnessPayload } from "../trajectory/adapters/contract";
 import type { HarnessTraceDocument } from "../trajectory/adapters/contract";
 
 export const hasCodexPromptIntegrity = (trace: HarnessTraceDocument): boolean => {
@@ -15,6 +15,12 @@ export const hasCodexPromptIntegrity = (trace: HarnessTraceDocument): boolean =>
       || payload.content.trim().length === 0
       || boundedRedactedString(payload.content).truncated
       || payload.truncated === true
+    ) return false;
+    const sanitized = sanitizeHarnessPayload(payload);
+    if (
+      sanitized?.role !== "user"
+      || sanitized.content !== boundedRedactedString(payload.content).text
+      || sanitized.truncated === true
     ) return false;
   }
   return promptCount > 0;
