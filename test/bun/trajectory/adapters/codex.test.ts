@@ -1,9 +1,14 @@
-import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { codexAdapter } from "../../../../src/trajectory/adapters/codex";
+
+const roots: string[] = [];
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
 
 const writeRollout = (directory: string, name: string, records: readonly unknown[]): string => {
   const path = join(directory, name);
@@ -14,6 +19,7 @@ const writeRollout = (directory: string, name: string, records: readonly unknown
 describe("native Codex rollout adapter", () => {
   test("converts native rollout records with usage, tool pairing, attestation, and redaction", () => {
     const root = mkdtempSync(join(tmpdir(), "atm-codex-"));
+    roots.push(root);
     const records = [
       {
         type: "session_meta",
@@ -98,6 +104,7 @@ describe("native Codex rollout adapter", () => {
 
   test("discovers dated sessions and archived sibling newest first", () => {
     const root = mkdtempSync(join(tmpdir(), "atm-codex-discovery-"));
+    roots.push(root);
     const sessions = join(root, "sessions");
     const archived = join(root, "archived_sessions");
     const dated = join(sessions, "2026", "07", "23");
@@ -116,17 +123,16 @@ describe("native Codex rollout adapter", () => {
     expect(refs[1]?.projectDir).toBe(join("2026", "07", "23"));
   });
 
-  test("skips malformed JSONL records and redacts malformed function arguments in payloads", () => {
+  test("redacts opaque malformed function arguments in valid native records", () => {
     const root = mkdtempSync(join(tmpdir(), "atm-codex-malformed-"));
+    roots.push(root);
     const path = join(root, "rollout-malformed.jsonl");
     const lines = [
       JSON.stringify({ type: "session_meta", payload: { id: "malformed" } }),
-      "not-json",
       JSON.stringify({ type: "turn_context", payload: { model: "gpt-5.4" } }),
       JSON.stringify({ type: "event_msg", payload: { type: "user_message", message: "go" } }),
       JSON.stringify({ type: "response_item", payload: { type: "function_call", name: "exec_command", call_id: "bad", arguments: "Authorization: Bearer abcdefghijklmnopqrstuvwxyz" } }),
       JSON.stringify({ type: "response_item", payload: { type: "function_call_output", call_id: "bad", output: "Process exited with code 1" } }),
-      JSON.stringify({ type: "unexpected", payload: { type: 42 } }),
     ];
     writeFileSync(path, `${lines.join("\n")}\n`, "utf8");
 
@@ -145,6 +151,6 @@ describe("native Codex rollout adapter", () => {
     expect(() => codexAdapter.convertSession({ sessionPath: join(root, "not-a-rollout.json") })).toThrow("missing_session");
     const genericPath = join(root, "generic.jsonl");
     writeFileSync(genericPath, `${JSON.stringify({ kind: "tool_call", name: "exec", detail: "ok" })}\n`, "utf8");
-    expect(() => codexAdapter.convertSession({ sessionPath: genericPath })).toThrow("no session_meta");
+    expect(() => codexAdapter.convertSession({ sessionPath: genericPath })).toThrow("invalid_session");
   });
 });

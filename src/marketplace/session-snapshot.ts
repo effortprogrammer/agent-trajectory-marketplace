@@ -6,6 +6,7 @@ import { harnessTraceDocumentSchema } from "../trajectory/adapters/contract";
 import { isPayloadStructureBounded } from "../trajectory/adapters/payload-sanitizer";
 import { discoverConfinedFiles, readConfinedFiles } from "./confined-reader";
 import type { ConfinedFile, ConfinementOptions } from "./confined-reader";
+import { hasCodexPromptIntegrity } from "./codex-prompt-integrity";
 import { MarketplaceError } from "./error";
 import { fullSelectorSchema, traceHashSchema } from "./session-contract";
 import type { FrozenTrace, FullSelector, SessionSnapshot } from "./session-contract";
@@ -66,6 +67,7 @@ function validateBytes(bytes: Uint8Array): TraceMetadata {
   }
   const parsed = harnessTraceDocumentSchema.safeParse(value);
   if (!parsed.success) throw new MarketplaceError("invalid_trace");
+  if (!hasCodexPromptIntegrity(parsed.data)) throw new MarketplaceError("invalid_trace");
   if (parsed.data.events.some((event) =>
     event.payload !== undefined && !isPayloadStructureBounded(event.payload))) {
     throw new MarketplaceError("invalid_trace");

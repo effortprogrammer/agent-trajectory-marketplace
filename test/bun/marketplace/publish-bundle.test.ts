@@ -31,31 +31,43 @@ type UsageFixture = Readonly<{
   readonly outputTokens?: number
 }>
 
-const traceForUsages = (usages: readonly UsageFixture[]): Buffer =>
-  Buffer.from(JSON.stringify({
+const traceForUsages = (usages: readonly UsageFixture[]): Buffer => {
+  const events = usages.map((usage, index) => ({
+    kind: index === 0 ? "function_enter" : "message",
+    name: index === 0 ? "turn" : "assistant",
+    timestamp: `2026-09-01T00:00:0${index}.000Z`,
+    sourceEventId: `usage-${index}`,
+    payload: {
+      ...(index === 0 ? { role: "user", content: "Preserve this prompt." } : {}),
+      usage: {
+        ...(usage.model === undefined ? {} : { model: usage.model }),
+        ...(usage.inputTokens === undefined
+          ? {}
+          : { inputTokens: usage.inputTokens }),
+        ...(usage.outputTokens === undefined
+          ? {}
+          : { outputTokens: usage.outputTokens }),
+        ...(usage.latencyMs === undefined ? {} : { latencyMs: usage.latencyMs }),
+      },
+    },
+  }));
+  if (events.length === 0) {
+    events.push({
+      kind: "function_enter",
+      name: "turn",
+      timestamp: "2026-09-01T00:00:00.000Z",
+      sourceEventId: "prompt-0",
+      payload: { role: "user", content: "Preserve this prompt.", usage: {} },
+    });
+  }
+  return Buffer.from(JSON.stringify({
     runtime: "codex",
     status: "collected",
     formatVersion: 2,
-    eventCount: usages.length,
-    events: usages.map((usage, index) => ({
-      kind: "message",
-      name: "assistant",
-      timestamp: `2026-09-01T00:00:0${index}.000Z`,
-      sourceEventId: `usage-${index}`,
-      payload: {
-        usage: {
-          ...(usage.model === undefined ? {} : { model: usage.model }),
-          ...(usage.inputTokens === undefined
-            ? {}
-            : { inputTokens: usage.inputTokens }),
-          ...(usage.outputTokens === undefined
-            ? {}
-            : { outputTokens: usage.outputTokens }),
-          ...(usage.latencyMs === undefined ? {} : { latencyMs: usage.latencyMs }),
-        },
-      },
-    })),
+    eventCount: events.length,
+    events,
   }), "utf8")
+}
 
 const archiveForTraces = (traces: readonly Buffer[]): Buffer => {
   const artifacts = traces.map((trace, index) => {
@@ -466,12 +478,7 @@ describe("publish bundle ZIP integrity", () => {
       archiveForTrace(traceForUsages([
         { inputTokens: 1, outputTokens: 1 },
       ])),
-      archiveForTrace(Buffer.from(JSON.stringify({
-        runtime: "codex",
-        status: "collected",
-        eventCount: 0,
-        events: [],
-      }), "utf8")),
+      archiveForTrace(traceForUsages([])),
     ] as const
 
     // When: the independent pre-publish parser re-admits each stored ZIP.
@@ -699,7 +706,7 @@ describe("publish bundle ZIP integrity", () => {
 
   test("preserves safe noncanonical ATF bytes exactly", () => {
     // Given: semantically valid, redaction-fixed-point trace bytes with noncanonical whitespace.
-    const trace = Buffer.from('{\n  "runtime": "codex",\n  "status": "collected",\n  "formatVersion": 2,\n  "eventCount": 1,\n  "events": [{\n    "kind": "message",\n    "name": "assistant",\n    "timestamp": "2026-09-01T00:00:00.000Z",\n    "sourceEventId": "usage-0",\n    "payload": {"usage": {"model": "claude-fable-5", "inputTokens": 1, "outputTokens": 1}}\n  }]\n}', "utf8")
+    const trace = Buffer.from('{\n  "runtime": "codex",\n  "status": "collected",\n  "formatVersion": 2,\n  "eventCount": 1,\n  "events": [{\n    "kind": "function_enter",\n    "name": "turn",\n    "timestamp": "2026-09-01T00:00:00.000Z",\n    "sourceEventId": "usage-0",\n    "payload": {"role": "user", "content": "Preserve this prompt.", "usage": {"model": "claude-fable-5", "inputTokens": 1, "outputTokens": 1}}\n  }]\n}', "utf8")
     const archive = archiveForTrace(trace)
 
     // When: the bundle is admitted.

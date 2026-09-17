@@ -39,7 +39,7 @@ const todo27Trace = (content: string): string => JSON.stringify({
   formatVersion: 2,
   eventCount: 1,
   events: [{
-    kind: "message",
+    kind: "function_enter",
     name: "user",
     timestamp: "2026-07-27T00:00:00Z",
     sourceEventId: "event-1",
