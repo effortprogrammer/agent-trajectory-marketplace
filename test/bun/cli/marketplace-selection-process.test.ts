@@ -72,7 +72,14 @@ const overEventCapTraceBytes = (): Uint8Array => new TextEncoder().encode(JSON.s
   status: "collected",
   formatVersion: 2,
   eventCount: 65_537,
-  events: Array.from({ length: 65_537 }, () => ({ kind: "message", name: "assistant" })),
+  events: [
+    {
+      kind: "function_enter",
+      name: "turn",
+      payload: { role: "user", content: "Preserve this prompt." },
+    },
+    ...Array.from({ length: 65_536 }, () => ({ kind: "message", name: "assistant" })),
+  ],
 }));
 
 const selectorFor = (relativePath: string): string =>

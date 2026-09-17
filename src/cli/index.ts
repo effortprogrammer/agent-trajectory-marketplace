@@ -10,6 +10,7 @@ import {
   sendCollectorTelemetry,
 } from "@/trajectory/telemetry";
 import { runUpdateCli } from "@/trajectory/update-cli";
+import { CodexSourceError } from "@/trajectory/adapters/codex-source";
 import { installUpdateServiceSchedule } from "@/trajectory/update-service-schedule";
 
 import { parseCollectorCommand, runCollectorCli, runCollectorResidentCli, type CollectorCommand } from "./collector";
@@ -231,7 +232,19 @@ const main = async (): Promise<void> => {
     console.error(JSON.stringify(
       error instanceof CandidateRemoteCliError
         ? { error: error.code, message: error.message }
-        : { error: errorCode },
+        : error instanceof CodexSourceError
+          ? {
+            error: error.code,
+            reason: error.reason,
+            ...(error.sourceLine === undefined ? {} : { sourceLine: error.sourceLine }),
+            guidance: "Keep the original Codex JSONL; update the collector and recollect.",
+          }
+        : errorCode === "invalid_trace"
+          ? {
+            error: errorCode,
+            guidance: "For Codex traces, keep the original JSONL and recollect it after updating the collector.",
+          }
+          : { error: errorCode },
     ));
     process.exitCode = 1;
   } finally {
