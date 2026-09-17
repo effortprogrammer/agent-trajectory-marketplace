@@ -351,6 +351,150 @@ describe("platform update service handover", () => {
 		expect(rewritten).not.toContain("UNRELATED");
 	});
 
+	test("retries launchd bootstrap while the previous collector is still deregistering", async () => {
+		// Given: launchd still deregisters the old collector, so bootstrap fails twice with error 5.
+		const root = join(tmpdir(), `atm-update-launchd-race-${crypto.randomUUID()}`);
+		const home = join(root, "home");
+		const paths = collectServicePaths(home);
+		mkdirSync(join(paths.plistPath, ".."), { recursive: true });
+		writeFileSync(paths.plistPath, "old-plist\n");
+		roots.push(root);
+		const state: InstallState = {
+			schemaVersion: 1,
+			installRoot: root,
+			outputDir: join(root, "collected"),
+			service: { runtimes: ["codex"], intervalSeconds: 30, settleSeconds: 60 },
+		};
+		const commands: string[][] = [];
+		const delays: number[] = [];
+		let bootstrapAttempts = 0;
+		const handover = createPlatformUpdateServiceHandover({
+			home,
+			platform: "darwin",
+			uid: 501,
+			run: async (command) => {
+				commands.push([...command]);
+				if (command[1] === "bootstrap") {
+					bootstrapAttempts += 1;
+					return bootstrapAttempts > 2;
+				}
+				return true;
+			},
+			sleep: async (milliseconds) => {
+				delays.push(milliseconds);
+			},
+		});
+
+		// When
+		await handover.activate({
+			fromVersion: "1.0.0",
+			toVersion: "1.1.0",
+			installState: state,
+			signal: new AbortController().signal,
+		});
+
+		// Then: bounded retries absorb the race before the health checks run.
+		expect(bootstrapAttempts).toBe(3);
+		expect(commands).toEqual([
+			["launchctl", "bootout", `gui/501/${collectServiceLabel}`],
+			["launchctl", "bootstrap", "gui/501", paths.plistPath],
+			["launchctl", "bootstrap", "gui/501", paths.plistPath],
+			["launchctl", "bootstrap", "gui/501", paths.plistPath],
+			["launchctl", "print", `gui/501/${collectServiceLabel}`],
+			["launchctl", "print", `gui/501/${collectServiceLabel}`],
+		]);
+		expect(delays).toEqual([1_000, 2_000, 2_000, 8_000]);
+	});
+
+	test("rejects activation after bounded launchd bootstrap retries are exhausted", async () => {
+		// Given: launchd never finishes deregistering the old collector.
+		const root = join(tmpdir(), `atm-update-launchd-race-exhausted-${crypto.randomUUID()}`);
+		const home = join(root, "home");
+		const paths = collectServicePaths(home);
+		mkdirSync(join(paths.plistPath, ".."), { recursive: true });
+		writeFileSync(paths.plistPath, "old-plist\n");
+		roots.push(root);
+		const state: InstallState = {
+			schemaVersion: 1,
+			installRoot: root,
+			outputDir: join(root, "collected"),
+			service: { runtimes: ["codex"], intervalSeconds: 30, settleSeconds: 60 },
+		};
+		let bootstrapAttempts = 0;
+		const handover = createPlatformUpdateServiceHandover({
+			home,
+			platform: "darwin",
+			uid: 501,
+			run: async (command) => {
+				if (command[1] === "bootstrap") {
+					bootstrapAttempts += 1;
+					return false;
+				}
+				return true;
+			},
+			sleep: async () => undefined,
+		});
+
+		// When / Then: one initial attempt plus bounded retries, then the failure surfaces.
+		await expect(handover.activate({
+			fromVersion: "1.0.0",
+			toVersion: "1.1.0",
+			installState: state,
+			signal: new AbortController().signal,
+		})).rejects.toThrow("collector_service_command_failed");
+		expect(bootstrapAttempts).toBe(4);
+	});
+
+	test("retries launchd bootstrap during rollback so the prior collector is not stranded", async () => {
+		// Given: activation succeeds, and the rollback bootstrap hits the deregistration race once.
+		const root = join(tmpdir(), `atm-update-launchd-rollback-race-${crypto.randomUUID()}`);
+		const home = join(root, "home");
+		const paths = collectServicePaths(home);
+		mkdirSync(join(paths.plistPath, ".."), { recursive: true });
+		writeFileSync(paths.plistPath, "old-plist\n");
+		roots.push(root);
+		const state: InstallState = {
+			schemaVersion: 1,
+			installRoot: root,
+			outputDir: join(root, "collected"),
+			service: { runtimes: ["codex"], intervalSeconds: 30, settleSeconds: 60 },
+		};
+		let phase: "activate" | "rollback" = "activate";
+		let rollbackBootstrapAttempts = 0;
+		const handover = createPlatformUpdateServiceHandover({
+			home,
+			platform: "darwin",
+			uid: 501,
+			run: async (command) => {
+				if (phase === "rollback" && command[1] === "bootstrap") {
+					rollbackBootstrapAttempts += 1;
+					return rollbackBootstrapAttempts > 1;
+				}
+				return true;
+			},
+			sleep: async () => undefined,
+		});
+		const request = {
+			fromVersion: "1.0.0",
+			toVersion: "1.1.0",
+			installState: state,
+			signal: new AbortController().signal,
+		};
+		await handover.activate(request);
+
+		// When
+		phase = "rollback";
+		await handover.rollback({
+			...request,
+			fromVersion: request.toVersion,
+			toVersion: request.fromVersion,
+		});
+
+		// Then: the prior bytes are active after one retry instead of being left unloaded.
+		expect(rollbackBootstrapAttempts).toBe(2);
+		expect(readFileSync(paths.plistPath, "utf8")).toBe("old-plist\n");
+	});
+
 	test("surfaces launchd rollback failure when the prior collector cannot be bootstrapped", async () => {
 		// Given: activation succeeds, but launchd rejects the restored prior collector plist.
 		const root = join(tmpdir(), `atm-update-launchd-rollback-${crypto.randomUUID()}`);
@@ -359,7 +503,7 @@ describe("platform update service handover", () => {
 		mkdirSync(join(paths.plistPath, ".."), { recursive: true });
 		writeFileSync(paths.plistPath, "old-plist\n");
 		roots.push(root);
-		const responses = [true, true, true, true, true, false];
+		const responses = [true, true, true, true, true, false, false, false, false];
 		const state: InstallState = {
 			schemaVersion: 1,
 			installRoot: root,
