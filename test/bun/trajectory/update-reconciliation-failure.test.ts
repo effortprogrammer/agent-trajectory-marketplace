@@ -132,8 +132,8 @@ describe("same-version reconciliation retryability", () => {
 		]);
 	});
 
-	test("restores stale launchd bytes when bootstrap fails", async () => {
-		// Given: a stale launchd service and a bootstrap failure after successful bootout.
+	test("restores stale launchd bytes when bootstrap never recovers", async () => {
+		// Given: a stale launchd service and bootstrap failures that outlast the bounded retries.
 		const root = join(tmpdir(), `atm-reconcile-retry-${crypto.randomUUID()}`);
 		const home = join(root, "home");
 		const staleService = "stale-launchd-service\n";
@@ -152,7 +152,7 @@ describe("same-version reconciliation retryability", () => {
 		symlinkSync(installPaths.releaseDir, installPaths.currentPointer);
 		roots.push(root);
 		const commands: string[][] = [];
-		const responses = [true, false, true, true, true, true];
+		const responses = [true, false, false, false, false, true, true, true, true];
 		const runtime: UpdateServiceRuntime = {
 			home,
 			platform: "darwin",
@@ -181,6 +181,9 @@ describe("same-version reconciliation retryability", () => {
 		expect(readFileSync(paths.plistPath, "utf8")).toBe(staleService);
 		expect(commands).toEqual([
 			["launchctl", "bootout", "gui/501/com.agent-trajectory-marketplace-clean.collect-watch"],
+			["launchctl", "bootstrap", "gui/501", paths.plistPath],
+			["launchctl", "bootstrap", "gui/501", paths.plistPath],
+			["launchctl", "bootstrap", "gui/501", paths.plistPath],
 			["launchctl", "bootstrap", "gui/501", paths.plistPath],
 			["launchctl", "bootout", "gui/501/com.agent-trajectory-marketplace-clean.collect-watch"],
 			["launchctl", "bootstrap", "gui/501", paths.plistPath],

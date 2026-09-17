@@ -23,6 +23,7 @@ import { telemetryEnvironmentFromService } from "./update-service-telemetry";
 import type { UpdateServiceHandover } from "./update-transaction";
 
 const COMMAND_TIMEOUT_MS = 15_000;
+const LAUNCHD_BOOTSTRAP_RETRY_DELAYS_MS = [1_000, 2_000, 4_000] as const;
 
 export type UpdateServiceRuntime = Readonly<{
 	home: string;
@@ -161,6 +162,34 @@ const runRequired = async (
 	}
 };
 
+const bootstrapLaunchd = async (
+	runtime: UpdateServiceRuntime,
+	domain: string,
+	servicePath: string,
+	signal: AbortSignal,
+): Promise<void> => {
+	if (
+		await runtime.run(["launchctl", "bootstrap", domain, servicePath], {
+			signal,
+			timeoutMs: COMMAND_TIMEOUT_MS,
+		})
+	) {
+		return;
+	}
+	for (const delay of LAUNCHD_BOOTSTRAP_RETRY_DELAYS_MS) {
+		await runtime.sleep(delay, signal);
+		if (
+			await runtime.run(["launchctl", "bootstrap", domain, servicePath], {
+				signal,
+				timeoutMs: COMMAND_TIMEOUT_MS,
+			})
+		) {
+			return;
+		}
+	}
+	throw new UpdateServiceHandoverError("collector_service_command_failed");
+};
+
 const restartAndCheck = async (
 	runtime: UpdateServiceRuntime,
 	servicePath: string,
@@ -178,7 +207,7 @@ const restartAndCheck = async (
 			["launchctl", "bootout", `${domain}/${collectServiceLabel}`],
 			{ signal, timeoutMs: COMMAND_TIMEOUT_MS },
 		);
-		await runRequired(runtime, ["launchctl", "bootstrap", domain, servicePath], signal);
+		await bootstrapLaunchd(runtime, domain, servicePath, signal);
 		healthCommand = ["launchctl", "print", `${domain}/${collectServiceLabel}`];
 	} else {
 		throw new UpdateServiceHandoverError("collector_service_unsupported_platform");
